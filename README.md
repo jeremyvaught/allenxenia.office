@@ -99,6 +99,18 @@ Production requires `Database__Provider=MySql` and `ConnectionStrings__Office` f
 
 Apply migrations through the explicit `--migrate` operator command after a recoverable backup. Web startup does not change the schema. Provider migration histories are separate; do not apply SQLite migrations to MySQL or run both stores as writable sources.
 
+## Coverage reports
+
+After building Release and restoring the local tools, run:
+
+```sh
+./scripts/coverage.sh
+```
+
+The script requires Python 3 and runs the ordinary .NET tests with Coverlet. It merges their OpenCover results with the pinned ReportGenerator tool and checks that all four application assemblies have coverage data. Each invocation creates a fresh ignored `artifacts/coverage/run.*` directory containing raw coverage/TRX results and HTML, Cobertura, JSON and text summaries. `artifacts/coverage/current.txt` identifies the latest run; open its `report/index.html`. Reports are generated after test failures when coverage data is available, and the command retains a failing exit status. CI is configured to upload this evidence even when a check fails; a hosted run has not yet been demonstrated.
+
+This measures application C# and source-mapped Razor exercised by the ordinary domain and SQLite/HTTP integration tests. Test/fixture assemblies, EF migrations, `obj` sources and explicitly coverage-excluded/generated attributes are excluded. Handwritten async methods, lambdas, auto-properties and business rules remain included. The separately executed real MySQL contract and Playwright journeys are outside this coverage measurement; JavaScript, CSS and real-device compatibility need their own checks. Line/branch percentages are improvement goals, not newly introduced release gates. Passing behavioral acceptance scenarios remains required.
+
 ## Frontend and browser verification
 
 The shared MVC layout uses compiled Tailwind v4 and semantic light/dark tokens. System is the initial preference; explicit Light/Dark is retained on the browser and System removes the override. Live enrollment remains pending while delivery and pilot operations are completed.

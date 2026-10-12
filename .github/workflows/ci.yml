@@ -20,7 +20,16 @@ jobs:
       - run: dotnet tool restore
       - run: dotnet restore --locked-mode
       - run: dotnet build --configuration Release --no-restore
-      - run: dotnet test --configuration Release --no-build --logger trx
+      - name: Test with coverage and generate reports
+        run: ./scripts/coverage.sh
+      - name: Preserve coverage and test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-and-test-results
+          path: artifacts/coverage/
+          if-no-files-found: warn
+          retention-days: 14
       - run: dotnet format --verify-no-changes --no-restore
       - run: ./scripts/verify-mysql.sh
       - run: npx playwright install --with-deps chromium
