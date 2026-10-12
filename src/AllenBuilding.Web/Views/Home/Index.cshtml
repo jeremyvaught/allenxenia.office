@@ -1,4 +1,37 @@
-@{ ViewData["Title"] = "Welcome"; }
-<h1>Allen Xenia Office</h1>
-<p>A new home for Allen Building maintenance and tenant services.</p>
-<p>The application is under construction. Tenant access will open after verification.</p>
+@{ ViewData["Title"] = "A better place to get things done"; }
+<section class="mx-auto grid max-w-7xl gap-12 px-5 py-16 sm:px-8 sm:py-24 lg:grid-cols-[1.3fr_1fr] lg:items-center lg:gap-20">
+    <div>
+        <p class="mb-6 text-sm font-semibold uppercase tracking-widest text-brand">Allen Building · Xenia</p>
+        <h1 class="max-w-3xl text-4xl leading-[1.08] font-semibold tracking-tight sm:text-6xl lg:text-7xl">Your building.<br />A little simpler.</h1>
+        <p class="mt-7 max-w-xl text-lg leading-relaxed text-muted sm:text-xl">One place for building information, maintenance updates, and the everyday details of your office.</p>
+        <a href="#services" class="mt-9 inline-flex min-h-12 items-center gap-6 rounded-xl bg-brand-soft px-6 py-3 font-semibold text-brand hover:ring-2 hover:ring-brand hover:ring-offset-2 hover:ring-offset-surface">Explore tenant services <span aria-hidden="true">↗</span></a>
+    </div>
+    <aside aria-labelledby="tenant-heading" class="rounded-3xl border border-line bg-panel p-7 sm:p-10">
+        <span aria-hidden="true" class="mb-8 flex size-16 items-center justify-center rounded-2xl bg-brand-soft text-3xl text-brand">A</span>
+        <h2 id="tenant-heading" class="text-2xl font-semibold tracking-tight">Made for your workday.</h2>
+        <p class="mt-3 leading-relaxed text-muted">Clear information, a direct way to report a problem, and updates you can find when you need them.</p>
+        <dl class="mt-8 divide-y divide-line">
+            <div class="flex justify-between gap-4 py-4"><dt class="text-muted">Building</dt><dd class="font-medium">Allen Building</dd></div>
+            <div class="flex justify-between gap-4 py-4"><dt class="text-muted">Community</dt><dd class="font-medium">Xenia, Ohio</dd></div>
+            <div class="flex justify-between gap-4 py-4"><dt class="text-muted">Tenant access</dt><dd class="font-medium">By invitation</dd></div>
+        </dl>
+    </aside>
+</section>
+<section id="services" class="border-y border-line bg-panel">
+    <div class="mx-auto max-w-7xl px-5 py-14 sm:px-8 sm:py-20">
+        <p class="text-sm font-semibold uppercase tracking-widest text-brand">Everyday essentials</p>
+        <h2 class="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">Less back and forth.<br />More clarity.</h2>
+        <div class="mt-12 grid gap-10 md:grid-cols-3">
+            <article><p class="text-sm font-semibold text-brand">01 / Maintenance</p><h3 class="mt-4 text-xl font-semibold">Tell us what needs attention.</h3><p class="mt-3 leading-relaxed text-muted">A place to describe a problem, follow its progress, and keep the conversation together.</p></article>
+            <article><p class="text-sm font-semibold text-brand">02 / Building information</p><h3 class="mt-4 text-xl font-semibold">Find the details you need.</h3><p class="mt-3 leading-relaxed text-muted">Useful building guidance and a clear route to your manager, from your phone or desk.</p></article>
+            <article><p class="text-sm font-semibold text-brand">03 / Tenant services</p><h3 class="mt-4 text-xl font-semibold">Keep the routine organized.</h3><p class="mt-3 leading-relaxed text-muted">An invitation-based portal for your office, with private records and straightforward follow-up.</p></article>
+        </div>
+    </div>
+</section>
+<section id="access" class="mx-auto max-w-7xl px-5 py-14 sm:px-8 sm:py-20">
+    <div class="max-w-2xl">
+        <p class="text-sm font-semibold uppercase tracking-widest text-brand">Tenant access</p>
+        <h2 class="mt-4 text-3xl font-semibold tracking-tight">A new portal is taking shape.</h2>
+        <p class="mt-5 leading-relaxed text-muted">Tenant access is being prepared. When enrollment opens, building management will send your invitation. Your existing arrangements with management continue in the meantime.</p>
+    </div>
+</section>

@@ -17,3 +17,7 @@ artifacts/
 *.pem
 .DS_Store
 src/AllenBuilding.Web/wwwroot/css/app.css
+
+!scripts/verify-mysql.sh
+playwright-report/
+test-results/

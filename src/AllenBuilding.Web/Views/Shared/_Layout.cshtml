@@ -4,11 +4,42 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>@ViewData["Title"] · Allen Xenia Office</title>
+    <meta name="description" content="Building information, maintenance and tenant services for Allen Building in Xenia." />
+    <script src="~/js/theme-init.js" asp-append-version="true"></script>
+    <link rel="stylesheet" href="~/css/app.css" asp-append-version="true" />
+    <script src="~/js/theme-controls.js" asp-append-version="true" defer></script>
 </head>
-<body>
-    <header><a asp-controller="Home" asp-action="Index">Allen Xenia Office</a></header>
-    <main id="main">@RenderBody()</main>
-    <footer><a asp-controller="Home" asp-action="Privacy">Privacy</a></footer>
+<body class="flex min-h-screen flex-col">
+    <a href="#main" class="sr-only fixed left-4 top-4 z-50 rounded-xl bg-panel p-4 focus:not-sr-only">Skip to content</a>
+    <header class="border-b border-line">
+        <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-5 py-5 sm:px-8">
+            <a asp-controller="Home" asp-action="Index" class="flex min-h-11 items-center gap-3 font-semibold tracking-tight">
+                <span aria-hidden="true" class="flex size-11 items-center justify-center rounded-xl bg-brand-soft text-brand">A</span>
+                <span>Allen Xenia<span class="block text-xs font-normal tracking-widest text-muted">OFFICE &amp; TENANT SERVICES</span></span>
+            </a>
+            <div class="flex flex-wrap items-center gap-4 sm:gap-6">
+                <nav aria-label="Main navigation" class="flex gap-4 text-sm font-medium">
+                    <a href="/#services" class="flex min-h-11 items-center hover:text-brand">Services</a>
+                    <a href="/#access" class="flex min-h-11 items-center hover:text-brand">Access</a>
+                </nav>
+                <label class="flex items-center gap-2 text-sm text-muted">
+                    <span>Theme</span>
+                    <select data-theme-control aria-label="Theme" class="min-h-11 max-w-28 rounded-lg border border-muted bg-panel px-2 text-ink">
+                        <option value="system">System</option>
+                        <option value="light">Light</option>
+                        <option value="dark">Dark</option>
+                    </select>
+                </label>
+            </div>
+        </div>
+    </header>
+    <main id="main" tabindex="-1" class="flex-1">@RenderBody()</main>
+    <footer class="border-t border-line">
+        <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-7 text-sm text-muted sm:px-8">
+            <p>Allen Building · Xenia, Ohio</p>
+            <a asp-controller="Home" asp-action="Privacy" class="flex min-h-11 items-center underline-offset-4 hover:underline">Privacy</a>
+        </div>
+    </footer>
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

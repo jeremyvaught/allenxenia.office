@@ -1,0 +1,21 @@
+{
+  "name": "allen-xenia-office-build",
+  "private": true,
+  "version": "0.1.0",
+  "engines": {
+    "node": ">=22.22.3 <23"
+  },
+  "scripts": {
+    "build:css": "tailwindcss -i src/AllenBuilding.Web/Styles/app.css -o src/AllenBuilding.Web/wwwroot/css/app.css --minify",
+    "dev:css": "tailwindcss -i src/AllenBuilding.Web/Styles/app.css -o src/AllenBuilding.Web/wwwroot/css/app.css --watch",
+    "test:browser": "playwright test"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.3",
+    "tailwindcss": "4.3.3",
+    "@playwright/test": "1.64.0"
+  },
+  "overrides": {
+    "@parcel/watcher": "2.6.0"
+  }
+}
