@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@ViewData["Title"] · Allen Xenia Office</title>
+</head>
+<body>
+    <header><a asp-controller="Home" asp-action="Index">Allen Xenia Office</a></header>
+    <main id="main">@RenderBody()</main>
+    <footer><a asp-controller="Home" asp-action="Privacy">Privacy</a></footer>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

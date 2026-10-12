@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AllenBuilding.Application/AllenBuilding.Application.csproj" />
+    <Project Path="src/AllenBuilding.Domain/AllenBuilding.Domain.csproj" />
+    <Project Path="src/AllenBuilding.Infrastructure/AllenBuilding.Infrastructure.csproj" />
+    <Project Path="src/AllenBuilding.Web/AllenBuilding.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AllenBuilding.DomainTests/AllenBuilding.DomainTests.csproj" />
+    <Project Path="tests/AllenBuilding.IntegrationTests/AllenBuilding.IntegrationTests.csproj" />
+  </Folder>
+</Solution>

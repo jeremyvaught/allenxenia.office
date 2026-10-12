@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "allenbuilding.application": {
+        "type": "Project",
+        "dependencies": {
+          "AllenBuilding.Domain": "[1.0.0, )"
+        }
+      },
+      "allenbuilding.domain": {
+        "type": "Project"
+      }
+    }
+  }
+}
