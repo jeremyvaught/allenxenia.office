@@ -17,6 +17,274 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
 
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.BillingPeriod", b =>
+                {
+                    b.Property<string>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("account_id");
+
+                    b.Property<DateOnly>("EndsOn")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("ends_on");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("kind");
+
+                    b.Property<DateOnly>("StartsOn")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("starts_on");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId", "StartsOn", "EndsOn", "Kind")
+                        .IsUnique();
+
+                    b.ToTable("billing_periods", (string)null);
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.BillingReceipt", b =>
+                {
+                    b.Property<string>("ActorId")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("actor_id");
+
+                    b.Property<string>("OperationId")
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("operation_id");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("account_id");
+
+                    b.Property<string>("AccountVersion")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("account_version");
+
+                    b.Property<string>("EntityId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("entity_id");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<string>("PayloadHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("payload_hash");
+
+                    b.HasKey("ActorId", "OperationId");
+
+                    b.HasIndex("AccountId");
+
+                    b.ToTable("billing_receipts", (string)null);
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.Obligation", b =>
+                {
+                    b.Property<string>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("account_id");
+
+                    b.Property<string>("AgreementId")
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("agreement_id");
+
+                    b.Property<long>("AmountMinorUnits")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("amount_minor_units");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("currency");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("description");
+
+                    b.Property<DateOnly>("DueOn")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("due_on");
+
+                    b.Property<DateTime>("IssuedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("issued_at");
+
+                    b.Property<string>("IssuedBy")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("issued_by");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("PeriodId")
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("period_id");
+
+                    b.Property<string>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IssuedBy");
+
+                    b.HasIndex("PeriodId")
+                        .IsUnique();
+
+                    b.HasIndex("AgreementId", "AccountId");
+
+                    b.HasIndex("PeriodId", "AccountId");
+
+                    b.HasIndex("AccountId", "DueOn", "Id");
+
+                    b.ToTable("obligations", (string)null);
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.RentAccount", b =>
+                {
+                    b.Property<string>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("id");
+
+                    b.Property<string>("MembershipId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("membership_id");
+
+                    b.Property<string>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MembershipId")
+                        .IsUnique();
+
+                    b.ToTable("rent_accounts", (string)null);
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.RentAgreement", b =>
+                {
+                    b.Property<string>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("account_id");
+
+                    b.Property<long>("AmountMinorUnits")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("amount_minor_units");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("currency");
+
+                    b.Property<int>("DueDay")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("due_day");
+
+                    b.Property<DateOnly?>("EndsOn")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("ends_on");
+
+                    b.Property<DateOnly?>("OriginalEndsOn")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("original_ends_on");
+
+                    b.Property<DateOnly>("StartsOn")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("starts_on");
+
+                    b.Property<string>("SupersededBy")
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("superseded_by");
+
+                    b.Property<string>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedBy");
+
+                    b.HasIndex("SupersededBy", "AccountId");
+
+                    b.HasIndex("AccountId", "StartsOn", "EndsOn");
+
+                    b.ToTable("rent_agreements", (string)null);
+                });
+
             modelBuilder.Entity("AllenBuilding.Domain.Knowledge.HelpArticle", b =>
                 {
                     b.Property<string>("Id")
@@ -951,6 +1219,81 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                     b.HasKey("UserId", "LoginProvider", "Name");
 
                     b.ToTable("asp_net_user_tokens", (string)null);
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.BillingPeriod", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Billing.RentAccount", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.BillingReceipt", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Billing.RentAccount", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.Obligation", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Billing.RentAccount", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AllenBuilding.Infrastructure.Identity.OfficeUser", null)
+                        .WithMany()
+                        .HasForeignKey("IssuedBy")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AllenBuilding.Domain.Billing.RentAgreement", null)
+                        .WithMany()
+                        .HasForeignKey("AgreementId", "AccountId")
+                        .HasPrincipalKey("Id", "AccountId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("AllenBuilding.Domain.Billing.BillingPeriod", null)
+                        .WithMany()
+                        .HasForeignKey("PeriodId", "AccountId")
+                        .HasPrincipalKey("Id", "AccountId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.RentAccount", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Tenancy.Membership", null)
+                        .WithMany()
+                        .HasForeignKey("MembershipId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.RentAgreement", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Billing.RentAccount", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AllenBuilding.Infrastructure.Identity.OfficeUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AllenBuilding.Domain.Billing.RentAgreement", null)
+                        .WithMany()
+                        .HasForeignKey("SupersededBy", "AccountId")
+                        .HasPrincipalKey("Id", "AccountId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("AllenBuilding.Domain.Knowledge.HelpArticle", b =>

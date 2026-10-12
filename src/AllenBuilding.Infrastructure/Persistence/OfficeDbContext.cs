@@ -1,3 +1,4 @@
+using AllenBuilding.Domain.Billing;
 using AllenBuilding.Domain.Knowledge;
 using AllenBuilding.Domain.Maintenance;
 using AllenBuilding.Domain.Tenancy;
@@ -10,6 +11,11 @@ namespace AllenBuilding.Infrastructure.Persistence;
 
 public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbContext<OfficeUser>(options)
 {
+    public DbSet<RentAccount> RentAccounts => Set<RentAccount>();
+    public DbSet<RentAgreement> RentAgreements => Set<RentAgreement>();
+    public DbSet<BillingPeriod> BillingPeriods => Set<BillingPeriod>();
+    public DbSet<Obligation> Obligations => Set<Obligation>();
+    public DbSet<BillingReceipt> BillingReceipts => Set<BillingReceipt>();
     public DbSet<HelpArticle> HelpArticles => Set<HelpArticle>();
     public DbSet<HelpRevision> HelpRevisions => Set<HelpRevision>();
     public DbSet<Building> Buildings => Set<Building>();
@@ -122,6 +128,48 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
                 .HasPrincipalKey(x => new { x.Id, x.SuiteId, x.UserId }).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<Suite>().WithMany().HasForeignKey(x => x.SuiteId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<RentAccount>(e =>
+        {
+            e.ToTable("rent_accounts"); e.HasKey(x => x.Id); e.Property(x => x.Version).IsConcurrencyToken();
+            e.HasIndex(x => x.MembershipId).IsUnique();
+            e.HasOne<Membership>().WithMany().HasForeignKey(x => x.MembershipId).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<RentAgreement>(e =>
+        {
+            e.ToTable("rent_agreements"); e.HasKey(x => x.Id); e.HasAlternateKey(x => new { x.Id, x.AccountId });
+            e.Property(x => x.Version).IsConcurrencyToken(); e.Property(x => x.Currency).HasMaxLength(3);
+            e.Property(x => x.CreatedBy).HasMaxLength(450); e.HasIndex(x => new { x.AccountId, x.StartsOn, x.EndsOn });
+            e.HasOne<RentAccount>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<RentAgreement>().WithMany().HasForeignKey(x => new { x.SupersededBy, x.AccountId })
+                .HasPrincipalKey(x => new { x.Id, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<BillingPeriod>(e =>
+        {
+            e.ToTable("billing_periods"); e.HasKey(x => x.Id); e.HasAlternateKey(x => new { x.Id, x.AccountId });
+            e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(32);
+            e.HasIndex(x => new { x.AccountId, x.StartsOn, x.EndsOn, x.Kind }).IsUnique();
+            e.HasOne<RentAccount>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<Obligation>(e =>
+        {
+            e.ToTable("obligations"); e.HasKey(x => x.Id); e.Property(x => x.Version).IsConcurrencyToken();
+            e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(32);
+            e.Property(x => x.Currency).HasMaxLength(3); e.Property(x => x.Description).HasMaxLength(120); e.Property(x => x.IssuedBy).HasMaxLength(450);
+            e.HasIndex(x => x.PeriodId).IsUnique(); e.HasIndex(x => new { x.AccountId, x.DueOn, x.Id });
+            e.HasOne<RentAccount>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<BillingPeriod>().WithMany().HasForeignKey(x => new { x.PeriodId, x.AccountId })
+                .HasPrincipalKey(x => new { x.Id, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<RentAgreement>().WithMany().HasForeignKey(x => new { x.AgreementId, x.AccountId })
+                .HasPrincipalKey(x => new { x.Id, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.IssuedBy).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<BillingReceipt>(e =>
+        {
+            e.ToTable("billing_receipts"); e.HasKey(x => new { x.ActorId, x.OperationId });
+            e.Property(x => x.ActorId).HasMaxLength(450); e.Property(x => x.PayloadHash).HasMaxLength(64);
+            e.HasOne<RentAccount>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
         });
         model.Entity<HelpArticle>(e =>
         {
