@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -16,10 +17,12 @@ public sealed class AccountTestHost : WebApplicationFactory<Program>
     private readonly string _path = Path.Combine(Path.GetTempPath(), $"office-accounts-{Guid.NewGuid():N}.db");
     public const string Password = "Synthetic-account-2026!";
     public TestClock Clock { get; } = new();
+    public bool BillingPlanningEnabled { get; init; } = true;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+        builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Billing:PlanningEnabled"] = BillingPlanningEnabled.ToString() }));
         builder.ConfigureServices(services =>
         {
             services.Replace(ServiceDescriptor.Singleton<TimeProvider>(Clock));

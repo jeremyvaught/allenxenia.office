@@ -1,0 +1,10 @@
+@model AllenBuilding.Web.Security.BillingReviewPage
+@{ ViewData["Title"] = "Review billing change"; }
+<div class="page"><section class="mx-auto max-w-2xl rounded-2xl border border-line bg-panel p-6 sm:p-8">
+    <p class="mb-2 text-sm text-muted">REVIEW BEFORE CONFIRMING</p><h1 class="mb-4 text-3xl font-semibold">@Model.Review.Heading</h1>
+    <p class="mb-6 break-words text-muted">@Model.Review.AccountLabel</p>
+    <dl class="space-y-5">@foreach (var line in Model.Review.Lines) { <div><dt class="text-sm text-muted">@line.Label</dt><dd class="mt-1 break-words font-medium">@line.Value</dd></div> }</dl>
+    <p class="my-6 text-sm text-muted">This review expires in five minutes. Confirmation rechecks your sign-in, building authority and the reviewed account version.</p>
+    <form asp-action="Confirm" method="post"><input name="Ticket" value="@Model.Ticket" type="hidden" /><button class="button w-full sm:w-auto">Confirm reviewed change</button></form>
+    <a asp-action="Manage" class="mt-4 flex min-h-11 items-center underline">Return without saving</a>
+</section></div>

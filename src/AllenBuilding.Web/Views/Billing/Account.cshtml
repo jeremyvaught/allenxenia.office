@@ -1,0 +1,49 @@
+@model AllenBuilding.Application.Billing.BillingAccount
+@{ ViewData["Title"] = Model.Suite + " billing"; var manager = ViewData["Manager"] is true; var today = (DateOnly)ViewData["Today"]!; }
+<div class="page"><p class="mb-2 text-sm text-muted">@(manager ? "MANAGE BILLING" : "YOUR BILLING RECORDS")</p><h1 class="mb-3 text-4xl font-semibold">@Model.Suite billing</h1>
+    @if (manager) { <p class="mb-3 break-words text-muted">@Model.PayerEmail</p><p class="mb-4 break-all text-sm text-muted">Original membership @Model.MembershipId</p> }
+    @if (TempData["Notice"] is string notice) { <p role="status" class="mb-5 rounded-xl border border-line bg-panel p-4">@notice</p> }
+    <p class="mb-8 max-w-3xl text-muted">Payment collection is unavailable. Recorded charges show their original issued amounts; payment status and outstanding balances are not available yet.</p>
+    <section class="mb-8"><h2 class="mb-4 text-2xl font-semibold">Calendar rent terms</h2>
+        @if (Model.Terms.Count == 0) { <p>No rent terms have been recorded.</p> }
+        <ul class="grid gap-4 md:grid-cols-2">@foreach (var terms in Model.Terms) { <li class="rounded-2xl border border-line bg-panel p-5"><h3 class="text-xl font-semibold">@BillingDisplay.Usd(terms.AmountMinorUnits) USD / month</h3><p class="mt-3 text-muted">Due day @terms.DueDay (last day in shorter months).</p><p class="mt-2 text-muted">From @terms.StartsOn.ToString("yyyy-MM-dd") until @(terms.EndsOn?.ToString("yyyy-MM-dd") ?? "no end date") (end exclusive).</p>@if (terms.SupersededBy is not null) { <p class="mt-2 text-sm text-muted">Replaced for future periods. Issued obligations retain their original amount and due date.</p> }<p class="mt-3 break-all text-xs text-muted">Agreement @terms.Id</p></li> }</ul>
+        <p class="mt-3 text-sm text-muted">Showing up to 50 agreements. Only whole months covered by the terms can be issued as calendar rent.</p>
+    </section>
+    <section class="mb-8"><h2 class="mb-4 text-2xl font-semibold">Issued obligations</h2>
+        @if (Model.Obligations.Count == 0) { <p>No obligations have been issued.</p> }
+        <ul class="grid gap-4 md:grid-cols-2">@foreach (var obligation in Model.Obligations) { <li class="min-w-0 rounded-2xl border border-line bg-panel p-5"><h3 class="break-words font-semibold">@obligation.Description</h3><p class="my-2 text-2xl font-semibold">@BillingDisplay.Usd(obligation.IssuedMinorUnits) <span class="text-sm font-normal">USD issued</span></p><p class="text-muted">Due @obligation.DueOn.ToString("yyyy-MM-dd")</p>@if (obligation.PeriodStartsOn is { } start) { <p class="mt-2 text-sm text-muted">Period @start.ToString("yyyy-MM-dd") to @obligation.PeriodEndsOn?.ToString("yyyy-MM-dd") (end exclusive).</p> }<p class="mt-3 text-sm text-muted">Payment status unavailable</p></li> }</ul>
+        <p class="mt-3 text-sm text-muted">Showing up to 100 obligations, ordered by due date.</p>
+    </section>
+    @if (manager)
+    {
+        <div class="grid items-start gap-6 lg:grid-cols-2">
+            <section class="rounded-2xl border border-line bg-panel p-6"><h2 class="mb-3 text-xl font-semibold">Set or replace rent terms</h2><p class="mb-5 text-muted">Changes require a separate review. A replacement starts on the first of a month; existing charges stay unchanged.</p>
+                <form asp-action="PrepareTerms" method="post" class="space-y-4"><input name="OperationId" value="@Guid.NewGuid()" type="hidden" /><input name="AccountId" value="@Model.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" />
+                    <label for="rent-amount" class="block">Monthly rent (USD)</label><input id="rent-amount" name="Amount" type="number" inputmode="decimal" min="0.50" max="999999.99" step="0.01" required class="field" />
+                    <label for="due-day" class="block">Manager-set due day</label><input id="due-day" name="DueDay" type="number" inputmode="numeric" min="1" max="31" value="1" required class="field" />
+                    <label for="starts" class="block">Terms start on</label><input id="starts" name="StartsOn" type="date" required class="field" />
+                    <label for="ends" class="block">Terms end before (optional)</label><input id="ends" name="EndsOn" type="date" class="field" />
+                    <label for="replaces" class="block">Agreement to replace</label><select id="replaces" name="ReplacesId" class="field"><option value="">None — add terms without overlap</option>@foreach (var terms in Model.Terms.Where(x => x.SupersededBy == null)) { <option value="@terms.Id">@terms.StartsOn.ToString("yyyy-MM-dd") · @BillingDisplay.Usd(terms.AmountMinorUnits) · @terms.Id</option> }</select>
+                    <button class="button">Review rent terms</button>
+                </form>
+            </section>
+            <div class="space-y-6"><section class="rounded-2xl border border-line bg-panel p-6"><h2 class="mb-3 text-xl font-semibold">Issue a one-time charge</h2><p class="mb-5 text-muted">Use an explicit charge for opening or closing partial months. This records a debt without collecting a payment.</p>
+                <form asp-action="PrepareCharge" method="post" class="space-y-4"><input name="OperationId" value="@Guid.NewGuid()" type="hidden" /><input name="AccountId" value="@Model.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" />
+                    <label for="charge-amount" class="block">One-time amount (USD)</label><input id="charge-amount" name="Amount" type="number" inputmode="decimal" min="0.50" max="999999.99" step="0.01" required class="field" />
+                    <label for="description" class="block">Charge description</label><input id="description" name="Description" maxlength="120" required class="field" />
+                    <label for="charge-due" class="block">Charge due on</label><input id="charge-due" name="DueOn" type="date" required class="field" />
+                    <button class="button">Review one-time charge</button>
+                </form></section>
+                <section class="rounded-2xl border border-line bg-panel p-6"><h2 class="mb-3 text-xl font-semibold">Issue a calendar rent period</h2><p class="mb-5 text-muted">Review the amount and due date for a whole month. A period already issued returns its original obligation.</p>
+                    <form asp-action="PrepareRent" method="post" class="space-y-4"><input name="OperationId" value="@Guid.NewGuid()" type="hidden" /><input name="AccountId" value="@Model.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" />
+                        <label for="rent-year" class="block">Rent year</label><input id="rent-year" name="Year" type="number" inputmode="numeric" min="1" max="9998" value="@today.Year" required class="field" />
+                        <label for="rent-month" class="block">Rent month</label><select id="rent-month" name="Month" class="field">@for (var month = 1; month <= 12; month++) { <option value="@month" selected="@(month == today.Month)">@month</option> }</select>
+                        <button class="button">Review calendar rent</button>
+                    </form>
+                </section>
+            </div>
+        </div>
+        <a asp-controller="Account" asp-action="Reauthenticate" class="mt-6 flex min-h-11 items-center underline">Verify sign-in for sensitive changes</a>
+    }
+    <a asp-action="@(manager ? "Manage" : "Index")" class="mt-6 flex min-h-11 items-center underline">Return to billing accounts</a>
+</div>

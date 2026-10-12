@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace AllenBuilding.Web.Controllers;
 
 [Authorize, ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-public sealed class PortalController(ICurrentActor current, OfficeDbContext db, UserManager<OfficeUser> users, TimeProvider time) : Controller
+public sealed class PortalController(ICurrentActor current, OfficeDbContext db, UserManager<OfficeUser> users, TimeProvider time, IConfiguration configuration) : Controller
 {
     [HttpGet]
     public async Task<IActionResult> Index()
@@ -27,6 +27,7 @@ public sealed class PortalController(ICurrentActor current, OfficeDbContext db, 
         var memberships = await db.Memberships.AsNoTracking().Where(x => x.UserId == actor.UserId && x.RevokedAt == null &&
             x.StartsAt <= now && (x.EndsAt == null || x.EndsAt > now)).Join(db.ActiveGrants,
             membership => membership.Id, grant => grant.MembershipId, (membership, grant) => membership).ToListAsync();
+        ViewData["BillingEnabled"] = configuration.GetValue<bool>("Billing:PlanningEnabled");
         ViewData["Manager"] = actor.ChallengedMfa && actor.ManagedBuildings.Count > 0;
         return View(memberships);
     }

@@ -39,7 +39,7 @@ foreach (var project in new[] { "chromium", "mobile" })
     var membership = Membership.Grant(suite.Id, tenant.Id, DateTimeOffset.UtcNow.AddDays(-1));
     db.AddRange(membership, new ActiveGrant { UserId = tenant.Id, SuiteId = suite.Id, MembershipId = membership.Id },
         new BuildingManager { UserId = manager.Id, BuildingId = building.Id }); await db.SaveChangesAsync();
-    fixtures[project] = new { tenantEmail = tenant.Email, managerEmail = manager.Email, password, key = await users.GetAuthenticatorKeyAsync(manager) };
+    fixtures[project] = new { membershipId = membership.Id, tenantEmail = tenant.Email, managerEmail = manager.Email, password, key = await users.GetAuthenticatorKeyAsync(manager) };
 }
 var path = Path.Combine(directory, "accounts.json");
 await File.WriteAllTextAsync(path, JsonSerializer.Serialize(fixtures));

@@ -1,0 +1,19 @@
+@model BillingManagement
+@{ ViewData["Title"] = "Manage billing"; }
+<div class="page"><p class="mb-2 text-sm text-muted">BILLING PLANNING</p><h1 class="mb-4 text-4xl font-semibold">Manage billing</h1>
+    <p class="mb-6 max-w-3xl text-muted">Review calendar rent and one-time obligations. Payment collection is unavailable. Issued amounts do not establish a paid amount or an outstanding balance.</p>
+    <section class="mb-8 max-w-2xl rounded-2xl border border-line bg-panel p-6"><h2 class="mb-3 text-xl font-semibold">Open a rent account</h2>
+        <p class="mb-5 text-muted">Each account belongs to one original membership. Opening it does not create rent or enable autopay.</p>
+        @if (Model.Candidates.Count == 0) { <p>No eligible active membership without an account.</p> }
+        else {
+            <form asp-action="PrepareOpen" method="post" class="space-y-4"><input name="OperationId" value="@Guid.NewGuid()" type="hidden" /><input name="AccountId" value="@Guid.NewGuid()" type="hidden" /><label for="rent-membership" class="block">Tenant membership</label><select id="rent-membership" name="MembershipId" class="field">
+                @foreach (var candidate in Model.Candidates) { <option value="@candidate.MembershipId">@candidate.Suite · @candidate.Email · @candidate.MembershipId</option> }
+            </select><button class="button">Review new rent account</button></form>
+            <p class="mt-3 text-sm text-muted">Showing up to 100 eligible memberships.</p>
+        }
+    </section>
+    <h2 class="mb-4 text-2xl font-semibold">Rent accounts</h2><ul class="grid gap-4 md:grid-cols-2">
+        @foreach (var account in Model.Accounts) { <li class="min-w-0 rounded-2xl border border-line bg-panel p-6"><h3 class="mb-2 text-xl font-semibold">@account.Suite</h3><p class="break-words text-muted">@account.PayerEmail</p><p class="my-3 break-all text-sm text-muted">Original membership @account.MembershipId</p><a asp-action="ManageAccount" asp-route-id="@account.Id" class="quiet-button">Manage @account.Suite billing</a></li> }
+    </ul><p class="mt-4 text-sm text-muted">Showing up to 50 accounts. Account records remain available to management after portal access ends.</p>
+    <a asp-controller="Account" asp-action="Reauthenticate" class="mt-6 flex min-h-11 items-center underline">Verify sign-in for sensitive changes</a>
+</div>

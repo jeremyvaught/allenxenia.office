@@ -11,13 +11,18 @@ public sealed record OpenRentAccount(Guid OperationId, Guid AccountId, Guid Memb
 public sealed record SetRentTerms(Guid OperationId, Guid AccountId, Guid Version, long AmountMinorUnits, int DueDay, DateOnly StartsOn, DateOnly? EndsOn = null, Guid? ReplacesId = null);
 public sealed record IssueCharge(Guid OperationId, Guid AccountId, Guid Version, long AmountMinorUnits, string Description, DateOnly DueOn);
 public sealed record IssueRent(Guid OperationId, Guid AccountId, Guid Version, int Year, int Month);
-public sealed record BillingAccount(Guid Id, Guid Version, string Suite, IReadOnlyList<RentTermsView> Terms, IReadOnlyList<ObligationView> Obligations, bool CollectionAvailable = false);
+public sealed record BillingAccount(Guid Id, Guid Version, string Suite, IReadOnlyList<RentTermsView> Terms, IReadOnlyList<ObligationView> Obligations, bool CollectionAvailable = false, Guid MembershipId = default, string? PayerEmail = null);
 public sealed record RentTermsView(Guid Id, Guid Version, long AmountMinorUnits, string Currency, int DueDay, DateOnly StartsOn, DateOnly? EndsOn, Guid? SupersededBy);
 public sealed record ObligationView(Guid Id, Guid Version, ChargeKind Kind, string Description, long IssuedMinorUnits, string Currency, DateOnly DueOn, DateOnly? PeriodStartsOn, DateOnly? PeriodEndsOn);
 
+public sealed record RentCandidate(Guid MembershipId, string Suite, string Email);
+public sealed record RentPreview(Guid AccountId, Guid AccountVersion, long AmountMinorUnits, DateOnly DueOn, DateOnly StartsOn, DateOnly EndsOn, bool AlreadyIssued);
+
 public interface IBillingStore
 {
-    Task<IReadOnlyList<BillingAccount>> ReadAsync(Actor actor, bool management, CancellationToken cancellationToken);
+    Task<IReadOnlyList<BillingAccount>> ReadAsync(Actor actor, bool management, CancellationToken cancellationToken, Guid? accountId);
+    Task<IReadOnlyList<RentCandidate>> CandidatesAsync(Actor actor, CancellationToken cancellationToken);
+    Task<RentPreview?> PreviewRentAsync(Actor actor, Guid accountId, int year, int month, CancellationToken cancellationToken);
     Task<BillingResult> OpenAsync(Actor actor, OpenRentAccount command, string hash, CancellationToken cancellationToken);
     Task<BillingResult> TermsAsync(Actor actor, SetRentTerms command, string hash, CancellationToken cancellationToken);
     Task<BillingResult> ChargeAsync(Actor actor, IssueCharge command, string hash, CancellationToken cancellationToken);
@@ -27,11 +32,24 @@ public interface IBillingStore
 // Billing planning only: no provider handoff, settlement, adjustment or autopay is enabled here.
 public sealed class BillingActions(ICurrentActor current, IBillingStore store, TimeProvider time)
 {
-    public async Task<IReadOnlyList<BillingAccount>> ReadAsync(bool management, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<BillingAccount>> ReadAsync(bool management, CancellationToken cancellationToken = default, Guid? accountId = null)
     {
         var actor = await current.GetAsync(cancellationToken);
         if (actor is null || (management && !actor.ChallengedMfa) || (actor.ManagedBuildings.Count > 0 && !actor.ChallengedMfa)) return [];
-        return await store.ReadAsync(actor, management, cancellationToken);
+        return await store.ReadAsync(actor, management, cancellationToken, accountId);
+    }
+
+    public async Task<IReadOnlyList<RentCandidate>> CandidatesAsync(CancellationToken cancellationToken = default)
+    {
+        var actor = await current.GetAsync(cancellationToken);
+        return actor is { ChallengedMfa: true } && actor.ManagedBuildings.Count > 0 ? await store.CandidatesAsync(actor, cancellationToken) : [];
+    }
+    public async Task<RentPreview?> PreviewRentAsync(Guid accountId, int year, int month, CancellationToken cancellationToken = default)
+    {
+        var actor = await current.GetAsync(cancellationToken);
+        if (actor is not { ChallengedMfa: true } || actor.ManagedBuildings.Count == 0) return null;
+        try { RentCalendar.ForMonth(accountId, year, month, 1); } catch (ArgumentException) { return null; }
+        return await store.PreviewRentAsync(actor, accountId, year, month, cancellationToken);
     }
 
     public Task<BillingResult> OpenAsync(OpenRentAccount command, CancellationToken cancellationToken = default)

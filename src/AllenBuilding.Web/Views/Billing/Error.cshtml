@@ -1,0 +1,8 @@
+@model AllenBuilding.Application.Billing.BillingCode
+@{ ViewData["Title"] = "Billing change needs review"; }
+<div class="page"><section class="mx-auto max-w-2xl rounded-2xl border border-line bg-panel p-6"><h1 class="mb-4 text-3xl font-semibold">Review this billing change again</h1>
+@if (Model == AllenBuilding.Application.Billing.BillingCode.Conflict) { <p>The account or its terms changed, or this operation conflicts with an existing record. Reload its current details and prepare a new review.</p> }
+else if (Model == AllenBuilding.Application.Billing.BillingCode.NoFullPeriod) { <p>No rent agreement covers that entire calendar month. Opening and closing partial months need an explicit one-time charge.</p> }
+else { <p>Check the amount, dates and account details. Use USD amounts with at most two decimal places. An invalid, altered or expired review cannot be confirmed; prepare a new review.</p> }
+<div asp-validation-summary="All" role="alert" class="mt-4"></div><p class="mt-4 text-muted">No new billing change was recorded by this request. Payment collection is unavailable.</p><a asp-action="Manage" class="mt-6 quiet-button">Return to billing</a>
+</section></div>

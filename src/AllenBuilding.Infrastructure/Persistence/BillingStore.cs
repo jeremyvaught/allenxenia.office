@@ -9,18 +9,15 @@ namespace AllenBuilding.Infrastructure.Persistence;
 
 public sealed class BillingStore(OfficeDbContext db, ICurrentActor current, AccountInvitations audit, TimeProvider time) : IBillingStore
 {
-    public async Task<IReadOnlyList<BillingAccount>> ReadAsync(Actor actor, bool management, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<BillingAccount>> ReadAsync(Actor actor, bool management, CancellationToken cancellationToken, Guid? accountId)
     {
-        var now = time.GetUtcNow();
-        var query = from account in db.RentAccounts.AsNoTracking()
+        var query = from account in Accounts(actor, management)
                     join membership in db.Memberships on account.MembershipId equals membership.Id
                     join suite in db.Suites on membership.SuiteId equals suite.Id
-                    where management
-                        ? actor.ManagedBuildings.Contains(suite.BuildingId) && db.BuildingManagers.Any(x => x.BuildingId == suite.BuildingId && x.UserId == actor.UserId)
-                        : membership.UserId == actor.UserId && membership.RevokedAt == null && membership.StartsAt <= now && (membership.EndsAt == null || membership.EndsAt > now) &&
-                            db.ActiveGrants.Any(x => x.MembershipId == membership.Id)
+                    join user in db.Users on membership.UserId equals user.Id
+                    where accountId == null || account.Id == accountId
                     orderby suite.Name, account.Id
-                    select new { Account = account, Suite = suite.Name };
+                    select new { Account = account, Suite = suite.Name, user.Email };
         var rows = await query.Take(50).ToListAsync(cancellationToken);
         var result = new List<BillingAccount>();
         foreach (var row in rows)
@@ -36,9 +33,53 @@ public sealed class BillingStore(OfficeDbContext db, ICurrentActor current, Acco
                                  select new ObligationView(charge.Id, charge.Version, charge.Kind, charge.Description, charge.AmountMinorUnits,
                                      charge.Currency, charge.DueOn, period == null ? null : (DateOnly?)period.StartsOn, period == null ? null : (DateOnly?)period.EndsOn))
                 .Take(100).ToListAsync(cancellationToken);
-            result.Add(new(row.Account.Id, row.Account.Version, row.Suite, terms, charges));
+            result.Add(new(row.Account.Id, row.Account.Version, row.Suite, terms, charges, false, row.Account.MembershipId, management ? row.Email : null));
         }
         return result;
+    }
+
+    private IQueryable<RentAccount> Accounts(Actor actor, bool management)
+    {
+        var now = time.GetUtcNow();
+        return from account in db.RentAccounts.AsNoTracking()
+               join membership in db.Memberships on account.MembershipId equals membership.Id
+               join suite in db.Suites on membership.SuiteId equals suite.Id
+               where management
+                   ? actor.ManagedBuildings.Contains(suite.BuildingId) && db.BuildingManagers.Any(x => x.BuildingId == suite.BuildingId && x.UserId == actor.UserId)
+                   : membership.UserId == actor.UserId && membership.RevokedAt == null && membership.StartsAt <= now && (membership.EndsAt == null || membership.EndsAt > now) &&
+                       db.ActiveGrants.Any(x => x.MembershipId == membership.Id)
+               orderby suite.Name, account.Id
+               select account;
+    }
+
+    public async Task<IReadOnlyList<RentCandidate>> CandidatesAsync(Actor actor, CancellationToken cancellationToken)
+    {
+        var now = time.GetUtcNow();
+        return await (from membership in db.Memberships.AsNoTracking()
+                      join grant in db.ActiveGrants on membership.Id equals grant.MembershipId
+                      join suite in db.Suites on membership.SuiteId equals suite.Id
+                      join user in db.Users on membership.UserId equals user.Id
+                      where actor.ManagedBuildings.Contains(suite.BuildingId) && db.BuildingManagers.Any(x => x.BuildingId == suite.BuildingId && x.UserId == actor.UserId) &&
+                        membership.RevokedAt == null && membership.StartsAt <= now && (membership.EndsAt == null || membership.EndsAt > now) &&
+                        !db.RentAccounts.Any(x => x.MembershipId == membership.Id)
+                      orderby suite.Name, membership.Id
+                      select new RentCandidate(membership.Id, suite.Name, user.Email!)).Take(100).ToListAsync(cancellationToken);
+    }
+
+    public async Task<RentPreview?> PreviewRentAsync(Actor actor, Guid accountId, int year, int month, CancellationToken cancellationToken)
+    {
+        var account = await Accounts(actor, true).SingleOrDefaultAsync(x => x.Id == accountId, cancellationToken);
+        if (account is null) return null;
+        var monthPeriod = RentCalendar.ForMonth(account.Id, year, month, 1);
+        var existing = await (from period in db.BillingPeriods.AsNoTracking()
+                              join charge in db.Obligations on period.Id equals charge.PeriodId
+                              where period.AccountId == account.Id && period.StartsOn == monthPeriod.StartsOn && period.EndsOn == monthPeriod.EndsOn && period.Kind == ChargeKind.BaseRent
+                              select charge).SingleOrDefaultAsync(cancellationToken);
+        if (existing is not null) return new(account.Id, account.Version, existing.AmountMinorUnits, existing.DueOn, monthPeriod.StartsOn, monthPeriod.EndsOn, true);
+        var terms = await db.RentAgreements.AsNoTracking().SingleOrDefaultAsync(x => x.AccountId == account.Id && x.StartsOn <= monthPeriod.StartsOn && (x.EndsOn == null || x.EndsOn >= monthPeriod.EndsOn), cancellationToken);
+        if (terms is null) return null;
+        var calendar = RentCalendar.ForMonth(account.Id, year, month, terms.DueDay);
+        return new(account.Id, account.Version, terms.AmountMinorUnits, calendar.DueOn, calendar.StartsOn, calendar.EndsOn, false);
     }
 
     public async Task<BillingResult> OpenAsync(Actor actor, OpenRentAccount command, string hash, CancellationToken cancellationToken)

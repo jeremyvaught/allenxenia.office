@@ -148,5 +148,40 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await manager.screenshot({ path: `artifacts/browser/access-${testInfo.project.name}.png`, fullPage: true });
 
+
+    await manager.goto('/Billing/Manage');
+    await manager.getByLabel('Tenant membership').selectOption(account.membershipId);
+    await manager.getByRole('button', { name: 'Review new rent account', exact: true }).click();
+    await expect(manager.getByRole('heading', { level: 1 })).toHaveText('Open rent account');
+    await manager.getByRole('button', { name: 'Confirm reviewed change', exact: true }).click();
+    const billingPath = new URL(manager.url()).pathname;
+    await manager.getByLabel('Monthly rent (USD)').fill('1000.00');
+    await manager.getByLabel('Manager-set due day').fill('31');
+    await manager.getByLabel('Terms start on').fill('2026-01-01');
+    await manager.getByRole('button', { name: 'Review rent terms', exact: true }).click();
+    await expect(manager.getByText('$1,000.00 USD', { exact: true })).toBeVisible();
+    expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await manager.getByRole('button', { name: 'Confirm reviewed change', exact: true }).click();
+    await manager.getByLabel('Rent year').fill('2026');
+    await manager.getByLabel('Rent month', { exact: true }).selectOption('2');
+    await manager.getByRole('button', { name: 'Review calendar rent', exact: true }).click();
+    await expect(manager.getByText('2026-02-28', { exact: true })).toBeVisible();
+    await manager.getByRole('button', { name: 'Confirm reviewed change', exact: true }).click();
+    await manager.getByLabel('One-time amount (USD)').fill('19.75');
+    await manager.getByLabel('Charge description').fill('Approved opening charge');
+    await manager.getByLabel('Charge due on').fill('2026-02-28');
+    await manager.getByRole('button', { name: 'Review one-time charge', exact: true }).click();
+    await expect(manager.getByText('$19.75 USD', { exact: true })).toBeVisible();
+    await manager.getByRole('button', { name: 'Confirm reviewed change', exact: true }).click();
+    const accountId = billingPath.split('/').pop();
+    await page.goto(`/Billing/Account/${accountId}`);
+    await expect(page.getByText('Approved opening charge', { exact: true })).toBeVisible();
+    await expect(page.getByText('Payment status unavailable', { exact: true })).toHaveCount(2);
+    await expect(page.locator('form[action*="Prepare"]')).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `artifacts/browser/billing-tenant-${testInfo.project.name}.png`, fullPage: true });
+    await manager.screenshot({ path: `artifacts/browser/billing-manager-${testInfo.project.name}.png`, fullPage: true });
+
   } finally { await managerContext.close(); }
 });

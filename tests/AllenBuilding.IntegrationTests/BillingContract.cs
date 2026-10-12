@@ -53,6 +53,12 @@ public static class BillingContract
         Assert.Equal(BillingCode.Conflict, (await As(manager, a => a.OpenAsync(open with { OperationId = Guid.NewGuid(), AccountId = Guid.NewGuid() }))).Code);
         Assert.Empty(await As(peer, a => a.ReadAsync(false))); Assert.Empty(await As(manager, a => a.ReadAsync(false)));
         Assert.False((await As(tenant, a => a.ReadAsync(false))).Single().CollectionAvailable);
+        Assert.Contains(await As(manager, a => a.CandidatesAsync()), x => x.MembershipId == peerMembership.Id);
+        Assert.DoesNotContain(await As(manager, a => a.CandidatesAsync()), x => x.MembershipId == membership.Id);
+        Assert.Empty(await As(tenant, a => a.CandidatesAsync()));
+        Assert.Null(await As(tenant, a => a.PreviewRentAsync(open.AccountId, 2026, 3)));
+        Assert.Empty(await As(peer, a => a.ReadAsync(false, accountId: open.AccountId)));
+        Assert.Null((await As(tenant, a => a.ReadAsync(false, accountId: open.AccountId))).Single().PayerEmail);
         var initial = new SetRentTerms(Guid.NewGuid(), open.AccountId, opened.AccountVersion!.Value, 100_000, 1, new DateOnly(2026, 2, 18));
         var terms = await As(manager, a => a.TermsAsync(initial)); Assert.Equal(BillingCode.Success, terms.Code);
         Assert.Equal(terms, await As(manager, a => a.TermsAsync(initial)));
@@ -69,6 +75,13 @@ public static class BillingContract
         Assert.Equal(BillingCode.Success, (await As(manager, a => a.ChargeAsync(opening with { OperationId = Guid.NewGuid(), Description = "Separate approved charge" }))).Code);
         var replacement = new SetRentTerms(Guid.NewGuid(), open.AccountId, terms.AccountVersion.Value, 120_000, 31, new DateOnly(2026, 3, 1), ReplacesId: terms.EntityId);
         var changed = await As(manager, a => a.TermsAsync(replacement)); Assert.Equal(BillingCode.Success, changed.Code);
+        var reviewedMarch = await As(manager, a => a.PreviewRentAsync(open.AccountId, 2026, 3));
+        Assert.NotNull(reviewedMarch); Assert.True(reviewedMarch.AlreadyIssued);
+        Assert.Equal(100_000, reviewedMarch.AmountMinorUnits); Assert.Equal(new DateOnly(2026, 3, 1), reviewedMarch.DueOn);
+        var reviewedApril = await As(manager, a => a.PreviewRentAsync(open.AccountId, 2026, 4));
+        Assert.NotNull(reviewedApril); Assert.False(reviewedApril.AlreadyIssued);
+        Assert.Equal(120_000, reviewedApril.AmountMinorUnits); Assert.Equal(new DateOnly(2026, 4, 30), reviewedApril.DueOn);
+        Assert.Null(await As(manager, a => a.PreviewRentAsync(open.AccountId, 9999, 12)));
         var reused = await As(manager, a => a.RentAsync(march with { OperationId = Guid.NewGuid(), Version = changed.AccountVersion!.Value }));
         Assert.Equal(concurrent[0].EntityId, reused.EntityId);
         Assert.Equal(BillingCode.Conflict, (await As(manager, a => a.ChargeAsync(opening with { OperationId = Guid.NewGuid() }))).Code);
@@ -159,5 +172,16 @@ public static class BillingContract
             db.Obligations.Add(mismatched); db.Entry(mismatched).Property(x => x.PeriodId).CurrentValue = unused.Id;
             await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
         }
+        // A precise period review must not depend on the bounded latest-obligations list.
+        using (var scope = provider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+            for (var index = 0; index < 101; index++) db.Obligations.Add(Obligation.Issue(open.AccountId, new Money(1000), $"Later charge {index}", new DateOnly(2050, 1, 1).AddDays(index), managerUser.Id, DateTimeOffset.UtcNow));
+            await db.SaveChangesAsync();
+        }
+        Assert.DoesNotContain((await As(manager, a => a.ReadAsync(true, accountId: open.AccountId))).Single().Obligations, x => x.PeriodStartsOn == new DateOnly(2026, 3, 1));
+        var oldReview = await As(manager, a => a.PreviewRentAsync(open.AccountId, 2026, 3));
+        Assert.NotNull(oldReview); Assert.True(oldReview.AlreadyIssued); Assert.Equal(100_000, oldReview.AmountMinorUnits);
+
     }
 }
