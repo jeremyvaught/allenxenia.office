@@ -1,0 +1,3 @@
+@model AllenBuilding.Application.Knowledge.ContentCode
+@{ ViewData["Title"] = "Article needs review"; }
+<div class="page"><div class="form-panel"><h1 class="mb-4 text-3xl font-semibold">Article needs review</h1><p class="mb-6">@(Model == AllenBuilding.Application.Knowledge.ContentCode.Conflict ? "This article changed while you were editing. Reload it and review the latest saved revision before trying again." : "Check the article fields and try again.")</p><a asp-action="Manage" class="button">Back to articles</a></div></div>

@@ -89,7 +89,7 @@ public sealed class AccountInvitations(OfficeDbContext db, UserManager<OfficeUse
     public void Queue(string userId, string kind, string payload, Guid? buildingId = null) => db.AccountMessages.Add(new AccountMessage
     { UserId = userId, BuildingId = buildingId, Kind = kind, ProtectedPayload = _messages.Protect(payload), CreatedAt = time.GetUtcNow(), NextAttemptAt = time.GetUtcNow() });
 
-    public void Audit(string actor, string action, string subject) => db.AccountAudits.Add(new AccountAudit
-    { ActorId = actor, Action = action, SubjectId = subject, OccurredAt = time.GetUtcNow() });
+    public void Audit(string actor, string action, string subject, string? reason = null) => db.AccountAudits.Add(new AccountAudit
+    { ActorId = actor, Action = action, SubjectId = subject, Reason = reason, OccurredAt = time.GetUtcNow() });
     private static string Purpose(Guid id) => $"Invitation:{id:D}";
 }

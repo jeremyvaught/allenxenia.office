@@ -33,9 +33,15 @@ Local protected keys live in ignored `.data/keys` with a restricted directory. P
 
 ## Maintenance milestone
 
-An active tenant can submit, read and comment on their original membership's requests. A different user sharing the suite cannot read them; a returning grant cannot restore access to an ended grant's records. Managers use explicitly separate building-scoped queries and must complete an MFA challenge. They can triage, assign to themselves, start, complete, separately verify/close, cancel, reopen and add tenant-visible or internal comments. Assignment to another manager/contractor and contractor records remain planned.
+An active tenant can submit, read and comment on their original membership's requests. A different user sharing the suite cannot read them; a returning grant cannot restore access to an ended grant's records. Managers use explicitly separate building-scoped queries and must complete an MFA challenge. They can triage, assign to a building manager or active contractor, start, complete, separately verify/close, cancel, reopen and add tenant-visible or internal comments. Contractor contacts are scoped to management; deactivation prevents new assignment while retaining existing assignments and their accepted history. Stale contact edits and cross-building assignments are rejected.
 
 Shared application actions enforce the domain state machine. Each successful change commits the request, history, encrypted notification messages and an actor-scoped replay receipt together. Exact operation/payload replay returns the committed result; changed operation reuse or stale versions returns a conflict. Shared user locks block security-stamp changes; membership/manager/resource write locks serialize admission without conflicting with recipient foreign-key checks. MySQL uses short READ COMMITTED transactions; SQLite uses immediate write transactions. Access revocation commits locally without contacting billing or email providers, retains existing records, and does not terminate rent consent.
+
+## Building help
+
+Managers write plain-text articles with Public or Active tenants visibility, an editor and a review date. Save draft creates a revision; a separate POST publishes the exact reviewed revision. Editing a published article leaves the previous approved revision visible until publication. Withdrawal removes it from public/tenant reads and search. Draft text never enters the reader/search projection. Tenant guidance requires current access to that building; manager privileges alone do not grant tenant retrieval. The same application retrieval boundary will serve the future assistant.
+
+Article bodies render as escaped text, not executable HTML. Management retains bounded revision history and audited save/publish/withdraw actions. No building hours, contacts or emergency instructions are invented; management must supply and approve those facts. Public/tenant search is bounded to 100 results and 120 characters. MySQL calendar dates use an explicit date conversion verified against the actual provider.
 
 ## Notification delivery
 
@@ -88,6 +94,6 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-Browser tests cover System/OS changes, explicit preference across reloads, CSS delivery and a full tenant/manager maintenance workflow at 320px in both themes. They create their own synthetic SQLite database, protected keys and accounts under ignored `artifacts/browser-fixture`, and start an isolated server on loopback port 5088. No test-only enrollment route exists in the application. Screenshots live under `artifacts/browser`. Emulation is not evidence of a real iPhone/Android acceptance run. `npm run dev:css` watches styles during development; rebuild CSS before .NET build/publish so static-asset manifests include it.
+Browser tests cover System/OS changes, explicit preference across reloads, CSS delivery and a full tenant/manager maintenance workflow, contractor deactivation and draft/public/private/withdrawn help flows at 320px in both themes. They create their own synthetic SQLite database, protected keys and accounts under ignored `artifacts/browser-fixture`, and start an isolated server on loopback port 5088. No test-only enrollment route exists in the application. Screenshots live under `artifacts/browser`. Emulation is not evidence of a real iPhone/Android acceptance run. `npm run dev:css` watches styles during development; rebuild CSS before .NET build/publish so static-asset manifests include it.
 
 The build pins `@parcel/watcher` 2.6.0 through an npm override to remove the unpatched `braces` dependency found during the initial audit. Recheck CSS compilation and watch behavior when changing that pin.

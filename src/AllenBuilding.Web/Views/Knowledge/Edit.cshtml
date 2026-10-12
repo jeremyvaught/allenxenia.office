@@ -1,0 +1,40 @@
+@model ArticleForm
+@using AllenBuilding.Domain.Knowledge
+@using AllenBuilding.Application.Knowledge
+@{ ViewData["Title"] = Model.Version is null ? "Write an article" : "Edit building help"; var article = ViewData["Article"] as ArticleEditor; }
+<div class="page"><a asp-action="Manage" class="mb-6 flex min-h-11 items-center underline">Back to articles</a><h1 class="mb-8 text-3xl font-semibold">@ViewData["Title"]</h1>
+    <div class="grid items-start gap-6 lg:grid-cols-2">
+        <section class="min-w-0 rounded-2xl border border-line bg-panel p-6"><h2 class="mb-4 text-xl font-semibold">Edit a draft</h2><p class="mb-6 text-muted">Saving creates a revision. Publication requires a separate review and action.</p>
+            <form asp-action="Save" method="post" class="space-y-4"><div asp-validation-summary="All" class="text-danger" role="alert"></div><input asp-for="Id" type="hidden" /><input asp-for="Version" type="hidden" />
+                @if (Model.Version is null) { <label asp-for="BuildingId" class="block">Building</label><select asp-for="BuildingId" asp-items="@((IEnumerable<Microsoft.AspNetCore.Mvc.Rendering.SelectListItem>)ViewData["Buildings"]!)" class="field"></select> }
+                else { <input asp-for="BuildingId" type="hidden" /> }
+                <label asp-for="Title" class="block">Article title</label><input asp-for="Title" maxlength="160" required class="field" />
+                <label asp-for="Body" class="block">Guidance (plain text)</label><textarea asp-for="Body" maxlength="10000" rows="10" required class="field"></textarea>
+                <label asp-for="Audience" class="block">Who can read it?</label><select asp-for="Audience" class="field"><option value="Public">Public visitors and tenants</option><option value="ActiveTenant">Active tenants in this building</option></select>
+                <label asp-for="ReviewOn" class="block">Review date</label><input asp-for="ReviewOn" type="date" required class="field" />
+                <button class="button">Save draft</button>
+            </form>
+        </section>
+        @if (article is not null)
+        {
+            <section class="min-w-0 rounded-2xl border border-line bg-panel p-6"><h2 class="mb-4 text-xl font-semibold">Review the saved revision</h2><p class="mb-4 text-sm text-muted">@article.State · @(article.Draft.Audience == ArticleAudience.Public ? "Public visitors and tenants" : "Active tenants in this building") · Review by @article.Draft.ReviewOn.ToString("MMM d, yyyy")</p>
+                <h3 class="mb-3 break-words text-xl font-semibold">@article.Draft.Title</h3><p class="whitespace-pre-wrap break-words">@article.Draft.Body</p>
+                <p class="mt-6 mb-4 text-sm text-muted">Publishing uses this saved revision. Save edits before reviewing and publishing them.</p>
+                <form asp-action="Publish" method="post"><input name="Id" value="@article.Id" type="hidden" /><input name="Version" value="@article.Version" type="hidden" /><input name="ReviewedRevisionId" value="@article.Draft.Id" type="hidden" /><button class="button">Publish reviewed revision</button></form>
+                @if (article.State == PublicationState.Published)
+                {
+                    @if (article.PublishedRevisionId != article.Draft.Id) { <p class="mt-4 text-sm text-muted">A previous approved revision remains visible until you publish these edits.</p> }
+                    <form asp-action="Publish" method="post" class="mt-4"><input name="Id" value="@article.Id" type="hidden" /><input name="Version" value="@article.Version" type="hidden" /><input name="ReviewedRevisionId" value="@article.Draft.Id" type="hidden" /><input name="Withdraw" value="true" type="hidden" /><button class="quiet-button">Withdraw article</button></form>
+                }
+            </section>
+            <section class="min-w-0 rounded-2xl border border-line bg-panel p-6 lg:col-span-2"><h2 class="mb-4 text-xl font-semibold">Revision history</h2>
+                @foreach (var entry in article.History)
+                {
+                    var revision = entry.Revision;
+                    <details class="border-b border-line py-3"><summary class="min-h-11 cursor-pointer break-words">@revision.Title · @revision.EditedAt.ToString("MMM d, yyyy HH:mm 'UTC'")</summary><p class="my-3 text-sm text-muted">Editor: @entry.EditorName · @(revision.Audience == ArticleAudience.Public ? "Public" : "Active tenants") · Review date @revision.ReviewOn.ToString("MMM d, yyyy")</p><p class="whitespace-pre-wrap break-words">@revision.Body</p></details>
+                }
+                @if (article.History.Count == 50) { <p class="mt-4 text-muted">Showing the 50 most recent revisions.</p> }
+            </section>
+        }
+    </div>
+</div>

@@ -19,6 +19,115 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                 .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 64);
 
+            modelBuilder.Entity("AllenBuilding.Domain.Knowledge.HelpArticle", b =>
+                {
+                    b.Property<string>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("BuildingId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("building_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("DraftRevisionId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("draft_revision_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("PublishedRevisionId")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("published_revision_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("state");
+
+                    b.Property<string>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("version")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BuildingId", "State", "Id");
+
+                    b.ToTable("help_articles", (string)null);
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Knowledge.HelpRevision", b =>
+                {
+                    b.Property<string>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("ArticleId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("article_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("Audience")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("audience");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("body")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<DateTime>("EditedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("edited_at");
+
+                    b.Property<string>("EditorId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("varchar(450)")
+                        .HasColumnName("editor_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<DateTime>("ReviewOn")
+                        .HasColumnType("date")
+                        .HasColumnName("review_on");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("varchar(160)")
+                        .HasColumnName("title")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EditorId");
+
+                    b.HasIndex("ArticleId", "EditedAt", "Id");
+
+                    b.ToTable("help_revisions", (string)null);
+                });
+
             modelBuilder.Entity("AllenBuilding.Domain.Maintenance.Contractor", b =>
                 {
                     b.Property<string>("Id")
@@ -945,6 +1054,30 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                     b.HasKey("UserId", "LoginProvider", "Name");
 
                     b.ToTable("asp_net_user_tokens", (string)null);
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Knowledge.HelpArticle", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Tenancy.Building", null)
+                        .WithMany()
+                        .HasForeignKey("BuildingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Knowledge.HelpRevision", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Knowledge.HelpArticle", null)
+                        .WithMany()
+                        .HasForeignKey("ArticleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AllenBuilding.Infrastructure.Identity.OfficeUser", null)
+                        .WithMany()
+                        .HasForeignKey("EditorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("AllenBuilding.Domain.Maintenance.Contractor", b =>

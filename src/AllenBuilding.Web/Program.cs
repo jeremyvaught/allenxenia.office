@@ -22,6 +22,8 @@ builder.Services.AddScoped<AllenBuilding.Application.Maintenance.MaintenanceActi
 builder.Services.AddScoped<AccessRevocation>();
 builder.Services.AddScoped<AllenBuilding.Application.Maintenance.IContractorStore, ContractorStore>();
 builder.Services.AddScoped<AllenBuilding.Application.Maintenance.ContractorActions>();
+builder.Services.AddScoped<AllenBuilding.Application.Knowledge.IKnowledgeStore, KnowledgeStore>();
+builder.Services.AddScoped<AllenBuilding.Application.Knowledge.KnowledgeActions>();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;

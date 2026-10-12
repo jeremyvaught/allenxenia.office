@@ -1,3 +1,4 @@
+using AllenBuilding.Domain.Knowledge;
 using AllenBuilding.Domain.Maintenance;
 using AllenBuilding.Domain.Tenancy;
 using AllenBuilding.Infrastructure.Identity;
@@ -9,6 +10,8 @@ namespace AllenBuilding.Infrastructure.Persistence;
 
 public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbContext<OfficeUser>(options)
 {
+    public DbSet<HelpArticle> HelpArticles => Set<HelpArticle>();
+    public DbSet<HelpRevision> HelpRevisions => Set<HelpRevision>();
     public DbSet<Building> Buildings => Set<Building>();
     public DbSet<Suite> Suites => Set<Suite>();
     public DbSet<Membership> Memberships => Set<Membership>();
@@ -120,6 +123,24 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
             e.HasOne<Suite>().WithMany().HasForeignKey(x => x.SuiteId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         });
+        model.Entity<HelpArticle>(e =>
+        {
+            e.ToTable("help_articles"); e.HasKey(x => x.Id);
+            e.Property(x => x.Version).IsConcurrencyToken();
+            e.Property(x => x.State).HasConversion<string>().HasMaxLength(32);
+            e.HasIndex(x => new { x.BuildingId, x.State, x.Id });
+            e.HasOne<Building>().WithMany().HasForeignKey(x => x.BuildingId).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<HelpRevision>(e =>
+        {
+            e.ToTable("help_revisions"); e.HasKey(x => x.Id);
+            e.Property(x => x.Title).HasMaxLength(160); e.Property(x => x.Body).HasColumnType("TEXT");
+            e.Property(x => x.Audience).HasConversion<string>().HasMaxLength(32);
+            e.Property(x => x.EditorId).HasMaxLength(450);
+            e.HasIndex(x => new { x.ArticleId, x.EditedAt, x.Id });
+            e.HasOne<HelpArticle>().WithMany().HasForeignKey(x => x.ArticleId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.EditorId).OnDelete(DeleteBehavior.Restrict);
+        });
         model.Entity<Contractor>(e =>
         {
             e.ToTable("contractors"); e.HasKey(x => x.Id);
@@ -157,6 +178,7 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
         var utc = new ValueConverter<DateTimeOffset, DateTime>(
             value => value.UtcDateTime,
             value => new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc)));
+        var date = new ValueConverter<DateOnly, DateTime>(value => value.ToDateTime(TimeOnly.MinValue), value => DateOnly.FromDateTime(value));
         var guid = new ValueConverter<Guid, string>(value => value.ToString("D"), value => Guid.Parse(value));
         foreach (var entity in model.Model.GetEntityTypes())
         {
@@ -168,6 +190,10 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
                 {
                     property.SetValueConverter(utc);
                     property.SetColumnType(mysql ? "datetime(6)" : "TEXT");
+                }
+                if (mysql && (property.ClrType == typeof(DateOnly) || property.ClrType == typeof(DateOnly?)))
+                {
+                    property.SetValueConverter(date); property.SetColumnType("date");
                 }
                 if (property.ClrType == typeof(Guid) || property.ClrType == typeof(Guid?))
                 {

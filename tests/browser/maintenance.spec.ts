@@ -86,5 +86,40 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     expect(await manager.evaluate(() => getComputedStyle(document.body).fontFamily)).toContain('sans-serif');
     await page.screenshot({ path: `artifacts/browser/tenant-${testInfo.project.name}.png`, fullPage: true });
     await manager.screenshot({ path: `artifacts/browser/manager-${testInfo.project.name}.png`, fullPage: true });
+    await manager.goto('/Knowledge/Manage');
+    await manager.getByRole('link', { name: 'Write an article' }).click();
+    const helpTitle = `Entry guidance ${testInfo.project.name}`;
+    await manager.getByLabel('Article title').fill(helpTitle);
+    await manager.getByLabel('Guidance (plain text)').fill('Approved public directions.');
+    await manager.getByRole('button', { name: 'Save draft', exact: true }).click();
+    const articleId = await manager.locator('form[action="/Knowledge/Save"] input[name="Id"]').inputValue();
+    const guestContext = await browser.newContext({ baseURL: 'http://127.0.0.1:5088', viewport: { width: 320, height: 800 } });
+    const guest = await guestContext.newPage();
+    try {
+      let response = await guest.goto(`/Knowledge/Article/${articleId}`);
+      expect(response?.status()).toBe(404);
+      await manager.getByRole('button', { name: 'Publish reviewed revision', exact: true }).click();
+      await guest.goto(`/Knowledge/Article/${articleId}`);
+      await expect(guest.getByText('Approved public directions.', { exact: true })).toBeVisible();
+      await manager.getByLabel('Guidance (plain text)').fill('Private entry details <script>window.leaked = true</script>');
+      await manager.getByLabel('Who can read it?').selectOption('ActiveTenant');
+      await manager.getByRole('button', { name: 'Save draft', exact: true }).click();
+      await guest.reload();
+      await expect(guest.getByText('Approved public directions.', { exact: true })).toBeVisible();
+      await manager.getByRole('button', { name: 'Publish reviewed revision', exact: true }).click();
+      response = await guest.reload();
+      expect(response?.status()).toBe(404);
+      await guest.goto(`/Knowledge?search=${encodeURIComponent(helpTitle)}`);
+      await expect(guest.getByRole('link', { name: helpTitle, exact: true })).toHaveCount(0);
+      await page.goto(`/Knowledge/TenantArticle/${articleId}`);
+      await expect(page.getByText('Private entry details <script>window.leaked = true</script>', { exact: true })).toBeVisible();
+      expect(await page.evaluate(() => 'leaked' in window)).toBe(false);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.screenshot({ path: `artifacts/browser/help-${testInfo.project.name}.png`, fullPage: true });
+      await manager.getByRole('button', { name: 'Withdraw article', exact: true }).click();
+      response = await page.reload();
+      expect(response?.status()).toBe(404);
+    } finally { await guestContext.close(); }
+
   } finally { await managerContext.close(); }
 });
