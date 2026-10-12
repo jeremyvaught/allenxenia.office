@@ -4,6 +4,26 @@
 @if (TempData["Notice"] is string notice) { <p role="status" class="mb-6 rounded-xl border border-line bg-panel p-4">@notice</p> }
 <div class="grid gap-6 md:grid-cols-2"><section class="rounded-2xl border border-line bg-panel p-6"><h2 class="mb-5 text-xl font-semibold">Add a suite</h2><form asp-action="AddSuite" method="post" class="space-y-5"><div><label for="building" class="mb-2 block">Building</label><select id="building" name="BuildingId" class="field">@foreach (var building in buildings) { <option value="@building.Id">@building.Name</option> }</select></div><div><label for="suite-name" class="mb-2 block">Suite name</label><input id="suite-name" name="Name" maxlength="80" required class="field" /></div><button class="button">Add suite</button></form></section>
 <section class="rounded-2xl border border-line bg-panel p-6"><h2 class="mb-5 text-xl font-semibold">Invite a tenant</h2><form asp-action="Invite" method="post" class="space-y-5"><div><label for="suite" class="mb-2 block">Suite</label><select id="suite" name="SuiteId" class="field">@foreach (var suite in Model) { <option value="@suite.Id">@suite.Name</option> }</select></div><div><label for="invite-email" class="mb-2 block">Email</label><input id="invite-email" name="Email" type="email" maxlength="256" required autocomplete="email" class="field" /></div><button class="button" disabled="@(Model.Count == 0)">Record invitation</button></form></section></div>
+<section class="mt-6 rounded-2xl border border-line bg-panel p-6"><h2 class="mb-3 text-xl font-semibold">Grant another suite to an existing account</h2><p class="mb-5 text-muted">Use a confirmed account that already has a password. Returning tenants receive a new membership; this cannot restore their previous records.</p>
+    <form asp-action="Grant" method="post" class="space-y-4"><input name="OperationId" value="@Guid.NewGuid()" type="hidden" />
+        <label for="existing-suite" class="block">Suite for existing account</label><select id="existing-suite" name="SuiteId" class="field">@foreach (var suite in Model) { <option value="@suite.Id">@suite.Name</option> }</select>
+        <label for="existing-email" class="block">Existing account email</label><input id="existing-email" name="Email" type="email" maxlength="256" required class="field" />
+        <label for="grant-reason" class="block">Reason for granting access</label><input id="grant-reason" name="Reason" maxlength="2000" required class="field" />
+        <button class="button" disabled="@(Model.Count == 0)">Grant access to this suite</button>
+    </form>
+</section>
+<section class="mt-8"><h2 class="mb-4 text-2xl font-semibold">Unaccepted invitations</h2><div class="grid gap-4 md:grid-cols-2">
+@foreach (var invitation in (IReadOnlyList<InvitationRow>)ViewData["Invitations"]!)
+{
+    <article class="min-w-0 rounded-2xl border border-line bg-panel p-5"><h3 class="break-words font-semibold">@invitation.Email · @invitation.Suite</h3><p class="my-3 text-sm text-muted">@invitation.Status · Expires @invitation.ExpiresAt.ToString("MMM d, yyyy HH:mm 'UTC'")</p>
+        <form asp-action="ChangeInvitation" method="post" class="space-y-3"><input name="InvitationId" value="@invitation.Id" type="hidden" /><input name="Version" value="@invitation.Version" type="hidden" />
+            <label for="invitation-reason-@invitation.Id" class="block">Reason for invitation change</label><input id="invitation-reason-@invitation.Id" name="Reason" maxlength="2000" required class="field" />
+            <p class="text-sm text-muted">Reissue approves a new seven-day activation window and invalidates every previous link. Revoking an invitation cannot remove access that has already been accepted.</p>
+            <div class="flex flex-wrap gap-3"><button name="Revoke" value="false" class="quiet-button">Reissue invitation</button>@if (invitation.Status != "Revoked") { <button name="Revoke" value="true" class="quiet-button">Revoke invitation</button> }</div>
+        </form>
+    </article>
+}
+</div></section>
 <section class="mt-8"><h2 class="mb-4 text-2xl font-semibold">Tenant access</h2><ul class="space-y-4">
 @foreach (var access in (IReadOnlyList<AccessRow>)ViewData["Access"]!)
 {

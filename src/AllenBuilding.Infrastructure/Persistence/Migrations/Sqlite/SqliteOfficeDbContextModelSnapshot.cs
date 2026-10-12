@@ -646,6 +646,41 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                     b.ToTable("work_order_history", (string)null);
                 });
 
+            modelBuilder.Entity("AllenBuilding.Domain.Tenancy.AccessReceipt", b =>
+                {
+                    b.Property<string>("ActorId")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("actor_id");
+
+                    b.Property<string>("OperationId")
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("operation_id");
+
+                    b.Property<string>("MembershipId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("membership_id");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<string>("PayloadHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("payload_hash");
+
+                    b.HasKey("ActorId", "OperationId");
+
+                    b.HasIndex("MembershipId");
+
+                    b.ToTable("access_receipts", (string)null);
+                });
+
             modelBuilder.Entity("AllenBuilding.Domain.Tenancy.AccountAudit", b =>
                 {
                     b.Property<string>("Id")
@@ -837,11 +872,25 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .HasColumnType("TEXT")
                         .HasColumnName("issued_by");
 
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<string>("RevokedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("revoked_by");
+
                     b.Property<string>("SuiteId")
                         .IsRequired()
                         .HasMaxLength(36)
                         .HasColumnType("TEXT")
                         .HasColumnName("suite_id");
+
+                    b.Property<string>("TokenVersion")
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("token_version");
 
                     b.Property<string>("UserId")
                         .IsRequired()
@@ -1375,6 +1424,15 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                     b.HasOne("AllenBuilding.Domain.Maintenance.WorkOrder", null)
                         .WithMany()
                         .HasForeignKey("WorkOrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Tenancy.AccessReceipt", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Tenancy.Membership", null)
+                        .WithMany()
+                        .HasForeignKey("MembershipId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

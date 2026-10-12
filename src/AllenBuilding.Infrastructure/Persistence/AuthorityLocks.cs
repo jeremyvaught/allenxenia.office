@@ -11,6 +11,18 @@ public static class AuthorityLocks
     public static Task<IDbContextTransaction> BeginAsync(OfficeDbContext db, CancellationToken cancellationToken = default)
         => db.Database.BeginTransactionAsync(db is MySqlOfficeDbContext ? IsolationLevel.ReadCommitted : IsolationLevel.Serializable, cancellationToken);
 
+    public static async Task InvitationAsync(OfficeDbContext db, Guid id, CancellationToken cancellationToken = default)
+    {
+        if (db is MySqlOfficeDbContext)
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT id FROM invitations WHERE id = {id.ToString("D")} FOR UPDATE", cancellationToken);
+    }
+
+    public static async Task InvitationUserAsync(OfficeDbContext db, string id, CancellationToken cancellationToken = default)
+    {
+        if (db is MySqlOfficeDbContext)
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT id FROM asp_net_users WHERE id = {id} FOR UPDATE", cancellationToken);
+    }
+
     public static async Task ContractorAsync(OfficeDbContext db, Guid id, CancellationToken cancellationToken = default)
     {
         if (db is MySqlOfficeDbContext)

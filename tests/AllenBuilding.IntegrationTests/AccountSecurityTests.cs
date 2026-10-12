@@ -96,10 +96,18 @@ public sealed class AccountSecurityTests
         await using var host = new AccountTestHost(); await host.InitializeAsync();
         var (id, building) = await host.SeedManagerAsync(); using var client = host.Browser();
         await host.LoginManagerAsync(client, id);
+        using var forgedGrant = await client.PostAsync("/Management/Grant", new FormUrlEncodedContent(new Dictionary<string, string> { ["OperationId"] = Guid.NewGuid().ToString() }));
+        Assert.Equal(HttpStatusCode.BadRequest, forgedGrant.StatusCode);
+        using var forgedInvitation = await client.PostAsync("/Management/ChangeInvitation", new FormUrlEncodedContent(new Dictionary<string, string>()));
+        Assert.Equal(HttpStatusCode.BadRequest, forgedInvitation.StatusCode);
         host.Clock.Offset = TimeSpan.FromMinutes(6);
         using var read = await client.GetAsync("/Management"); Assert.Equal(HttpStatusCode.OK, read.StatusCode);
         using var change = await AccountTestHost.PostAsync(client, "/Management", "/Management/AddSuite", ("BuildingId", building.ToString()), ("Name", "Suite A"));
         Assert.StartsWith("http://localhost/Account/Denied", change.Headers.Location?.OriginalString);
+        using var staleGrant = await AccountTestHost.PostAsync(client, "/Management", "/Management/Grant", ("Email", "tenant@example.test"));
+        Assert.StartsWith("http://localhost/Account/Denied", staleGrant.Headers.Location?.OriginalString);
+        using var staleInvitation = await AccountTestHost.PostAsync(client, "/Management", "/Management/ChangeInvitation", ("Reason", "Revoke unused link"));
+        Assert.StartsWith("http://localhost/Account/Denied", staleInvitation.Headers.Location?.OriginalString);
         using var scope = host.Services.CreateScope();
         Assert.Empty(await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().Suites.ToListAsync());
     }

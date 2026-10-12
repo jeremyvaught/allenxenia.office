@@ -25,6 +25,7 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
     public DbSet<Contractor> Contractors => Set<Contractor>();
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
     public DbSet<BuildingManager> BuildingManagers => Set<BuildingManager>();
+    public DbSet<AccessReceipt> AccessReceipts => Set<AccessReceipt>();
     public DbSet<Invitation> Invitations => Set<Invitation>();
     public DbSet<AccountAudit> AccountAudits => Set<AccountAudit>();
     public DbSet<AccountMessage> AccountMessages => Set<AccountMessage>();
@@ -83,11 +84,18 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
             e.HasOne<Building>().WithMany().HasForeignKey(x => x.BuildingId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         });
+        model.Entity<AccessReceipt>(e =>
+        {
+            e.ToTable("access_receipts"); e.HasKey(x => new { x.ActorId, x.OperationId });
+            e.Property(x => x.ActorId).HasMaxLength(450); e.Property(x => x.PayloadHash).HasMaxLength(64);
+            e.HasOne<Membership>().WithMany().HasForeignKey(x => x.MembershipId).OnDelete(DeleteBehavior.Restrict);
+        });
         model.Entity<Invitation>(e =>
         {
             e.ToTable("invitations"); e.HasKey(x => x.Id);
             e.Property(x => x.UserId).HasMaxLength(450);
             e.Property(x => x.IssuedBy).HasMaxLength(450);
+            e.Property(x => x.RevokedBy).HasMaxLength(450);
             e.Property(x => x.Version).IsConcurrencyToken();
             e.HasIndex(x => x.UserId).IsUnique();
             e.HasOne<Suite>().WithMany().HasForeignKey(x => x.SuiteId).OnDelete(DeleteBehavior.Restrict);
@@ -157,6 +165,7 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
             e.ToTable("obligations"); e.HasKey(x => x.Id); e.Property(x => x.Version).IsConcurrencyToken();
             e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(32);
             e.Property(x => x.Currency).HasMaxLength(3); e.Property(x => x.Description).HasMaxLength(120); e.Property(x => x.IssuedBy).HasMaxLength(450);
+
             e.HasIndex(x => x.PeriodId).IsUnique(); e.HasIndex(x => new { x.AccountId, x.DueOn, x.Id });
             e.HasOne<RentAccount>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<BillingPeriod>().WithMany().HasForeignKey(x => new { x.PeriodId, x.AccountId })

@@ -49,7 +49,8 @@ public sealed class NotificationQueue(OfficeDbContext db, IDataProtectionProvide
         if (message.Kind == "Invitation")
         {
             var invitationId = data.GetProperty("invitationId").GetGuid();
-            var valid = await db.Invitations.AnyAsync(x => x.Id == invitationId && x.UserId == user.Id && x.AcceptedAt == null && x.ExpiresAt > time.GetUtcNow(), cancellationToken);
+            Guid? tokenVersion = data.TryGetProperty("version", out var encodedVersion) && encodedVersion.ValueKind == JsonValueKind.String ? encodedVersion.GetGuid() : null;
+            var valid = await db.Invitations.AnyAsync(x => x.TokenVersion == tokenVersion && x.RevokedAt == null && x.Id == invitationId && x.UserId == user.Id && x.AcceptedAt == null && x.ExpiresAt > time.GetUtcNow(), cancellationToken);
             return valid ? new(message.Id, user.Email, "Your Allen Xenia Office invitation", "Activate your invitation:\n" +
                 Link($"Invitation/Accept/{invitationId:D}", data.GetProperty("token").GetString()!)) : null;
         }

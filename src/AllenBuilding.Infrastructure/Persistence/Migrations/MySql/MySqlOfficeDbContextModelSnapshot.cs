@@ -710,6 +710,45 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                     b.ToTable("work_order_history", (string)null);
                 });
 
+            modelBuilder.Entity("AllenBuilding.Domain.Tenancy.AccessReceipt", b =>
+                {
+                    b.Property<string>("ActorId")
+                        .HasMaxLength(450)
+                        .HasColumnType("varchar(450)")
+                        .HasColumnName("actor_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("OperationId")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("operation_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("MembershipId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("membership_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<string>("PayloadHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("payload_hash")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.HasKey("ActorId", "OperationId");
+
+                    b.HasIndex("MembershipId");
+
+                    b.ToTable("access_receipts", (string)null);
+                });
+
             modelBuilder.Entity("AllenBuilding.Domain.Tenancy.AccountAudit", b =>
                 {
                     b.Property<string>("Id")
@@ -920,11 +959,27 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .HasColumnName("issued_by")
                         .UseCollation("utf8mb4_bin");
 
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<string>("RevokedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("varchar(450)")
+                        .HasColumnName("revoked_by")
+                        .UseCollation("utf8mb4_bin");
+
                     b.Property<string>("SuiteId")
                         .IsRequired()
                         .HasMaxLength(36)
                         .HasColumnType("varchar(36)")
                         .HasColumnName("suite_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("TokenVersion")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("token_version")
                         .UseCollation("utf8mb4_bin");
 
                     b.Property<string>("UserId")
@@ -1503,6 +1558,15 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                     b.HasOne("AllenBuilding.Domain.Maintenance.WorkOrder", null)
                         .WithMany()
                         .HasForeignKey("WorkOrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Tenancy.AccessReceipt", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Tenancy.Membership", null)
+                        .WithMany()
+                        .HasForeignKey("MembershipId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

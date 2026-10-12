@@ -33,3 +33,19 @@ public sealed class SuiteForm
     public Guid BuildingId { get; set; }
     [Required, StringLength(80)] public string Name { get; set; } = "";
 }
+
+public sealed class ExistingAccountForm
+{
+    public Guid OperationId { get; set; }
+    public Guid SuiteId { get; set; }
+    [Required, EmailAddress, StringLength(256)] public string Email { get; set; } = "";
+    [Required, StringLength(2000)] public string Reason { get; set; } = "";
+}
+public sealed class InvitationChangeForm
+{
+    public Guid InvitationId { get; set; }
+    public Guid Version { get; set; }
+    public bool Revoke { get; set; }
+    [Required, StringLength(2000)] public string Reason { get; set; } = "";
+}
+public sealed record InvitationRow(Guid Id, Guid Version, string Suite, string Email, DateTimeOffset ExpiresAt, string Status);

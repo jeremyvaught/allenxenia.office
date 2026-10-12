@@ -121,5 +121,32 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
       expect(response?.status()).toBe(404);
     } finally { await guestContext.close(); }
 
+
+    await manager.goto('/Management');
+    const addedSuite = `Additional suite ${testInfo.project.name}`;
+    await manager.getByLabel('Suite name', { exact: true }).fill(addedSuite);
+    await manager.getByRole('button', { name: 'Add suite', exact: true }).click();
+    await manager.getByLabel('Suite for existing account').selectOption({ label: addedSuite });
+    await manager.getByLabel('Existing account email').fill(account.tenantEmail);
+    await manager.getByLabel('Reason for granting access').fill('Additional suite approved.');
+    await manager.getByRole('button', { name: 'Grant access to this suite', exact: true }).click();
+    await expect(manager.getByRole('status')).toContainText('Suite access granted');
+    await page.goto('/Maintenance/Create');
+    await expect(page.getByLabel('Office', { exact: true }).locator('option', { hasText: addedSuite })).toHaveCount(1);
+    await manager.getByLabel('Suite', { exact: true }).selectOption({ label: addedSuite });
+    const invitedEmail = `invited-${testInfo.project.name}@example.test`;
+    await manager.getByLabel('Email', { exact: true }).fill(invitedEmail);
+    await manager.getByRole('button', { name: 'Record invitation', exact: true }).click();
+    let invitation = manager.locator('article').filter({ hasText: invitedEmail });
+    await invitation.getByLabel('Reason for invitation change').fill('Replace the activation link.');
+    await invitation.getByRole('button', { name: 'Reissue invitation', exact: true }).click();
+    await expect(manager.getByRole('status')).toContainText('Previous links are invalid');
+    invitation = manager.locator('article').filter({ hasText: invitedEmail });
+    await invitation.getByLabel('Reason for invitation change').fill('Invitation no longer needed.');
+    await invitation.getByRole('button', { name: 'Revoke invitation', exact: true }).click();
+    await expect(manager.locator('article').filter({ hasText: invitedEmail })).toContainText('Revoked');
+    expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await manager.screenshot({ path: `artifacts/browser/access-${testInfo.project.name}.png`, fullPage: true });
+
   } finally { await managerContext.close(); }
 });

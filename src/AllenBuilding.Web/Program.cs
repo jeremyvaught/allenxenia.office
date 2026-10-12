@@ -20,6 +20,7 @@ builder.AddOfficeNotifications();
 builder.Services.AddScoped<AllenBuilding.Application.Maintenance.IMaintenanceStore, MaintenanceStore>();
 builder.Services.AddScoped<AllenBuilding.Application.Maintenance.MaintenanceActions>();
 builder.Services.AddScoped<AccessRevocation>();
+builder.Services.AddScoped<AccountAccess>();
 builder.Services.AddScoped<AllenBuilding.Application.Maintenance.IContractorStore, ContractorStore>();
 builder.Services.AddScoped<AllenBuilding.Application.Maintenance.ContractorActions>();
 builder.Services.AddScoped<AllenBuilding.Application.Knowledge.IKnowledgeStore, KnowledgeStore>();

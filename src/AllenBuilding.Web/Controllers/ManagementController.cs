@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore;
 namespace AllenBuilding.Web.Controllers;
 
 [Authorize(Policy = OfficeSecurity.ManagerPolicy), ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-public sealed class ManagementController(ICurrentActor current, OfficeDbContext db, AccountInvitations invitations, AccessRevocation revocation) : Controller
+public sealed class ManagementController(ICurrentActor current, OfficeDbContext db, AccountInvitations invitations, AccessRevocation revocation, AccountAccess access, TimeProvider time) : Controller
 {
     [HttpGet]
     public async Task<IActionResult> Index()
@@ -22,8 +22,17 @@ public sealed class ManagementController(ICurrentActor current, OfficeDbContext 
                                     join suite in db.Suites on membership.SuiteId equals suite.Id
                                     join user in db.Users on membership.UserId equals user.Id
                                     where actor.ManagedBuildings.Contains(suite.BuildingId) && membership.RevokedAt == null
-                                    select new AccessRow(membership.Id, membership.Version, suite.Name, user.Email!)).ToListAsync();
-        return View(await db.Suites.AsNoTracking().Where(x => actor.ManagedBuildings.Contains(x.BuildingId)).OrderBy(x => x.Name).ToListAsync());
+                                    orderby suite.Name, membership.Id
+                                    select new AccessRow(membership.Id, membership.Version, suite.Name, user.Email!)).Take(100).ToListAsync();
+        var now = time.GetUtcNow();
+        ViewData["Invitations"] = await (from invitation in db.Invitations.AsNoTracking()
+                                         join suite in db.Suites on invitation.SuiteId equals suite.Id
+                                         join user in db.Users on invitation.UserId equals user.Id
+                                         where actor.ManagedBuildings.Contains(suite.BuildingId) && invitation.AcceptedAt == null
+                                         orderby invitation.ExpiresAt descending, invitation.Id
+                                         select new InvitationRow(invitation.Id, invitation.Version, suite.Name, user.Email!, invitation.ExpiresAt,
+                                             invitation.RevokedAt != null ? "Revoked" : invitation.ExpiresAt <= now ? "Expired" : "Pending")).Take(100).ToListAsync();
+        return View(await db.Suites.AsNoTracking().Where(x => actor.ManagedBuildings.Contains(x.BuildingId)).OrderBy(x => x.Name).ThenBy(x => x.Id).Take(100).ToListAsync());
     }
 
     [Authorize(Policy = OfficeSecurity.RecentManagerPolicy), HttpPost]
@@ -51,6 +60,30 @@ public sealed class ManagementController(ICurrentActor current, OfficeDbContext 
         if (result == AllenBuilding.Application.Maintenance.MaintenanceCode.Conflict) return Conflict();
         if (result != AllenBuilding.Application.Maintenance.MaintenanceCode.Success) return BadRequest();
         TempData["Notice"] = "Tenant access revoked. Existing records are retained. Billing arrangements are unchanged.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    [Authorize(Policy = OfficeSecurity.RecentManagerPolicy), HttpPost]
+    public async Task<IActionResult> Grant(ExistingAccountForm form)
+    {
+        if (!ModelState.IsValid) return BadRequest();
+        var result = await access.GrantAsync(new(form.OperationId, form.SuiteId, form.Email, form.Reason));
+        if (result.Code == AllenBuilding.Application.Access.AccessCode.Unavailable) return NotFound();
+        if (result.Code == AllenBuilding.Application.Access.AccessCode.Conflict) return Conflict();
+        if (result.Code != AllenBuilding.Application.Access.AccessCode.Success) return BadRequest();
+        TempData["Notice"] = "Suite access granted to the existing account. Previous memberships and passwords are unchanged.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    [Authorize(Policy = OfficeSecurity.RecentManagerPolicy), HttpPost]
+    public async Task<IActionResult> ChangeInvitation(InvitationChangeForm form)
+    {
+        if (!ModelState.IsValid) return BadRequest();
+        var code = await invitations.ChangeAsync(form.InvitationId, form.Version, form.Revoke, form.Reason);
+        if (code == AllenBuilding.Application.Access.AccessCode.Unavailable) return NotFound();
+        if (code == AllenBuilding.Application.Access.AccessCode.Conflict) return Conflict();
+        if (code != AllenBuilding.Application.Access.AccessCode.Success) return BadRequest();
+        TempData["Notice"] = form.Revoke ? "Invitation revoked. Its link cannot activate access." : "Invitation reissued for seven days. Previous links are invalid; the new link is queued for delivery.";
         return RedirectToAction(nameof(Index));
     }
 
