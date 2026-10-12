@@ -34,7 +34,7 @@ public sealed class AccountInvitations(OfficeDbContext db, UserManager<OfficeUse
         var invitation = new Invitation { SuiteId = suite.Id, UserId = user.Id, IssuedBy = actor.UserId, ExpiresAt = time.GetUtcNow().AddDays(7) };
         var token = await users.GenerateUserTokenAsync(user, "Invitation", Purpose(invitation.Id));
         db.Invitations.Add(invitation);
-        Queue(user.Id, "Invitation", JsonSerializer.Serialize(new { invitationId = invitation.Id, token }));
+        Queue(user.Id, "Invitation", JsonSerializer.Serialize(new { invitationId = invitation.Id, token }), suite.BuildingId);
         Audit(actor.UserId, "InvitationIssued", invitation.Id.ToString());
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -86,8 +86,8 @@ public sealed class AccountInvitations(OfficeDbContext db, UserManager<OfficeUse
         return true;
     }
 
-    public void Queue(string userId, string kind, string payload) => db.AccountMessages.Add(new AccountMessage
-    { UserId = userId, Kind = kind, ProtectedPayload = _messages.Protect(payload), CreatedAt = time.GetUtcNow() });
+    public void Queue(string userId, string kind, string payload, Guid? buildingId = null) => db.AccountMessages.Add(new AccountMessage
+    { UserId = userId, BuildingId = buildingId, Kind = kind, ProtectedPayload = _messages.Protect(payload), CreatedAt = time.GetUtcNow(), NextAttemptAt = time.GetUtcNow() });
 
     public void Audit(string actor, string action, string subject) => db.AccountAudits.Add(new AccountAudit
     { ActorId = actor, Action = action, SubjectId = subject, OccurredAt = time.GetUtcNow() });

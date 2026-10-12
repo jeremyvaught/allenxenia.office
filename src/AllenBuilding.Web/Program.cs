@@ -7,13 +7,16 @@ using Microsoft.EntityFrameworkCore;
 
 var migrate = args.Contains("--migrate", StringComparer.Ordinal);
 var bootstrap = args.Contains("--bootstrap-manager", StringComparer.Ordinal);
-var builder = WebApplication.CreateBuilder(args.Where(x => x != "--migrate" && x != "--bootstrap-manager").ToArray());
+var dispatch = args.Contains("--dispatch-mail-once", StringComparer.Ordinal);
+if (new[] { migrate, bootstrap, dispatch }.Count(x => x) > 1) throw new InvalidOperationException("Choose one operator command at a time.");
+var builder = WebApplication.CreateBuilder(args.Where(x => x != "--migrate" && x != "--bootstrap-manager" && x != "--dispatch-mail-once").ToArray());
 if (builder.Environment.IsEnvironment("Testing")) builder.WebHost.UseStaticWebAssets();
 builder.Services.AddControllersWithViews(options =>
     options.Filters.Add(new Microsoft.AspNetCore.Mvc.AutoValidateAntiforgeryTokenAttribute()));
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddOfficeStorage(builder.Configuration, builder.Environment);
 builder.AddOfficeSecurity();
+builder.AddOfficeNotifications();
 builder.Services.AddScoped<AllenBuilding.Application.Maintenance.IMaintenanceStore, MaintenanceStore>();
 builder.Services.AddScoped<AllenBuilding.Application.Maintenance.MaintenanceActions>();
 builder.Services.AddScoped<AccessRevocation>();
@@ -50,6 +53,18 @@ if (bootstrap)
     using var scope = app.Services.CreateScope();
     await scope.ServiceProvider.GetRequiredService<BootstrapManager>().CreateAsync(email, password.ToString());
     Console.WriteLine("Manager created. Sign in and enroll an authenticator before managing the building.");
+    return;
+}
+
+if (dispatch)
+{
+    if (!app.Environment.IsDevelopment() || builder.Configuration["Notifications:Mode"] != "LocalInbox")
+        throw new InvalidOperationException("This operator command only dispatches to the local development inbox.");
+    using var scope = app.Services.CreateScope();
+    var dispatcher = scope.ServiceProvider.GetRequiredService<AllenBuilding.Application.Notifications.NotificationDispatcher>();
+    var count = 0;
+    while (count < 20 && await dispatcher.ProcessOneAsync()) count++;
+    Console.WriteLine($"Processed {count} local notifications. Local inbox: src/AllenBuilding.Web/.data/mail (never committed).");
     return;
 }
 

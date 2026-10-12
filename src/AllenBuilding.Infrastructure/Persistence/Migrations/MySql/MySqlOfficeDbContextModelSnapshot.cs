@@ -269,6 +269,12 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .HasColumnType("datetime(6)")
                         .HasColumnName("occurred_at");
 
+                    b.Property<string>("Reason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("varchar(2000)")
+                        .HasColumnName("reason")
+                        .UseCollation("utf8mb4_bin");
+
                     b.Property<string>("SubjectId")
                         .IsRequired()
                         .HasMaxLength(450)
@@ -290,9 +296,27 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .HasColumnName("id")
                         .UseCollation("utf8mb4_bin");
 
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int")
+                        .HasColumnName("attempts");
+
+                    b.Property<string>("BuildingId")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("building_id")
+                        .UseCollation("utf8mb4_bin");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)")
                         .HasColumnName("created_at");
+
+                    b.Property<int>("CycleAttempts")
+                        .HasColumnType("int")
+                        .HasColumnName("cycle_attempts");
+
+                    b.Property<DateTime?>("DeliveredAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("delivered_at");
 
                     b.Property<string>("Kind")
                         .IsRequired()
@@ -301,11 +325,41 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .HasColumnName("kind")
                         .UseCollation("utf8mb4_bin");
 
+                    b.Property<string>("LastError")
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)")
+                        .HasColumnName("last_error")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("LeaseToken")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("lease_token")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<DateTime?>("LeaseUntil")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("lease_until");
+
+                    b.Property<DateTime>("NextAttemptAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime(6)")
+                        .HasDefaultValue(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc))
+                        .HasColumnName("next_attempt_at");
+
                     b.Property<string>("ProtectedPayload")
                         .IsRequired()
                         .HasColumnType("TEXT")
                         .HasColumnName("protected_payload")
                         .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("state");
 
                     b.Property<string>("UserId")
                         .IsRequired()
@@ -316,7 +370,11 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
 
                     b.HasKey("Id");
 
+                    b.HasIndex("BuildingId");
+
                     b.HasIndex("UserId");
+
+                    b.HasIndex("State", "NextAttemptAt", "CreatedAt", "Id");
 
                     b.ToTable("account_messages", (string)null);
                 });
@@ -865,6 +923,11 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
 
             modelBuilder.Entity("AllenBuilding.Domain.Tenancy.AccountMessage", b =>
                 {
+                    b.HasOne("AllenBuilding.Domain.Tenancy.Building", null)
+                        .WithMany()
+                        .HasForeignKey("BuildingId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("AllenBuilding.Infrastructure.Identity.OfficeUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")

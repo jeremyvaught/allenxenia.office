@@ -243,6 +243,11 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .HasColumnType("TEXT")
                         .HasColumnName("occurred_at");
 
+                    b.Property<string>("Reason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("reason");
+
                     b.Property<string>("SubjectId")
                         .IsRequired()
                         .HasMaxLength(450)
@@ -262,9 +267,26 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .HasColumnType("TEXT")
                         .HasColumnName("id");
 
+                    b.Property<int>("Attempts")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("attempts");
+
+                    b.Property<string>("BuildingId")
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("building_id");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("created_at");
+
+                    b.Property<int>("CycleAttempts")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("cycle_attempts");
+
+                    b.Property<DateTime?>("DeliveredAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("delivered_at");
 
                     b.Property<string>("Kind")
                         .IsRequired()
@@ -272,10 +294,38 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .HasColumnType("TEXT")
                         .HasColumnName("kind");
 
+                    b.Property<string>("LastError")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("last_error");
+
+                    b.Property<string>("LeaseToken")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("lease_token");
+
+                    b.Property<DateTime?>("LeaseUntil")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("lease_until");
+
+                    b.Property<DateTime>("NextAttemptAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc))
+                        .HasColumnName("next_attempt_at");
+
                     b.Property<string>("ProtectedPayload")
                         .IsRequired()
                         .HasColumnType("TEXT")
                         .HasColumnName("protected_payload");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("state");
 
                     b.Property<string>("UserId")
                         .IsRequired()
@@ -285,7 +335,11 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
 
                     b.HasKey("Id");
 
+                    b.HasIndex("BuildingId");
+
                     b.HasIndex("UserId");
+
+                    b.HasIndex("State", "NextAttemptAt", "CreatedAt", "Id");
 
                     b.ToTable("account_messages", (string)null);
                 });
@@ -782,6 +836,11 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
 
             modelBuilder.Entity("AllenBuilding.Domain.Tenancy.AccountMessage", b =>
                 {
+                    b.HasOne("AllenBuilding.Domain.Tenancy.Building", null)
+                        .WithMany()
+                        .HasForeignKey("BuildingId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("AllenBuilding.Infrastructure.Identity.OfficeUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")

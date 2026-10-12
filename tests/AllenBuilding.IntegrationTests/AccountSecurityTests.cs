@@ -13,6 +13,61 @@ namespace AllenBuilding.IntegrationTests;
 public sealed class AccountSecurityTests
 {
     [Fact]
+    public async Task Local_invitation_delivery_keeps_credentials_in_the_fragment_and_expired_acceptance_cannot_grant_access()
+    {
+        await using var host = new AccountTestHost(); await host.InitializeAsync();
+        var (managerId, buildingId) = await host.SeedManagerAsync(); using var client = host.Browser(); await host.LoginManagerAsync(client, managerId);
+        Guid suiteId;
+        using (var scope = host.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); var suite = new Suite { BuildingId = buildingId, Name = "Invitation delivery" };
+            suiteId = suite.Id; db.Suites.Add(suite); await db.SaveChangesAsync();
+        }
+        using var issued = await AccountTestHost.PostAsync(client, "/Management", "/Management/Invite", ("SuiteId", suiteId.ToString()), ("Email", "invited@example.test"));
+        Assert.Equal(HttpStatusCode.Redirect, issued.StatusCode);
+        var directory = Path.Combine(Path.GetTempPath(), $"office-invitation-check-{Guid.NewGuid():N}");
+        try
+        {
+            using (var scope = host.Services.CreateScope())
+            {
+                var queue = scope.ServiceProvider.GetRequiredService<AllenBuilding.Application.Notifications.INotificationQueue>();
+                var dispatcher = new AllenBuilding.Application.Notifications.NotificationDispatcher(queue, new AllenBuilding.Infrastructure.Notifications.LocalInboxTransport(directory));
+                Assert.True(await dispatcher.ProcessOneAsync());
+            }
+            var envelope = JsonSerializer.Deserialize<AllenBuilding.Application.Notifications.EmailEnvelope>(await File.ReadAllTextAsync(Directory.GetFiles(directory).Single()))!;
+            var link = new Uri(envelope.Text.Split('\n').Last()); Assert.Empty(link.Query); Assert.StartsWith("#token=", link.Fragment);
+            var token = Uri.UnescapeDataString(link.Fragment[7..]); var invitationId = Guid.Parse(link.Segments.Last());
+            host.Clock.Offset = TimeSpan.FromDays(8);
+            using var tenant = host.Browser();
+            using var expired = await AccountTestHost.PostAsync(tenant, $"/Invitation/Accept/{invitationId}", "/Invitation/Accept", ("InvitationId", invitationId.ToString()), ("Token", token),
+                ("Password", AccountTestHost.Password), ("ConfirmPassword", AccountTestHost.Password));
+            Assert.Contains("Unable to activate", await expired.Content.ReadAsStringAsync());
+            using var check = host.Services.CreateScope(); var savedDb = check.ServiceProvider.GetRequiredService<OfficeDbContext>();
+            Assert.Empty(await savedDb.Memberships.ToListAsync()); Assert.Null((await savedDb.Invitations.SingleAsync()).AcceptedAt);
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
+    }
+
+    [Fact]
+    public async Task Password_reset_invalidates_existing_sessions_without_changing_access_grants()
+    {
+        await using var host = new AccountTestHost(); await host.InitializeAsync();
+        var (id, _) = await host.SeedManagerAsync(enrolled: false); using var client = host.Browser();
+        using var login = await AccountTestHost.PostAsync(client, "/Account/Login", "/Account/Login", ("Email", "manager@example.test"), ("Password", AccountTestHost.Password));
+        string token;
+        using (var scope = host.Services.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<OfficeUser>>();
+            token = await users.GeneratePasswordResetTokenAsync((await users.FindByIdAsync(id))!);
+        }
+        using var reset = await AccountTestHost.PostAsync(client, $"/Invitation/Reset/{id}", "/Invitation/Reset", ("UserId", id), ("Token", token), ("Password", "Different-synthetic-2026!"));
+        Assert.Contains("ready to sign in", await reset.Content.ReadAsStringAsync());
+        using var protectedRead = await client.GetAsync("/Portal"); Assert.StartsWith("http://localhost/Account/Login", protectedRead.Headers.Location?.OriginalString);
+        using var verification = host.Services.CreateScope(); var db = verification.ServiceProvider.GetRequiredService<OfficeDbContext>();
+        Assert.Single(await db.BuildingManagers.ToListAsync()); Assert.Empty(await db.Memberships.ToListAsync());
+    }
+
+    [Fact]
     public async Task Recovery_sign_in_requires_replenishment_and_can_recover_a_lost_device_without_email_bypass()
     {
         await using var host = new AccountTestHost(); await host.InitializeAsync();

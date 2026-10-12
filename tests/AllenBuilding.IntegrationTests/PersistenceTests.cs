@@ -5,6 +5,8 @@ using AllenBuilding.Infrastructure.Persistence;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -48,7 +50,16 @@ public sealed class PersistenceTests
         var request = WorkOrder.Submit(suite.Id, membership.Id, user.Id, "Leaking sink", "Water under basin", "Kitchen", now);
         await using (var db = create())
         {
+            // Exercise upgrades with a real pre-delivery row, not only an empty database.
+            await db.GetService<IMigrator>().MigrateAsync("MaintenanceWorkflow");
+            var legacyUser = new OfficeUser { UserName = $"upgrade-{Guid.NewGuid():N}@example.test" };
+            db.Users.Add(legacyUser); await db.SaveChangesAsync();
+            var messageId = Guid.NewGuid();
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO account_messages (id, user_id, kind, protected_payload, created_at) VALUES ({messageId.ToString("D")}, {legacyUser.Id}, {"SecurityNotice"}, {"synthetic-legacy-payload"}, {now.UtcDateTime})");
             await db.Database.MigrateAsync();
+            var upgraded = await db.AccountMessages.AsNoTracking().SingleAsync(x => x.Id == messageId);
+            Assert.Equal(MessageState.Queued, upgraded.State); Assert.Equal(Guid.Empty, upgraded.LeaseToken);
+            Assert.Equal(upgraded.CreatedAt, upgraded.NextAttemptAt);
             Assert.Empty(await db.Database.GetPendingMigrationsAsync());
             db.AddRange(user, building, suite, membership, request,
                 new ActiveGrant { UserId = user.Id, SuiteId = suite.Id, MembershipId = membership.Id });
@@ -107,6 +118,7 @@ public sealed class PersistenceTests
         }
         await VerifyProtectedIdentity(create);
         await MaintenanceContract.VerifyAsync(create);
+        await NotificationContract.VerifyAsync(create);
     }
 
     private static async Task VerifyProtectedIdentity(Func<OfficeDbContext> create)

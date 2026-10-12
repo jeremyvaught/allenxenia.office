@@ -19,9 +19,11 @@ public static class StorageRegistration
             {
                 var directory = Path.Combine(environment.ContentRootPath, ".data");
                 Directory.CreateDirectory(directory);
+                if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
                 connection = $"Data Source={Path.Combine(directory, "office.db")}";
             }
-            services.AddDbContext<SqliteOfficeDbContext>(o => o.UseSqlite(connection));
+            var sqlite = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(connection) { ForeignKeys = true };
+            services.AddDbContext<SqliteOfficeDbContext>(o => o.UseSqlite(sqlite.ConnectionString));
             services.AddScoped<OfficeDbContext>(sp => sp.GetRequiredService<SqliteOfficeDbContext>());
         }
         else if (provider == "MySql")

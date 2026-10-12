@@ -50,6 +50,7 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
             e.Property(x => x.ActorId).HasMaxLength(450);
             e.Property(x => x.Action).HasMaxLength(80);
             e.Property(x => x.SubjectId).HasMaxLength(450);
+            e.Property(x => x.Reason).HasMaxLength(2000);
         });
         model.Entity<AccountMessage>(e =>
         {
@@ -57,6 +58,12 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
             e.Property(x => x.UserId).HasMaxLength(450);
             e.Property(x => x.Kind).HasMaxLength(80);
             e.Property(x => x.ProtectedPayload).HasColumnType("TEXT");
+            e.Property(x => x.State).HasConversion<string>().HasMaxLength(32);
+            e.Property(x => x.LeaseToken).IsConcurrencyToken();
+            e.Property(x => x.NextAttemptAt).HasDefaultValue(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.Zero));
+            e.Property(x => x.LastError).HasMaxLength(80);
+            e.HasIndex(x => new { x.State, x.NextAttemptAt, x.CreatedAt, x.Id });
+            e.HasOne<Building>().WithMany().HasForeignKey(x => x.BuildingId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         });
         model.Entity<BuildingManager>(e =>

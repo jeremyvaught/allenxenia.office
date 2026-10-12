@@ -26,7 +26,7 @@ public static class MaintenanceContract
         services.AddScoped<AccountInvitations>(); services.AddScoped<AccessRevocation>();
         services.AddScoped<IMaintenanceStore, MaintenanceStore>(); services.AddScoped<MaintenanceActions>();
         await using var provider = services.BuildServiceProvider();
-        string tenantId, peerId, managerId; Guid suiteId, membershipId, buildingId;
+        string tenantId, peerId, managerId, secondManagerId; Guid suiteId, membershipId, buildingId;
         using (var scope = provider.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
@@ -36,7 +36,7 @@ public static class MaintenanceContract
                 var user = new OfficeUser { UserName = $"workflow-{Guid.NewGuid():N}@example.test", EmailConfirmed = true };
                 Assert.True((await users.CreateAsync(user, AccountTestHost.Password)).Succeeded); return user.Id;
             }
-            tenantId = await User(); peerId = await User(); managerId = await User();
+            tenantId = await User(); peerId = await User(); managerId = await User(); secondManagerId = await User();
             var building = new Building { Name = "Workflow test" }; buildingId = building.Id;
             var suite = new Suite { BuildingId = building.Id, Name = "Private suite" }; suiteId = suite.Id;
             var membership = Membership.Grant(suite.Id, tenantId, DateTimeOffset.UtcNow.AddDays(-1)); membershipId = membership.Id;
@@ -44,12 +44,14 @@ public static class MaintenanceContract
             db.AddRange(building, suite, membership, peerMembership,
                 new ActiveGrant { UserId = tenantId, SuiteId = suite.Id, MembershipId = membership.Id },
                 new ActiveGrant { UserId = peerId, SuiteId = suite.Id, MembershipId = peerMembership.Id },
-                new BuildingManager { UserId = managerId, BuildingId = building.Id });
+                new BuildingManager { UserId = managerId, BuildingId = building.Id },
+                new BuildingManager { UserId = secondManagerId, BuildingId = building.Id });
             await db.SaveChangesAsync();
         }
         var tenant = new Actor(tenantId, new HashSet<Guid>(), false, false);
         var peer = new Actor(peerId, new HashSet<Guid>(), false, false);
         var manager = new Actor(managerId, new HashSet<Guid> { buildingId }, true, true);
+        var secondManager = new Actor(secondManagerId, new HashSet<Guid> { buildingId }, true, true);
         async Task<T> As<T>(Actor actor, Func<IServiceProvider, Task<T>> call)
         {
             using var scope = provider.CreateScope(); scope.ServiceProvider.GetRequiredService<TestActor>().Actor = actor;
@@ -58,6 +60,18 @@ public static class MaintenanceContract
         var submit = new SubmitRequest(Guid.NewGuid(), membershipId, "Private request", "A leaking sink", "Kitchen");
         var first = await As(tenant, sp => sp.GetRequiredService<MaintenanceActions>().SubmitAsync(submit));
         Assert.Equal(MaintenanceCode.Success, first.Code);
+        var concurrent = submit with { OperationId = Guid.NewGuid(), Title = "Concurrent retry" };
+        var concurrentResults = await Task.WhenAll(
+            Task.Run(() => As(tenant, sp => sp.GetRequiredService<MaintenanceActions>().SubmitAsync(concurrent))),
+            Task.Run(() => As(tenant, sp => sp.GetRequiredService<MaintenanceActions>().SubmitAsync(concurrent))));
+        Assert.Equal(concurrentResults[0], concurrentResults[1]);
+        var concurrentTriage = new ChangeRequest(Guid.NewGuid(), concurrentResults[0].WorkOrderId!.Value, concurrentResults[0].Version!.Value,
+            MaintenanceAction.Triage, Priority.Normal, Trade.General);
+        var competingManagers = await Task.WhenAll(
+            Task.Run(() => As(manager, sp => sp.GetRequiredService<MaintenanceActions>().ChangeAsync(concurrentTriage, true))),
+            Task.Run(() => As(secondManager, sp => sp.GetRequiredService<MaintenanceActions>().ChangeAsync(concurrentTriage with { OperationId = Guid.NewGuid() }, true))));
+        Assert.Single(competingManagers, x => x.Code == MaintenanceCode.Success);
+        Assert.Single(competingManagers, x => x.Code == MaintenanceCode.Conflict);
         var replay = await As(tenant, sp => sp.GetRequiredService<MaintenanceActions>().SubmitAsync(submit)); Assert.Equal(first, replay);
         var mismatch = await As(tenant, sp => sp.GetRequiredService<MaintenanceActions>().SubmitAsync(submit with { Title = "Changed" })); Assert.Equal(MaintenanceCode.Conflict, mismatch.Code);
         var id = first.WorkOrderId!.Value;

@@ -83,8 +83,12 @@ public static class OfficeSecurity
         if (production && string.IsNullOrWhiteSpace(certificate))
             throw new InvalidOperationException("Production requires Protection:CertificatePath to wrap protected keys.");
         if (!string.IsNullOrWhiteSpace(certificate))
-            protection.ProtectKeysWithCertificate(X509CertificateLoader.LoadPkcs12FromFile(certificate,
-                builder.Configuration["Protection:CertificatePassword"], X509KeyStorageFlags.EphemeralKeySet));
+        {
+            var wrapping = X509CertificateLoader.LoadPkcs12FromFile(certificate,
+                builder.Configuration["Protection:CertificatePassword"], X509KeyStorageFlags.EphemeralKeySet);
+            if (!wrapping.HasPrivateKey) throw new InvalidOperationException("The wrapping certificate must include its private key for recovery.");
+            protection.ProtectKeysWithCertificate(wrapping);
+        }
     }
 
     public static Claim TimeClaim(string type, DateTimeOffset time) => new(type, time.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture));

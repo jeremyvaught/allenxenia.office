@@ -19,7 +19,9 @@ public static class AuthorityLocks
     public static async Task UserAsync(OfficeDbContext db, string userId, CancellationToken cancellationToken = default)
     {
         if (db is MySqlOfficeDbContext)
-            await db.Users.FromSqlInterpolated($"SELECT * FROM asp_net_users WHERE id = {userId} FOR UPDATE").AsNoTracking().ToListAsync(cancellationToken);
+            // Shared account locks block stamp changes without deadlocking notification
+            // foreign-key checks against other managers. Resource locks serialize writes.
+            await db.Users.FromSqlInterpolated($"SELECT * FROM asp_net_users WHERE id = {userId} FOR SHARE").AsNoTracking().ToListAsync(cancellationToken);
     }
 
     public static async Task ManagerAsync(OfficeDbContext db, string userId, Guid buildingId, CancellationToken cancellationToken = default)

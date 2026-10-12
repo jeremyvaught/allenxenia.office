@@ -60,7 +60,7 @@ public sealed class ManagementController(ICurrentActor current, OfficeDbContext 
         if (!ModelState.IsValid) return BadRequest();
         var id = await invitations.IssueAsync(form.SuiteId, form.Email);
         if (id is null) return Conflict("Unable to create this invitation. Check the suite and account, then try again.");
-        TempData["Notice"] = "Invitation recorded. Email is queued; delivery must be configured before tenants can receive it.";
+        TempData["Notice"] = "Invitation recorded and queued for delivery. Check Notification delivery for its status.";
         return RedirectToAction(nameof(Index));
     }
 }

@@ -1,0 +1,28 @@
+@model IReadOnlyList<AllenBuilding.Web.Controllers.NotificationRow>
+@using AllenBuilding.Domain.Tenancy
+@{ ViewData["Title"] = "Notification delivery"; }
+<div class="page">
+    <h1 class="mb-3 text-4xl font-semibold">Notification delivery</h1>
+    <p class="mb-6 text-muted">Review queued messages and delivery exceptions. No invitation credentials or private request text appears here.</p>
+    <ul class="space-y-4">
+    @foreach (var message in Model)
+    {
+        <li class="rounded-xl border border-line bg-panel p-5">
+            <div class="flex flex-wrap justify-between gap-3"><h2 class="text-xl font-semibold">@(message.Kind switch { "MaintenanceUpdate" => "Maintenance update", "SecurityNotice" => "Security notice", "PasswordReset" => "Password reset", _ => "Invitation" })</h2><span>@(message.State == MessageState.NeedsReview ? "Needs review" : message.State.ToString())</span></div>
+            <p class="mt-2 text-sm text-muted">@message.CreatedAt.ToString("MMM d, yyyy HH:mm 'UTC'") · @message.Attempts attempt(s)</p>
+            @if (message.State == MessageState.NeedsReview)
+            {
+                <p class="mt-4 text-muted">@(message.Error == "DeliveryUnknown" || message.Error == "LeaseExpired" ? "The delivery result could not be confirmed. Check the previous delivery before retrying; the message may already have been sent." : "Delivery could not finish. Resolve the mail configuration or provider failure before retrying.")</p>
+                <form asp-action="Retry" method="post" class="mt-4 space-y-3">
+                    <input name="Id" value="@message.Id" type="hidden" /><input name="Version" value="@message.Version" type="hidden" />
+                    <label for="reason-@message.Id" class="block">Reason for retry approval</label><input id="reason-@message.Id" name="Reason" required maxlength="2000" class="field" />
+                    <button class="quiet-button">Approve another delivery attempt</button>
+                </form>
+            }
+        </li>
+    }
+    </ul>
+    @if (Model.Count == 0) { <p>No notifications to show.</p> }
+    @if (Model.Count == 100) { <p class="mt-4 text-muted">Showing the 100 most recent notifications.</p> }
+    <a asp-controller="Account" asp-action="Reauthenticate" class="mt-6 flex min-h-11 items-center underline">Verify your sign-in for retry approval</a>
+</div>

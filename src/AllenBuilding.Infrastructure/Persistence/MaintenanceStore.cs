@@ -62,8 +62,12 @@ public sealed class MaintenanceStore(OfficeDbContext db, ICurrentActor current, 
         var order = WorkOrder.Submit(membership.SuiteId, membership.Id, actor.UserId, command.Title, command.Description, command.Location, now);
         db.WorkOrders.Add(order);
         await Record(actor.UserId, command.OperationId, hash, order, "Submitted", null, false, now, cancellationToken);
-        await db.SaveChangesAsync(cancellationToken); await transaction.CommitAsync(cancellationToken);
-        return Result(order);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken); await transaction.CommitAsync(cancellationToken);
+            return Result(order);
+        }
+        catch (DbUpdateException exception) when (ReceiptCollision(exception)) { return new(MaintenanceCode.Conflict); }
     }
 
     public async Task<MaintenanceResult> ChangeAsync(Actor actor, ChangeRequest command, string hash, DateTimeOffset now,
@@ -99,6 +103,7 @@ public sealed class MaintenanceStore(OfficeDbContext db, ICurrentActor current, 
             return Result(order);
         }
         catch (DbUpdateConcurrencyException) { return new(MaintenanceCode.Conflict); }
+        catch (DbUpdateException exception) when (ReceiptCollision(exception)) { return new(MaintenanceCode.Conflict); }
     }
 
     private async Task<MaintenanceResult?> Replay(string actor, Guid operation, string hash, CancellationToken cancellationToken)
@@ -138,7 +143,9 @@ public sealed class MaintenanceStore(OfficeDbContext db, ICurrentActor current, 
             x.StartsAt <= now && (x.EndsAt == null || x.EndsAt > now), cancellationToken) &&
             await db.ActiveGrants.AnyAsync(x => x.MembershipId == order.RequesterMembershipId, cancellationToken)) recipients.Add(order.RequesterUserId);
         foreach (var recipient in recipients)
-            notifications.Queue(recipient, "MaintenanceUpdate", JsonSerializer.Serialize(new { workOrderId = order.Id, historyId = entry.Id, membershipId = order.RequesterMembershipId }));
+            notifications.Queue(recipient, "MaintenanceUpdate", JsonSerializer.Serialize(new { workOrderId = order.Id, historyId = entry.Id, membershipId = order.RequesterMembershipId }), building);
     }
     private static MaintenanceResult Result(WorkOrder order) => new(MaintenanceCode.Success, order.Id, order.Version, order.Status);
+    private static bool ReceiptCollision(DbUpdateException exception) => exception.InnerException is
+        MySql.Data.MySqlClient.MySqlException { Number: 1062 } or Microsoft.Data.Sqlite.SqliteException { SqliteErrorCode: 19 };
 }
