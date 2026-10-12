@@ -18,11 +18,32 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
     public DbSet<Invitation> Invitations => Set<Invitation>();
     public DbSet<AccountAudit> AccountAudits => Set<AccountAudit>();
     public DbSet<AccountMessage> AccountMessages => Set<AccountMessage>();
+    public DbSet<WorkOrderHistory> WorkOrderHistory => Set<WorkOrderHistory>();
+    public DbSet<MaintenanceReceipt> MaintenanceReceipts => Set<MaintenanceReceipt>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
         base.OnModelCreating(model);
         model.Entity<OfficeUser>().Property(x => x.DisplayName).HasMaxLength(120);
+        model.Entity<WorkOrderHistory>(e =>
+        {
+            e.ToTable("work_order_history"); e.HasKey(x => x.Id);
+            e.Property(x => x.ActorId).HasMaxLength(450);
+            e.Property(x => x.Action).HasMaxLength(80);
+            e.Property(x => x.Note).HasMaxLength(2000);
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(32);
+            e.Property(x => x.Visibility).HasConversion<string>().HasMaxLength(32);
+            e.HasIndex(x => new { x.WorkOrderId, x.OccurredAt, x.Id });
+            e.HasOne<WorkOrder>().WithMany().HasForeignKey(x => x.WorkOrderId).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<MaintenanceReceipt>(e =>
+        {
+            e.ToTable("maintenance_receipts"); e.HasKey(x => new { x.ActorId, x.OperationId });
+            e.Property(x => x.ActorId).HasMaxLength(450);
+            e.Property(x => x.PayloadHash).HasMaxLength(64);
+            e.Property(x => x.ResultStatus).HasConversion<string>().HasMaxLength(32);
+            e.HasOne<WorkOrder>().WithMany().HasForeignKey(x => x.WorkOrderId).OnDelete(DeleteBehavior.Restrict);
+        });
         model.Entity<AccountAudit>(e =>
         {
             e.ToTable("account_audit"); e.HasKey(x => x.Id);

@@ -17,7 +17,7 @@ public sealed class AccountInvitations(OfficeDbContext db, UserManager<OfficeUse
     {
         var initial = await current.GetAsync(cancellationToken);
         if (initial is null) return null;
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await AuthorityLocks.BeginAsync(db, cancellationToken);
         await AuthorityLocks.UserAsync(db, initial.UserId, cancellationToken);
         var suite = await db.Suites.AsNoTracking().SingleOrDefaultAsync(x => x.Id == suiteId, cancellationToken);
         if (suite is null) return null;

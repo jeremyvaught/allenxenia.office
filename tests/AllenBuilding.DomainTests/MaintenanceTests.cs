@@ -8,6 +8,20 @@ public sealed class MaintenanceTests
     private static WorkOrder NewRequest() => WorkOrder.Submit(Guid.NewGuid(), Guid.NewGuid(), "tenant", "Leaking sink", "Water under basin", "Suite kitchen", Now);
 
     [Fact]
+    public void Comments_preserve_a_finished_status_but_invalidate_stale_review_versions()
+    {
+        var request = NewRequest();
+        request.Cancel("Tenant withdrew request", Now);
+        var version = request.Version;
+        request.RecordComment("Thank you for the update", Now.AddMinutes(1));
+        Assert.Equal(WorkOrderStatus.Cancelled, request.Status);
+        Assert.NotEqual(version, request.Version);
+        var commentedVersion = request.Version;
+        Assert.Throws<ArgumentException>(() => request.RecordComment(new string('x', 2001), Now));
+        Assert.Equal(commentedVersion, request.Version);
+    }
+
+    [Fact]
     public void Completion_requires_separate_manager_verification()
     {
         var request = NewRequest();

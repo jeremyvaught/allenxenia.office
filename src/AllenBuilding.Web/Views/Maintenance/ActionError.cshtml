@@ -1,0 +1,7 @@
+@model AllenBuilding.Application.Maintenance.MaintenanceCode
+@{ ViewData["Title"] = "Action needs attention"; }
+<div class="page"><section class="form-panel">
+    <h1 class="mb-4 text-3xl font-semibold">@(Model == AllenBuilding.Application.Maintenance.MaintenanceCode.Conflict ? "This request has changed" : "Check your information")</h1>
+    <p class="mb-6 text-muted">@(Model == AllenBuilding.Application.Maintenance.MaintenanceCode.Conflict ? "Reload the request and review its current state before trying again. A previous submission may already have completed." : "Check the required fields and limits, then try again. Nothing was saved for this action.")</p>
+    <a asp-controller="Portal" asp-action="Index" class="button">Return to your office</a>
+</section></div>

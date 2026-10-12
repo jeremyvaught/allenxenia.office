@@ -17,6 +17,53 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
 
+            modelBuilder.Entity("AllenBuilding.Domain.Maintenance.MaintenanceReceipt", b =>
+                {
+                    b.Property<string>("ActorId")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("actor_id");
+
+                    b.Property<string>("OperationId")
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("operation_id");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<string>("PayloadHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("payload_hash");
+
+                    b.Property<string>("ResultStatus")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("result_status");
+
+                    b.Property<string>("ResultVersion")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("result_version");
+
+                    b.Property<string>("WorkOrderId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("work_order_id");
+
+                    b.HasKey("ActorId", "OperationId");
+
+                    b.HasIndex("WorkOrderId");
+
+                    b.ToTable("maintenance_receipts", (string)null);
+                });
+
             modelBuilder.Entity("AllenBuilding.Domain.Maintenance.WorkOrder", b =>
                 {
                     b.Property<string>("Id")
@@ -116,6 +163,60 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                     b.HasIndex("SuiteId", "Status", "CreatedAt", "Id");
 
                     b.ToTable("work_orders", (string)null);
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Maintenance.WorkOrderHistory", b =>
+                {
+                    b.Property<string>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("action");
+
+                    b.Property<string>("ActorId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("actor_id");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("note");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Visibility")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("visibility");
+
+                    b.Property<string>("WorkOrderId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("work_order_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WorkOrderId", "OccurredAt", "Id");
+
+                    b.ToTable("work_order_history", (string)null);
                 });
 
             modelBuilder.Entity("AllenBuilding.Domain.Tenancy.AccountAudit", b =>
@@ -639,6 +740,15 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                     b.ToTable("asp_net_user_tokens", (string)null);
                 });
 
+            modelBuilder.Entity("AllenBuilding.Domain.Maintenance.MaintenanceReceipt", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Maintenance.WorkOrder", null)
+                        .WithMany()
+                        .HasForeignKey("WorkOrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("AllenBuilding.Domain.Maintenance.WorkOrder", b =>
                 {
                     b.HasOne("AllenBuilding.Infrastructure.Identity.OfficeUser", null)
@@ -657,6 +767,15 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .WithMany()
                         .HasForeignKey("RequesterMembershipId", "SuiteId", "RequesterUserId")
                         .HasPrincipalKey("Id", "SuiteId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Maintenance.WorkOrderHistory", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Maintenance.WorkOrder", null)
+                        .WithMany()
+                        .HasForeignKey("WorkOrderId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

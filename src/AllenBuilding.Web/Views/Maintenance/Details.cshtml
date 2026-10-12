@@ -1,0 +1,70 @@
+@model AllenBuilding.Application.Maintenance.RequestDetails
+@using AllenBuilding.Application.Maintenance
+@using AllenBuilding.Domain.Maintenance
+@{ ViewData["Title"] = "Maintenance request"; var manager = ViewData["Manager"] is true; }
+<div class="page">
+    <a asp-action="@(manager ? "Manage" : "Index")" class="mb-6 flex min-h-11 items-center underline">Back to requests</a>
+    <div class="mb-8"><p class="mb-2 text-sm text-muted">@Model.Suite · @MaintenanceText.Status(Model.Status)</p><h1 class="break-words text-3xl font-semibold sm:text-4xl">@Model.Title</h1></div>
+    <div class="grid items-start gap-6 lg:grid-cols-3">
+        <div class="min-w-0 space-y-6 lg:col-span-2">
+            <section class="rounded-2xl border border-line bg-panel p-6">
+                <h2 class="mb-4 text-xl font-semibold">Issue details</h2><p class="mb-3 text-muted">Location: @Model.Location</p><p class="whitespace-pre-wrap break-words">@Model.Description</p>
+                @if (Model.Priority is not null) { <p class="mt-4 text-sm text-muted">Priority: @Model.Priority · Trade: @MaintenanceText.Trade(Model.Trade)</p> }
+                @if (Model.Resolution is not null) { <h3 class="mt-6 mb-2 font-semibold">Resolution</h3><p class="whitespace-pre-wrap break-words">@Model.Resolution</p> }
+            </section>
+            <section class="rounded-2xl border border-line bg-panel p-6">
+                <h2 class="mb-4 text-xl font-semibold">Add a comment</h2>
+                <form asp-action="@(manager ? "ManageChange" : "Change")" method="post" class="space-y-4">
+                    <input name="OperationId" value="@Guid.NewGuid()" type="hidden" /><input name="WorkOrderId" value="@Model.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" /><input name="Action" value="Comment" type="hidden" />
+                    <label for="comment" class="block">Your comment</label><textarea id="comment" name="Note" maxlength="2000" rows="4" required class="field"></textarea>
+                    @if (manager) { <label class="flex min-h-11 items-center gap-3"><input name="Internal" value="true" type="checkbox" /> Internal note — visible only to management</label> }
+                    <button class="button">Add comment</button>
+                </form>
+            </section>
+            <section class="rounded-2xl border border-line bg-panel p-6">
+                <h2 class="mb-5 text-xl font-semibold">Request history</h2><ol class="space-y-5">
+                @foreach (var entry in Model.History)
+                {
+                    <li class="border-l-2 border-line pl-4"><p class="font-semibold">@MaintenanceText.History(entry.Action) · @MaintenanceText.Status(entry.Status) @(entry.Internal ? "· Internal note" : "")</p><time datetime="@entry.At.ToString("O")" class="text-sm text-muted">@entry.At.ToString("MMM d, yyyy HH:mm 'UTC'")</time>
+                        @if (entry.Note is not null) { <p class="mt-2 whitespace-pre-wrap break-words">@entry.Note</p> }
+                    </li>
+                }
+                </ol>
+                @if (Model.History.Count == 100) { <p class="mt-4 text-sm text-muted">Showing the 100 most recent history entries.</p> }
+            </section>
+        </div>
+        @if (manager)
+        {
+            <section class="rounded-2xl border border-line bg-panel p-6">
+                <h2 class="mb-4 text-xl font-semibold">Next step</h2>
+                @if (Model.Status == WorkOrderStatus.Completed) { <p class="mb-4 text-muted">Completion is recorded. Verify the work before closing this request.</p> }
+                @{
+                    var choices = new List<MaintenanceAction>();
+                    if (Model.Status == WorkOrderStatus.Submitted) choices.Add(MaintenanceAction.Triage);
+                    if (Model.Status is WorkOrderStatus.Triaged or WorkOrderStatus.Assigned or WorkOrderStatus.InProgress) choices.Add(MaintenanceAction.AssignSelf);
+                    if (Model.Status == WorkOrderStatus.Assigned) choices.Add(MaintenanceAction.Start);
+                    if (Model.Status == WorkOrderStatus.InProgress) choices.Add(MaintenanceAction.Complete);
+                    if (Model.Status == WorkOrderStatus.Completed) choices.Add(MaintenanceAction.Close);
+                    if (Model.Status is not (WorkOrderStatus.Closed or WorkOrderStatus.Cancelled)) choices.Add(MaintenanceAction.Cancel);
+                    if (Model.Status is WorkOrderStatus.Closed or WorkOrderStatus.Completed or WorkOrderStatus.Cancelled) choices.Add(MaintenanceAction.Reopen);
+                }
+                @foreach (var action in choices)
+                {
+                    <form asp-action="ManageChange" method="post" class="mb-5 space-y-3 border-b border-line pb-5">
+                        <input name="OperationId" value="@Guid.NewGuid()" type="hidden" /><input name="WorkOrderId" value="@Model.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" /><input name="Action" value="@action" type="hidden" />
+                        @if (action == MaintenanceAction.Triage)
+                        {
+                            <label for="priority" class="block">Priority</label><select id="priority" name="Priority" class="field" asp-items="Html.GetEnumSelectList<Priority>()"></select>
+                            <label for="trade" class="block">Trade</label><select id="trade" name="Trade" class="field" asp-items="Html.GetEnumSelectList<Trade>()"></select>
+                        }
+                        @if (action is MaintenanceAction.Complete or MaintenanceAction.Cancel or MaintenanceAction.Reopen)
+                        {
+                            <label for="note-@action" class="block">@(action == MaintenanceAction.Complete ? "Resolution" : "Explanation")</label><textarea id="note-@action" name="Note" maxlength="2000" rows="3" required class="field"></textarea>
+                        }
+                        <button class="quiet-button w-full">@(action == MaintenanceAction.AssignSelf ? "Assign to me" : action == MaintenanceAction.Close ? "Verify work and close" : action.ToString())</button>
+                    </form>
+                }
+            </section>
+        }
+    </div>
+</div>

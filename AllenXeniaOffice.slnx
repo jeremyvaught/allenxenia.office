@@ -6,6 +6,7 @@
     <Project Path="src/AllenBuilding.Web/AllenBuilding.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/AllenBuilding.BrowserFixture/AllenBuilding.BrowserFixture.csproj" />
     <Project Path="tests/AllenBuilding.DomainTests/AllenBuilding.DomainTests.csproj" />
     <Project Path="tests/AllenBuilding.IntegrationTests/AllenBuilding.IntegrationTests.csproj" />
   </Folder>

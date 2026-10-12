@@ -106,6 +106,7 @@ public sealed class PersistenceTests
             Assert.Equal(WorkOrderStatus.Triaged, (await db.WorkOrders.SingleAsync(x => x.Id == request.Id)).Status);
         }
         await VerifyProtectedIdentity(create);
+        await MaintenanceContract.VerifyAsync(create);
     }
 
     private static async Task VerifyProtectedIdentity(Func<OfficeDbContext> create)

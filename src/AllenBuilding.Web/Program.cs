@@ -8,11 +8,15 @@ using Microsoft.EntityFrameworkCore;
 var migrate = args.Contains("--migrate", StringComparer.Ordinal);
 var bootstrap = args.Contains("--bootstrap-manager", StringComparer.Ordinal);
 var builder = WebApplication.CreateBuilder(args.Where(x => x != "--migrate" && x != "--bootstrap-manager").ToArray());
+if (builder.Environment.IsEnvironment("Testing")) builder.WebHost.UseStaticWebAssets();
 builder.Services.AddControllersWithViews(options =>
     options.Filters.Add(new Microsoft.AspNetCore.Mvc.AutoValidateAntiforgeryTokenAttribute()));
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddOfficeStorage(builder.Configuration, builder.Environment);
 builder.AddOfficeSecurity();
+builder.Services.AddScoped<AllenBuilding.Application.Maintenance.IMaintenanceStore, MaintenanceStore>();
+builder.Services.AddScoped<AllenBuilding.Application.Maintenance.MaintenanceActions>();
+builder.Services.AddScoped<AccessRevocation>();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;

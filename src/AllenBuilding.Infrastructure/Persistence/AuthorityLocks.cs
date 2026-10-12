@@ -1,4 +1,6 @@
+using System.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace AllenBuilding.Infrastructure.Persistence;
 
@@ -6,6 +8,14 @@ namespace AllenBuilding.Infrastructure.Persistence;
 // MySQL requires row locks so revocation and action admission share a serialization point.
 public static class AuthorityLocks
 {
+    public static Task<IDbContextTransaction> BeginAsync(OfficeDbContext db, CancellationToken cancellationToken = default)
+        => db.Database.BeginTransactionAsync(db is MySqlOfficeDbContext ? IsolationLevel.ReadCommitted : IsolationLevel.Serializable, cancellationToken);
+
+    public static async Task WorkOrderAsync(OfficeDbContext db, Guid orderId, CancellationToken cancellationToken = default)
+    {
+        if (db is MySqlOfficeDbContext)
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT id FROM work_orders WHERE id = {orderId.ToString("D")} FOR UPDATE", cancellationToken);
+    }
     public static async Task UserAsync(OfficeDbContext db, string userId, CancellationToken cancellationToken = default)
     {
         if (db is MySqlOfficeDbContext)

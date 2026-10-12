@@ -113,6 +113,12 @@ public sealed class WorkOrder
         Changed(now);
     }
 
+    public void RecordComment(string text, DateTimeOffset now)
+    {
+        Required(text, 2000);
+        Changed(now);
+    }
+
     private void Require(WorkOrderStatus required)
     {
         if (Status != required) throw new InvalidOperationException($"Request must be {required} for this action.");

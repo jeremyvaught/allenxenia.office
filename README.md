@@ -17,7 +17,7 @@ dotnet test --configuration Release --no-build
 dotnet run --project src/AllenBuilding.Web
 ```
 
-The foundation includes invitation-only Identity accounts, challenged manager MFA, recovery, persistent protected keys and separate SQLite/MySQL migrations. Maintenance and external delivery are still being built. No production readiness is claimed. Local migrations create an empty database, not default tenant credentials. Never use real tenants or payments in test fixtures.
+The application includes invitation-only accounts, challenged manager MFA, recovery, persistent protected keys, private maintenance requests and separate SQLite/MySQL migrations. External delivery and later PRD phases are still being built. No production readiness is claimed. Local migrations create an empty database, not default tenant credentials. Never use real tenants or payments in test fixtures.
 
 After migrating an empty local database, create its first manager interactively:
 
@@ -30,6 +30,12 @@ The command takes a hidden password, refuses to bootstrap once any account exist
 Managers can add suites and record invitations for new accounts. Acceptance consumes a seven-day Identity token and grants exactly the recorded suite in one transaction. Account tokens are read from URL fragments into antiforgery-protected forms so they do not enter request URLs. Password reset tokens expire after two hours; recovery never grants membership. Invitation, reset and security messages are encrypted in a durable queue; **email delivery is not connected yet**. Existing-account suite grants, expired-invitation reissue and operator-assisted lost-device recovery are later increments. A valid recovery-code sign-in can reset a lost authenticator; it revokes sessions and requires enrollment again. Recovery codes are hashed, single use and require replenishment before manager authority returns.
 
 Local protected keys live in ignored `.data/keys` with a restricted directory. Production requires a persistent `Protection__KeyDirectory`, a private wrapping `Protection__CertificatePath` and any `Protection__CertificatePassword` via restricted configuration. Preserve the key directory and wrapping certificate independently of releases and test their recovery. Host-specific certificate provisioning and off-host backup/restore remain release gates. Account rate limits currently partition by the direct peer IP; configure and verify trusted reverse-proxy forwarding before production, never trust arbitrary forwarded headers.
+
+## Maintenance milestone
+
+An active tenant can submit, read and comment on their original membership's requests. A different user sharing the suite cannot read them; a returning grant cannot restore access to an ended grant's records. Managers use explicitly separate building-scoped queries and must complete an MFA challenge. They can triage, assign to themselves, start, complete, separately verify/close, cancel, reopen and add tenant-visible or internal comments. Assignment to another manager/contractor and contractor records remain planned.
+
+Shared application actions enforce the domain state machine. Each successful change commits the request, history, encrypted notification messages and an actor-scoped replay receipt together. Exact operation/payload replay returns the committed result; changed operation reuse or stale versions returns a conflict. User, membership and manager admission locks serialize access changes; MySQL uses short READ COMMITTED transactions with explicit row locks, while SQLite uses immediate write transactions. Access revocation commits locally without contacting billing or email providers, retains existing records, and does not terminate rent consent. Notifications remain queued until delivery is connected.
 
 ## Architecture and authority
 
@@ -68,6 +74,6 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-Browser tests cover System/OS changes, explicit preference across reloads, CSS delivery and 320px layout on desktop/mobile emulation. They use their own server on loopback port 5088. Emulation is not evidence of a real iPhone/Android acceptance run. `npm run dev:css` watches styles during development; rebuild CSS before .NET build/publish so static-asset manifests include it.
+Browser tests cover System/OS changes, explicit preference across reloads, CSS delivery and a full tenant/manager maintenance workflow at 320px in both themes. They create their own synthetic SQLite database, protected keys and accounts under ignored `artifacts/browser-fixture`, and start an isolated server on loopback port 5088. No test-only enrollment route exists in the application. Screenshots live under `artifacts/browser`. Emulation is not evidence of a real iPhone/Android acceptance run. `npm run dev:css` watches styles during development; rebuild CSS before .NET build/publish so static-asset manifests include it.
 
 The build pins `@parcel/watcher` 2.6.0 through an npm override to remove the unpatched `braces` dependency found during the initial audit. Recheck CSS compilation and watch behavior when changing that pin.
