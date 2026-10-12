@@ -23,7 +23,13 @@ public sealed class ChangeRequestForm
     [EnumDataType(typeof(Trade))] public Trade? Trade { get; set; }
     [StringLength(2000)] public string? Note { get; set; }
     public bool Internal { get; set; }
-    public ChangeRequest Command() => new(OperationId, WorkOrderId, Version, Action, Priority, Trade, Note, Internal);
+    [StringLength(500)] public string? Assignee { get; set; }
+    public ChangeRequest Command()
+    {
+        var manager = Assignee?.StartsWith("manager:", StringComparison.Ordinal) == true ? Assignee[8..] : null;
+        Guid? contractor = Assignee?.StartsWith("contractor:", StringComparison.Ordinal) == true && Guid.TryParse(Assignee[11..], out var id) ? id : null;
+        return new(OperationId, WorkOrderId, Version, Action, Priority, Trade, Note, Internal, manager, contractor);
+    }
 }
 
 public sealed record MembershipChoice(Guid Id, string Suite);

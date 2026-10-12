@@ -43,8 +43,26 @@ public sealed class MaintenanceStore(OfficeDbContext db, ICurrentActor current, 
             .OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.Id).Take(100)
             .Select(x => new HistoryEntry(x.Action, x.Status, x.Note, x.Visibility == HistoryVisibility.Internal, x.OccurredAt))
             .ToListAsync(cancellationToken);
+        string? assignment = null;
+        if (order.AssignedContractorId is { } contactId)
+            assignment = await db.Contractors.Where(x => x.Id == contactId).Select(x => x.Name).SingleAsync(cancellationToken);
+        if (order.AssignedManagerId is { } managerId)
+            assignment = await db.Users.Where(x => x.Id == managerId).Select(x => x.DisplayName == "" ? "Building manager" : x.DisplayName).SingleAsync(cancellationToken);
+        IReadOnlyList<AssigneeChoice>? choices = null;
+        if (management)
+        {
+            var building = await db.Suites.Where(x => x.Id == order.SuiteId).Select(x => x.BuildingId).SingleAsync(cancellationToken);
+            var managers = await (from grant in db.BuildingManagers
+                                  join user in db.Users on grant.UserId equals user.Id
+                                  where grant.BuildingId == building
+                                  orderby user.DisplayName, user.Id
+                                  select new AssigneeChoice("manager:" + user.Id, user.DisplayName == "" ? user.UserName! : user.DisplayName)).Take(100).ToListAsync(cancellationToken);
+            var contractors = await db.Contractors.Where(x => x.BuildingId == building && x.Active).OrderBy(x => x.Name).ThenBy(x => x.Id)
+                .Take(100).ToListAsync(cancellationToken);
+            choices = managers.Concat(contractors.Select(x => new AssigneeChoice("contractor:" + x.Id.ToString("D"), x.Name + " (contractor)"))).ToList();
+        }
         return new(order.Id, order.Version, suite, order.Title, order.Description, order.Location, order.Status,
-            order.Priority, order.Trade, order.Resolution, history);
+            order.Priority, order.Trade, order.Resolution, history, assignment, choices);
     }
 
     public async Task<MaintenanceResult> SubmitAsync(Actor actor, SubmitRequest command, string hash, DateTimeOffset now, CancellationToken cancellationToken)
@@ -82,7 +100,9 @@ public sealed class MaintenanceStore(OfficeDbContext db, ICurrentActor current, 
         if (management)
         {
             var building = await db.Suites.Where(x => x.Id == identity.SuiteId).Select(x => x.BuildingId).SingleAsync(cancellationToken);
-            await AuthorityLocks.ManagerAsync(db, actor.UserId, building, cancellationToken);
+            if (command.Action == MaintenanceAction.Assign)
+                await AuthorityLocks.AssignmentManagersAsync(db, actor.UserId, command.ManagerId, building, cancellationToken);
+            else await AuthorityLocks.ManagerAsync(db, actor.UserId, building, cancellationToken);
         }
         else await AuthorityLocks.MembershipAsync(db, identity.RequesterMembershipId, cancellationToken);
         await AuthorityLocks.WorkOrderAsync(db, command.WorkOrderId, cancellationToken);
@@ -93,10 +113,32 @@ public sealed class MaintenanceStore(OfficeDbContext db, ICurrentActor current, 
         var replay = await Replay(actor.UserId, command.OperationId, hash, cancellationToken);
         if (replay is not null) return replay;
         if (order.Version != command.Version) return new(MaintenanceCode.Conflict);
+        string? assignmentNote = null;
+        if (command.Action is MaintenanceAction.Assign or MaintenanceAction.AssignSelf)
+        {
+            var building = await db.Suites.Where(x => x.Id == order.SuiteId).Select(x => x.BuildingId).SingleAsync(cancellationToken);
+            if (command.Action == MaintenanceAction.Assign && command.ContractorId is { } contractorId)
+            {
+                await AuthorityLocks.ContractorAsync(db, contractorId, cancellationToken);
+                var contact = await db.Contractors.AsNoTracking().SingleOrDefaultAsync(x => x.Id == contractorId && x.BuildingId == building && x.Active, cancellationToken);
+                if (contact is null) return new(MaintenanceCode.Unavailable);
+                assignmentNote = "Assigned to " + contact.Name + " (contractor).";
+            }
+            else
+            {
+                var target = command.Action == MaintenanceAction.AssignSelf ? actor.UserId : command.ManagerId;
+                var name = await (from grant in db.BuildingManagers
+                                  join user in db.Users on grant.UserId equals user.Id
+                                  where grant.BuildingId == building && grant.UserId == target
+                                  select user.DisplayName == "" ? "Building manager" : user.DisplayName).SingleOrDefaultAsync(cancellationToken);
+                if (name is null) return new(MaintenanceCode.Unavailable);
+                assignmentNote = "Assigned to " + name + ".";
+            }
+        }
         try { mutation(order); }
         catch (ArgumentException) { return new(MaintenanceCode.ValidationFailed); }
         catch (InvalidOperationException) { return new(MaintenanceCode.Conflict); }
-        await Record(actor.UserId, command.OperationId, hash, order, command.Action.ToString(), command.Note?.Trim(), command.Internal, now, cancellationToken);
+        await Record(actor.UserId, command.OperationId, hash, order, command.Action.ToString(), assignmentNote ?? command.Note?.Trim(), command.Internal, now, cancellationToken);
         try
         {
             await db.SaveChangesAsync(cancellationToken); await transaction.CommitAsync(cancellationToken);

@@ -17,6 +17,62 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
 
+            modelBuilder.Entity("AllenBuilding.Domain.Maintenance.Contractor", b =>
+                {
+                    b.Property<string>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("active");
+
+                    b.Property<string>("BuildingId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("building_id");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("email");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("phone");
+
+                    b.Property<string>("Trade")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("trade");
+
+                    b.Property<string>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BuildingId", "Active", "Name", "Id");
+
+                    b.ToTable("contractors", (string)null);
+                });
+
             modelBuilder.Entity("AllenBuilding.Domain.Maintenance.MaintenanceReceipt", b =>
                 {
                     b.Property<string>("ActorId")
@@ -155,6 +211,10 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .HasColumnName("version");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AssignedContractorId");
+
+                    b.HasIndex("AssignedManagerId");
 
                     b.HasIndex("RequesterUserId");
 
@@ -794,6 +854,15 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                     b.ToTable("asp_net_user_tokens", (string)null);
                 });
 
+            modelBuilder.Entity("AllenBuilding.Domain.Maintenance.Contractor", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Tenancy.Building", null)
+                        .WithMany()
+                        .HasForeignKey("BuildingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("AllenBuilding.Domain.Maintenance.MaintenanceReceipt", b =>
                 {
                     b.HasOne("AllenBuilding.Domain.Maintenance.WorkOrder", null)
@@ -805,6 +874,16 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
 
             modelBuilder.Entity("AllenBuilding.Domain.Maintenance.WorkOrder", b =>
                 {
+                    b.HasOne("AllenBuilding.Domain.Maintenance.Contractor", null)
+                        .WithMany()
+                        .HasForeignKey("AssignedContractorId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("AllenBuilding.Infrastructure.Identity.OfficeUser", null)
+                        .WithMany()
+                        .HasForeignKey("AssignedManagerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("AllenBuilding.Infrastructure.Identity.OfficeUser", null)
                         .WithMany()
                         .HasForeignKey("RequesterUserId")

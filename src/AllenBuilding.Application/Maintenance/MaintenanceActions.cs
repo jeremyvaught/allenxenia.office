@@ -40,7 +40,8 @@ public sealed class MaintenanceActions(ICurrentActor current, IMaintenanceStore 
         if (command.OperationId == Guid.Empty || command.WorkOrderId == Guid.Empty || command.Version == Guid.Empty ||
             !Enum.IsDefined(command.Action) || (command.Internal && command.Action != MaintenanceAction.Comment) ||
             (command.Priority is { } priority && !Enum.IsDefined(priority)) || (command.Trade is { } trade && !Enum.IsDefined(trade)) ||
-            (command.Note?.Length > 2000)) return new(MaintenanceCode.ValidationFailed);
+            (command.Note?.Length > 2000) || command.ManagerId?.Length > 450 ||
+            (command.Action == MaintenanceAction.Assign && (string.IsNullOrWhiteSpace(command.ManagerId) == (command.ContractorId is null || command.ContractorId == Guid.Empty)))) return new(MaintenanceCode.ValidationFailed);
         var now = time.GetUtcNow();
         void Mutate(WorkOrder order)
         {
@@ -48,6 +49,7 @@ public sealed class MaintenanceActions(ICurrentActor current, IMaintenanceStore 
             {
                 case MaintenanceAction.Triage: order.Triage(command.Priority ?? throw new ArgumentException(), command.Trade ?? throw new ArgumentException(), now); break;
                 case MaintenanceAction.AssignSelf: order.Assign(actor.UserId, null, now); break;
+                case MaintenanceAction.Assign: order.Assign(command.ManagerId, command.ContractorId, now); break;
                 case MaintenanceAction.Start: order.Start(now); break;
                 case MaintenanceAction.Complete: order.Complete(command.Note ?? "", now); break;
                 case MaintenanceAction.Close: order.Close(now); break;

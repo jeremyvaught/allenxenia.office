@@ -11,6 +11,20 @@ public static class AuthorityLocks
     public static Task<IDbContextTransaction> BeginAsync(OfficeDbContext db, CancellationToken cancellationToken = default)
         => db.Database.BeginTransactionAsync(db is MySqlOfficeDbContext ? IsolationLevel.ReadCommitted : IsolationLevel.Serializable, cancellationToken);
 
+    public static async Task ContractorAsync(OfficeDbContext db, Guid id, CancellationToken cancellationToken = default)
+    {
+        if (db is MySqlOfficeDbContext)
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT id FROM contractors WHERE id = {id.ToString("D")} FOR UPDATE", cancellationToken);
+    }
+
+    public static async Task AssignmentManagersAsync(OfficeDbContext db, string actorId, string? targetId, Guid buildingId, CancellationToken cancellationToken)
+    {
+        // Shared locks prevent grant removal; fixed ordering avoids cross-assignment cycles.
+        foreach (var id in new[] { actorId, targetId }.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().Order(StringComparer.Ordinal))
+            if (db is MySqlOfficeDbContext)
+                await db.Database.ExecuteSqlInterpolatedAsync($"SELECT user_id FROM building_managers WHERE user_id = {id} AND building_id = {buildingId.ToString("D")} FOR SHARE", cancellationToken);
+    }
+
     public static async Task WorkOrderAsync(OfficeDbContext db, Guid orderId, CancellationToken cancellationToken = default)
     {
         if (db is MySqlOfficeDbContext)

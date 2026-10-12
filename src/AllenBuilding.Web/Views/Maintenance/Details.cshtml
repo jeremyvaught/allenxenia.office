@@ -9,6 +9,7 @@
         <div class="min-w-0 space-y-6 lg:col-span-2">
             <section class="rounded-2xl border border-line bg-panel p-6">
                 <h2 class="mb-4 text-xl font-semibold">Issue details</h2><p class="mb-3 text-muted">Location: @Model.Location</p><p class="whitespace-pre-wrap break-words">@Model.Description</p>
+                @if (Model.Assignment is not null) { <p class="mt-4 text-sm text-muted">Assigned to: @Model.Assignment</p> }
                 @if (Model.Priority is not null) { <p class="mt-4 text-sm text-muted">Priority: @Model.Priority · Trade: @MaintenanceText.Trade(Model.Trade)</p> }
                 @if (Model.Resolution is not null) { <h3 class="mt-6 mb-2 font-semibold">Resolution</h3><p class="whitespace-pre-wrap break-words">@Model.Resolution</p> }
             </section>
@@ -41,7 +42,7 @@
                 @{
                     var choices = new List<MaintenanceAction>();
                     if (Model.Status == WorkOrderStatus.Submitted) choices.Add(MaintenanceAction.Triage);
-                    if (Model.Status is WorkOrderStatus.Triaged or WorkOrderStatus.Assigned or WorkOrderStatus.InProgress) choices.Add(MaintenanceAction.AssignSelf);
+                    if (Model.Status is WorkOrderStatus.Triaged or WorkOrderStatus.Assigned or WorkOrderStatus.InProgress) { choices.Add(MaintenanceAction.AssignSelf); choices.Add(MaintenanceAction.Assign); }
                     if (Model.Status == WorkOrderStatus.Assigned) choices.Add(MaintenanceAction.Start);
                     if (Model.Status == WorkOrderStatus.InProgress) choices.Add(MaintenanceAction.Complete);
                     if (Model.Status == WorkOrderStatus.Completed) choices.Add(MaintenanceAction.Close);
@@ -52,6 +53,11 @@
                 {
                     <form asp-action="ManageChange" method="post" class="mb-5 space-y-3 border-b border-line pb-5">
                         <input name="OperationId" value="@Guid.NewGuid()" type="hidden" /><input name="WorkOrderId" value="@Model.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" /><input name="Action" value="@action" type="hidden" />
+                        @if (action == MaintenanceAction.Assign)
+                        {
+                            <label for="assignee" class="block">Assign to</label><select id="assignee" name="Assignee" class="field" required><option value="">Choose a manager or contractor</option>
+                            @foreach (var assignee in Model.Assignees ?? []) { <option value="@assignee.Value">@assignee.Label</option> }</select>
+                        }
                         @if (action == MaintenanceAction.Triage)
                         {
                             <label for="priority" class="block">Priority</label><select id="priority" name="Priority" class="field" asp-items="Html.GetEnumSelectList<Priority>()"></select>
@@ -61,7 +67,7 @@
                         {
                             <label for="note-@action" class="block">@(action == MaintenanceAction.Complete ? "Resolution" : "Explanation")</label><textarea id="note-@action" name="Note" maxlength="2000" rows="3" required class="field"></textarea>
                         }
-                        <button class="quiet-button w-full">@(action == MaintenanceAction.AssignSelf ? "Assign to me" : action == MaintenanceAction.Close ? "Verify work and close" : action.ToString())</button>
+                        <button class="quiet-button w-full">@(action == MaintenanceAction.AssignSelf ? "Assign to me" : action == MaintenanceAction.Assign ? "Save assignment" : action == MaintenanceAction.Close ? "Verify work and close" : action.ToString())</button>
                     </form>
                 }
             </section>

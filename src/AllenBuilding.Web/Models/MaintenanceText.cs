@@ -10,6 +10,7 @@ public static class MaintenanceText
     {
         "Submitted" => "Request submitted",
         "Triage" => "Priority and trade set",
+        "Assign" => "Assignment updated",
         "AssignSelf" => "Assigned to manager",
         "Start" => "Work started",
         "Complete" => "Work completed",

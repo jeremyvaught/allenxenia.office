@@ -13,6 +13,7 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
     public DbSet<Suite> Suites => Set<Suite>();
     public DbSet<Membership> Memberships => Set<Membership>();
     public DbSet<ActiveGrant> ActiveGrants => Set<ActiveGrant>();
+    public DbSet<Contractor> Contractors => Set<Contractor>();
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
     public DbSet<BuildingManager> BuildingManagers => Set<BuildingManager>();
     public DbSet<Invitation> Invitations => Set<Invitation>();
@@ -119,6 +120,16 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
             e.HasOne<Suite>().WithMany().HasForeignKey(x => x.SuiteId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         });
+        model.Entity<Contractor>(e =>
+        {
+            e.ToTable("contractors"); e.HasKey(x => x.Id);
+            e.Property(x => x.Name).HasMaxLength(160).IsRequired();
+            e.Property(x => x.Trade).HasConversion<string>().HasMaxLength(32);
+            e.Property(x => x.Email).HasMaxLength(254); e.Property(x => x.Phone).HasMaxLength(80);
+            e.Property(x => x.Version).IsConcurrencyToken();
+            e.HasIndex(x => new { x.BuildingId, x.Active, x.Name, x.Id });
+            e.HasOne<Building>().WithMany().HasForeignKey(x => x.BuildingId).OnDelete(DeleteBehavior.Restrict);
+        });
         model.Entity<WorkOrder>(e =>
         {
             e.ToTable("work_orders"); e.HasKey(x => x.Id);
@@ -128,6 +139,8 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
             e.Property(x => x.Location).HasMaxLength(160).IsRequired();
             e.Property(x => x.Resolution).HasMaxLength(2000);
             e.Property(x => x.AssignedManagerId).HasMaxLength(450);
+            e.HasOne<Contractor>().WithMany().HasForeignKey(x => x.AssignedContractorId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.AssignedManagerId).OnDelete(DeleteBehavior.Restrict);
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(32);
             e.Property(x => x.Priority).HasConversion<string>().HasMaxLength(32);
             e.Property(x => x.Trade).HasConversion<string>().HasMaxLength(32);

@@ -20,6 +20,8 @@ builder.AddOfficeNotifications();
 builder.Services.AddScoped<AllenBuilding.Application.Maintenance.IMaintenanceStore, MaintenanceStore>();
 builder.Services.AddScoped<AllenBuilding.Application.Maintenance.MaintenanceActions>();
 builder.Services.AddScoped<AccessRevocation>();
+builder.Services.AddScoped<AllenBuilding.Application.Maintenance.IContractorStore, ContractorStore>();
+builder.Services.AddScoped<AllenBuilding.Application.Maintenance.ContractorActions>();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;

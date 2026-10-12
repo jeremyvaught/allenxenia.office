@@ -25,6 +25,7 @@ public static class MaintenanceContract
         services.AddScoped<TestActor>(); services.AddScoped<ICurrentActor>(sp => sp.GetRequiredService<TestActor>());
         services.AddScoped<AccountInvitations>(); services.AddScoped<AccessRevocation>();
         services.AddScoped<IMaintenanceStore, MaintenanceStore>(); services.AddScoped<MaintenanceActions>();
+        services.AddScoped<IContractorStore, ContractorStore>(); services.AddScoped<ContractorActions>();
         await using var provider = services.BuildServiceProvider();
         string tenantId, peerId, managerId, secondManagerId; Guid suiteId, membershipId, buildingId;
         using (var scope = provider.CreateScope())
@@ -83,6 +84,43 @@ public static class MaintenanceContract
         var triaged = await As(manager, sp => sp.GetRequiredService<MaintenanceActions>().ChangeAsync(triage, true)); Assert.Equal(MaintenanceCode.Success, triaged.Code);
         Assert.Equal(triaged, await As(manager, sp => sp.GetRequiredService<MaintenanceActions>().ChangeAsync(triage, true)));
         Assert.Equal(MaintenanceCode.Conflict, (await As(manager, sp => sp.GetRequiredService<MaintenanceActions>().ChangeAsync(triage with { OperationId = Guid.NewGuid() }, true))).Code);
+        var contactCommand = new SaveContractor(Guid.NewGuid(), buildingId, null, "Reliable plumbing", Trade.Plumbing, "contractor@example.test", "555-0100");
+        Assert.Equal(MaintenanceCode.Unavailable, await As(tenant, sp => sp.GetRequiredService<ContractorActions>().SaveAsync(contactCommand)));
+        Assert.Equal(MaintenanceCode.Success, await As(manager, sp => sp.GetRequiredService<ContractorActions>().SaveAsync(contactCommand)));
+        var contact = (await As(manager, sp => sp.GetRequiredService<ContractorActions>().ListAsync())).Single(x => x.Id == contactCommand.Id);
+        var assignContact = new ChangeRequest(Guid.NewGuid(), id, triaged.Version!.Value, MaintenanceAction.Assign, ContractorId: contact.Id);
+        var assignedContact = await As(manager, sp => sp.GetRequiredService<MaintenanceActions>().ChangeAsync(assignContact, true));
+        Assert.Equal(MaintenanceCode.Success, assignedContact.Code);
+        var deactivate = contactCommand with { Version = contact.Version, Active = false };
+        Assert.Equal(MaintenanceCode.Success, await As(manager, sp => sp.GetRequiredService<ContractorActions>().SaveAsync(deactivate)));
+        Assert.Equal(MaintenanceCode.Conflict, await As(manager, sp => sp.GetRequiredService<ContractorActions>().SaveAsync(deactivate with { Name = "Stale edit" })));
+        Assert.Equal(assignedContact, await As(manager, sp => sp.GetRequiredService<MaintenanceActions>().ChangeAsync(assignContact, true)));
+        Assert.Equal(MaintenanceCode.Unavailable, (await As(manager, sp => sp.GetRequiredService<MaintenanceActions>().ChangeAsync(assignContact with { OperationId = Guid.NewGuid(), Version = assignedContact.Version!.Value }, true))).Code);
+        var afterDeactivation = (await As(manager, sp => sp.GetRequiredService<MaintenanceActions>().ReadAsync(id, true)))!;
+        Assert.Equal(contact.Name, afterDeactivation.Assignment);
+        Assert.DoesNotContain(afterDeactivation.Assignees!, x => x.Value == "contractor:" + contact.Id.ToString("D"));
+        Assert.Contains(afterDeactivation.History, x => x.Note == "Assigned to Reliable plumbing (contractor).");
+        using (var scope = provider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+            var foreignBuilding = new Building { Name = "Other building" };
+            var foreignContact = Contractor.Create(Guid.NewGuid(), foreignBuilding.Id, "Other contact", Trade.General, "", "");
+            db.AddRange(foreignBuilding, foreignContact); await db.SaveChangesAsync();
+            Assert.Equal(MaintenanceCode.Unavailable, (await As(manager, sp => sp.GetRequiredService<MaintenanceActions>().ChangeAsync(assignContact with { OperationId = Guid.NewGuid(), Version = afterDeactivation.Version, ContractorId = foreignContact.Id }, true))).Code);
+            Assert.Equal(MaintenanceCode.Unavailable, await As(manager, sp => sp.GetRequiredService<ContractorActions>().SaveAsync(contactCommand with { Id = foreignContact.Id, Version = foreignContact.Version })));
+            db.Contractors.Remove(await db.Contractors.SingleAsync(x => x.Id == contact.Id));
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        }
+        Assert.Equal(MaintenanceCode.ValidationFailed, (await As(manager, sp => sp.GetRequiredService<MaintenanceActions>().ChangeAsync(assignContact with { ManagerId = secondManagerId }, true))).Code);
+        Assert.Equal(MaintenanceCode.Unavailable, (await As(manager, sp => sp.GetRequiredService<MaintenanceActions>().ChangeAsync(assignContact with { OperationId = Guid.NewGuid(), Version = afterDeactivation.Version, ManagerId = peerId, ContractorId = null }, true))).Code);
+        var crossAssignments = await Task.WhenAll(
+            Task.Run(() => As(manager, sp => sp.GetRequiredService<MaintenanceActions>().ChangeAsync(new(Guid.NewGuid(), id, afterDeactivation.Version, MaintenanceAction.Assign, ManagerId: secondManagerId), true))),
+            Task.Run(async () =>
+            {
+                var other = (await As(secondManager, sp => sp.GetRequiredService<MaintenanceActions>().ReadAsync(concurrentResults[0].WorkOrderId!.Value, true)))!;
+                return await As(secondManager, sp => sp.GetRequiredService<MaintenanceActions>().ChangeAsync(new(Guid.NewGuid(), other.Id, other.Version, MaintenanceAction.Assign, ManagerId: managerId), true));
+            }));
+        Assert.All(crossAssignments, result => Assert.Equal(MaintenanceCode.Success, result.Code));
         async Task<MaintenanceResult> Change(MaintenanceAction action, string? note = null, bool internalNote = false)
         {
             var details = (await As(manager, sp => sp.GetRequiredService<MaintenanceActions>().ReadAsync(id, true)))!;

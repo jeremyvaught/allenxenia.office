@@ -19,6 +19,68 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                 .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 64);
 
+            modelBuilder.Entity("AllenBuilding.Domain.Maintenance.Contractor", b =>
+                {
+                    b.Property<string>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("active");
+
+                    b.Property<string>("BuildingId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("building_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("varchar(254)")
+                        .HasColumnName("email")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("varchar(160)")
+                        .HasColumnName("name")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)")
+                        .HasColumnName("phone")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("Trade")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("trade");
+
+                    b.Property<string>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("version")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BuildingId", "Active", "Name", "Id");
+
+                    b.ToTable("contractors", (string)null);
+                });
+
             modelBuilder.Entity("AllenBuilding.Domain.Maintenance.MaintenanceReceipt", b =>
                 {
                     b.Property<string>("ActorId")
@@ -173,6 +235,10 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .UseCollation("utf8mb4_bin");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AssignedContractorId");
+
+                    b.HasIndex("AssignedManagerId");
 
                     b.HasIndex("RequesterUserId");
 
@@ -881,6 +947,15 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                     b.ToTable("asp_net_user_tokens", (string)null);
                 });
 
+            modelBuilder.Entity("AllenBuilding.Domain.Maintenance.Contractor", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Tenancy.Building", null)
+                        .WithMany()
+                        .HasForeignKey("BuildingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("AllenBuilding.Domain.Maintenance.MaintenanceReceipt", b =>
                 {
                     b.HasOne("AllenBuilding.Domain.Maintenance.WorkOrder", null)
@@ -892,6 +967,16 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
 
             modelBuilder.Entity("AllenBuilding.Domain.Maintenance.WorkOrder", b =>
                 {
+                    b.HasOne("AllenBuilding.Domain.Maintenance.Contractor", null)
+                        .WithMany()
+                        .HasForeignKey("AssignedContractorId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("AllenBuilding.Infrastructure.Identity.OfficeUser", null)
+                        .WithMany()
+                        .HasForeignKey("AssignedManagerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("AllenBuilding.Infrastructure.Identity.OfficeUser", null)
                         .WithMany()
                         .HasForeignKey("RequesterUserId")
