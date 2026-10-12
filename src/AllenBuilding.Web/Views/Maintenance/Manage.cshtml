@@ -1,0 +1,24 @@
+@model AllenBuilding.Application.Maintenance.MaintenanceQueuePage
+@using AllenBuilding.Application.Maintenance
+@using AllenBuilding.Domain.Maintenance
+@{ ViewData["Title"] = "Maintenance queue"; var query = Model.Query; }
+<div class="page">
+    <div class="mb-6 flex flex-wrap items-end justify-between gap-4"><div><p class="mb-2 text-sm text-muted">BUILDING MANAGEMENT</p><h1 class="text-4xl font-semibold">Maintenance queue</h1></div><a asp-action="CreateOnBehalf" class="button">Record a tenant request</a></div>
+    <p class="mb-6 max-w-3xl text-muted">Start with the oldest unfinished requests. Completed work stays here until verification closes it. Age is measured from the first submission, including for reopened requests.</p>
+    <form method="get" class="mb-8 grid gap-5 rounded-2xl border border-line bg-panel p-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div><label for="queue-status" class="mb-2 block">Status</label><select id="queue-status" name="Status" class="field"><option value="">Any status</option>@foreach (var status in Enum.GetValues<WorkOrderStatus>()) { <option value="@status" selected="@(query.Status == status)">@MaintenanceText.Status(status)</option> }</select></div>
+        <div><label for="queue-priority" class="mb-2 block">Priority</label><select id="queue-priority" name="Priority" class="field"><option value="">Any priority</option>@foreach (var priority in Enum.GetValues<Priority>()) { <option value="@priority" selected="@(query.Priority == priority)">@priority</option> }</select></div>
+        <div><label for="queue-age" class="mb-2 block">Minimum age (days)</label><input id="queue-age" name="MinAgeDays" value="@query.MinAgeDays" type="number" inputmode="numeric" min="0" max="36500" class="field" /></div>
+        <div><label for="queue-assignee" class="mb-2 block">Assignee</label><select id="queue-assignee" name="Assignee" class="field"><option value="">Any assignee</option><option value="mine" selected="@(query.Assignee == "mine")">Assigned to me</option><option value="unassigned" selected="@(query.Assignee == "unassigned")">Unassigned</option>@if (!string.IsNullOrEmpty(query.Assignee) && query.Assignee is not ("mine" or "unassigned") && !Model.Assignees.Any(x => x.Value == query.Assignee)) { <option value="@query.Assignee" selected>Selected assignee (no listed assignments)</option> }@foreach (var choice in Model.Assignees) { <option value="@choice.Value" selected="@(query.Assignee == choice.Value)">@choice.Label</option> }</select></div>
+        <div><label for="queue-sort" class="mb-2 block">Order</label><select id="queue-sort" name="Sort" class="field"><option value="Oldest" selected="@(query.Sort == QueueSort.Oldest)">Oldest first</option><option value="Newest" selected="@(query.Sort == QueueSort.Newest)">Newest first</option><option value="RecentlyUpdated" selected="@(query.Sort == QueueSort.RecentlyUpdated)">Recently updated</option></select></div>
+        <div class="flex flex-wrap items-end gap-3"><label class="flex min-h-11 items-center gap-3"><input name="IncludeFinished" value="true" type="checkbox" checked="@query.IncludeFinished" /> Include closed and cancelled</label><button class="button">Apply filters</button><a asp-action="Manage" class="quiet-button">Reset filters</a></div>
+    </form>
+    <p class="mb-4 text-sm text-muted">Page @query.Page · @Model.Items.Count requests · up to @MaintenanceQueueQuery.PageSize per page. A selected status overrides the unfinished default.</p>
+    @if (Model.Items.Count == 0) { <p class="rounded-xl border border-line bg-panel p-6">No requests match these filters.</p> }
+    <partial name="_RequestList" model="Model.Items" />
+    <nav aria-label="Maintenance queue pages" class="mt-6 flex flex-wrap gap-3">
+        @if (query.Page > 1) { <a asp-action="Manage" asp-route-Status="@query.Status" asp-route-Priority="@query.Priority" asp-route-MinAgeDays="@query.MinAgeDays" asp-route-Assignee="@query.Assignee" asp-route-IncludeFinished="@query.IncludeFinished" asp-route-Sort="@query.Sort" asp-route-Page="@(query.Page - 1)" class="quiet-button">Previous page</a> }
+        @if (Model.HasNext) { <a asp-action="Manage" asp-route-Status="@query.Status" asp-route-Priority="@query.Priority" asp-route-MinAgeDays="@query.MinAgeDays" asp-route-Assignee="@query.Assignee" asp-route-IncludeFinished="@query.IncludeFinished" asp-route-Sort="@query.Sort" asp-route-Page="@(query.Page + 1)" class="quiet-button">Next page</a> }
+    </nav>
+    <a asp-controller="Portal" asp-action="Index" class="mt-6 flex min-h-11 items-center underline">Return to your office</a>
+</div>

@@ -89,6 +89,28 @@ public sealed class MaintenanceHttpTests
         Assert.Equal(managerId, (await db.WorkOrderHistory.SingleAsync()).ActorId); Assert.Single(await db.MaintenanceReceipts.ToListAsync());
     }
 
+    [Fact]
+    public async Task Manager_queue_rejects_invalid_filters_and_keeps_finished_work_explicit()
+    {
+        await using var host = new AccountTestHost(); await host.InitializeAsync();
+        var (managerId, buildingId) = await host.SeedManagerAsync(); var (first, _, membershipId) = await SeedTenants(host, buildingId);
+        using (var scope = host.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); var membership = await db.Memberships.SingleAsync(x => x.Id == membershipId);
+            var request = AllenBuilding.Domain.Maintenance.WorkOrder.Submit(membership.SuiteId, membership.Id, membership.UserId, "Cancelled queue request", "Description", "Office", DateTimeOffset.UtcNow.AddDays(-2));
+            request.Cancel("Not needed", DateTimeOffset.UtcNow.AddDays(-1)); db.WorkOrders.Add(request); await db.SaveChangesAsync();
+        }
+        using var manager = host.Browser(); await host.LoginManagerAsync(manager, managerId);
+        var initial = await manager.GetStringAsync("/Maintenance/Manage"); Assert.DoesNotContain("Cancelled queue request", initial);
+        var cancelled = await manager.GetStringAsync("/Maintenance/Manage?Status=Cancelled&Assignee=&MinAgeDays=&Priority="); Assert.Contains("Cancelled queue request", cancelled);
+        foreach (var query in new[] { "Status=999", "Priority=not-a-priority", "MinAgeDays=-1", "Assignee=unsupported", "Assignee=contractor:invalid", "Page=0", "Page=1001", "Page=not-a-number", "Sort=999" })
+        {
+            using var response = await manager.GetAsync("/Maintenance/Manage?" + query); Assert.True(response.StatusCode == HttpStatusCode.BadRequest, $"Expected bad request for {query}, got {response.StatusCode}.");
+        }
+        using var tenant = host.Browser(); await Login(tenant, first);
+        using var denied = await tenant.GetAsync("/Maintenance/Manage"); Assert.StartsWith("http://localhost/Account/Denied", denied.Headers.Location?.OriginalString);
+    }
+
     private static async Task Login(HttpClient client, string email)
     {
         using var result = await AccountTestHost.PostAsync(client, "/Account/Login", "/Account/Login", ("Email", email), ("Password", AccountTestHost.Password));

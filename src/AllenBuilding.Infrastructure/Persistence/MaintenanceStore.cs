@@ -33,6 +33,63 @@ public sealed class MaintenanceStore(OfficeDbContext db, ICurrentActor current, 
                   select new RequestSummary(order.Id, suite.Name, order.Title, order.Status, order.CreatedAt))
             .Take(100).ToListAsync(cancellationToken);
 
+    public async Task<MaintenanceQueuePage> QueueAsync(Actor actor, MaintenanceQueueQuery query, CancellationToken cancellationToken)
+    {
+        var now = time.GetUtcNow();
+        var scoped = Scoped(actor, true).AsNoTracking();
+        var filtered = scoped;
+        if (query.Status is { } status) filtered = filtered.Where(x => x.Status == status);
+        else if (!query.IncludeFinished) filtered = filtered.Where(x => x.Status != WorkOrderStatus.Closed && x.Status != WorkOrderStatus.Cancelled);
+        if (query.Priority is { } priority) filtered = filtered.Where(x => x.Priority == priority);
+        if (query.MinAgeDays is { } days)
+        {
+            var cutoff = now.AddDays(-days);
+            filtered = filtered.Where(x => x.CreatedAt <= cutoff);
+        }
+        if (query.Assignee == "mine") filtered = filtered.Where(x => x.AssignedManagerId == actor.UserId);
+        else if (query.Assignee == "unassigned") filtered = filtered.Where(x => x.AssignedManagerId == null && x.AssignedContractorId == null);
+        else if (query.Assignee?.StartsWith("manager:", StringComparison.Ordinal) == true)
+        {
+            var managerId = query.Assignee[8..]; filtered = filtered.Where(x => x.AssignedManagerId == managerId);
+        }
+        else if (query.Assignee?.StartsWith("contractor:", StringComparison.Ordinal) == true)
+        {
+            var contractorId = Guid.Parse(query.Assignee[11..]); filtered = filtered.Where(x => x.AssignedContractorId == contractorId);
+        }
+        var ordered = query.Sort switch
+        {
+            QueueSort.Newest => filtered.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id),
+            QueueSort.RecentlyUpdated => filtered.OrderByDescending(x => x.UpdatedAt).ThenByDescending(x => x.Id),
+            _ => filtered.OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
+        };
+        // Page identifiers first so directory joins cannot multiply the request population.
+        var pageOrders = ordered.Skip((query.Page - 1) * MaintenanceQueueQuery.PageSize).Take(MaintenanceQueueQuery.PageSize + 1);
+        var rows = await (from order in pageOrders
+                          join suite in db.Suites on order.SuiteId equals suite.Id
+                          join building in db.Buildings on suite.BuildingId equals building.Id
+                          join contact in db.Contractors on order.AssignedContractorId equals (Guid?)contact.Id into contacts
+                          from contact in contacts.DefaultIfEmpty()
+                          join user in db.Users on order.AssignedManagerId equals user.Id into users
+                          from user in users.DefaultIfEmpty()
+                          select new RequestSummary(order.Id, building.Name + " · " + suite.Name, order.Title, order.Status, order.CreatedAt, order.Priority, order.Trade,
+                              contact != null ? contact.Name : user != null ? user.DisplayName == "" ? "Building manager" : user.DisplayName : null, order.UpdatedAt)).ToListAsync(cancellationToken);
+        // Keep the presentation order explicit after joins (SQL does not promise subquery order).
+        var sorted = query.Sort switch
+        {
+            QueueSort.Newest => rows.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id),
+            QueueSort.RecentlyUpdated => rows.OrderByDescending(x => x.UpdatedAt).ThenByDescending(x => x.Id),
+            _ => rows.OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
+        };
+        var managers = await db.Users.AsNoTracking().Where(x => scoped.Any(order => order.AssignedManagerId == x.Id))
+            .OrderBy(x => x.DisplayName).ThenBy(x => x.Id).Take(100).Select(x => new AssigneeChoice("manager:" + x.Id, x.DisplayName == "" ? x.UserName! : x.DisplayName)).ToListAsync(cancellationToken);
+        var contractors = await (from contact in db.Contractors.AsNoTracking()
+                                 join building in db.Buildings on contact.BuildingId equals building.Id
+                                 where scoped.Any(order => order.AssignedContractorId == contact.Id)
+                                 orderby contact.Name, contact.Id
+                                 select new AssigneeChoice("contractor:" + contact.Id, building.Name + " · " + contact.Name + (contact.Active ? "" : " (inactive)"))).Take(100).ToListAsync(cancellationToken);
+        return new(sorted.Take(MaintenanceQueueQuery.PageSize).ToList(), query, rows.Count > MaintenanceQueueQuery.PageSize && query.Page < 1000, now, managers.Concat(contractors).ToList());
+    }
+
     public async Task<RequestDetails?> ReadAsync(Actor actor, Guid id, bool management, CancellationToken cancellationToken)
     {
         var order = await Scoped(actor, management).AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, cancellationToken);

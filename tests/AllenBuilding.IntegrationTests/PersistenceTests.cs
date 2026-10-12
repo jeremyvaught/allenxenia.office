@@ -122,6 +122,7 @@ public sealed class PersistenceTests
         await KnowledgeContract.VerifyAsync(create);
         await BillingContract.VerifyAsync(create);
         await AccessContract.VerifyAsync(create);
+        await MaintenanceQueueContract.VerifyAsync(create);
     }
 
     private static async Task VerifyProtectedIdentity(Func<OfficeDbContext> create)

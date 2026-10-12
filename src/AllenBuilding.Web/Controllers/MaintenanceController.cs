@@ -13,10 +13,14 @@ public sealed class MaintenanceController(MaintenanceActions actions) : Controll
     [HttpGet] public async Task<IActionResult> Index() => View(await actions.ListAsync(false));
 
     [Authorize(Policy = OfficeSecurity.ManagerPolicy), HttpGet]
-    public async Task<IActionResult> Manage()
+    public async Task<IActionResult> Manage(MaintenanceQueueQuery query)
     {
+        if (!ModelState.IsValid || !query.IsValid) return BadRequest();
+        var page = await actions.QueueAsync(query);
+        if (page is null) return NotFound();
         ViewData["Manager"] = true;
-        return View("Index", await actions.ListAsync(true));
+        ViewData["ObservedAt"] = page.ObservedAt;
+        return View(page);
     }
 
     [HttpGet] public async Task<IActionResult> Details(Guid id) => await DetailsView(id, false);

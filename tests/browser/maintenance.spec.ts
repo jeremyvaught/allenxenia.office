@@ -198,5 +198,21 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(behalfTitle);
     expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
+
+    await manager.goto('/Maintenance/Manage');
+    await expect(manager.getByRole('link', { name: new RegExp(`Leaking sink ${testInfo.project.name}`) })).toHaveCount(0);
+    await manager.getByLabel('Status', { exact: true }).selectOption('Closed');
+    await manager.getByRole('button', { name: 'Apply filters', exact: true }).click();
+    await expect(manager.getByRole('link', { name: new RegExp(`Leaking sink ${testInfo.project.name}`) })).toBeVisible();
+    await manager.getByRole('link', { name: 'Reset filters', exact: true }).click();
+    await manager.getByLabel('Status', { exact: true }).selectOption('Submitted');
+    await manager.getByLabel('Assignee', { exact: true }).selectOption('unassigned');
+    await manager.getByLabel('Minimum age (days)').fill('0');
+    await manager.getByLabel('Order', { exact: true }).selectOption('Newest');
+    await manager.getByRole('button', { name: 'Apply filters', exact: true }).click();
+    await expect(manager.getByRole('link', { name: new RegExp(behalfTitle) })).toBeVisible();
+    expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await manager.screenshot({ path: `artifacts/browser/queue-${testInfo.project.name}.png`, fullPage: true });
+
   } finally { await managerContext.close(); }
 });

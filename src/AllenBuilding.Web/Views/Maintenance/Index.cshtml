@@ -7,15 +7,7 @@
         else { <a asp-action="Create" class="button">Report an issue</a> }
     </div>
     @if (Model.Count == 0) { <p class="rounded-xl border border-line bg-panel p-6">No requests to show.</p> }
-    <ul class="space-y-4">
-        @foreach (var request in Model)
-        {
-            <li><a asp-action="@(manager ? "ManageDetails" : "Details")" asp-route-id="@request.Id" class="block rounded-xl border border-line bg-panel p-5 hover:ring-2 hover:ring-brand">
-                <div class="flex flex-wrap items-start justify-between gap-3"><h2 class="min-w-0 break-words text-xl font-semibold">@request.Title</h2><span class="rounded-lg bg-brand-soft px-3 py-1 text-sm">@MaintenanceText.Status(request.Status)</span></div>
-                <p class="mt-2 text-sm text-muted">@request.Suite · Submitted @request.CreatedAt.ToString("MMM d, yyyy")</p>
-            </a></li>
-        }
-    </ul>
+    <partial name="_RequestList" model="Model" />
     @if (Model.Count == 100) { <p class="mt-4 text-sm text-muted">Showing the 100 most recent requests.</p> }
     <a asp-controller="Portal" asp-action="Index" class="mt-6 flex min-h-11 items-center underline">Return to your office</a>
 </div>

@@ -13,6 +13,12 @@ public sealed class MaintenanceActions(ICurrentActor current, IMaintenanceStore 
         return CanUse(actor, management) ? await store.ListAsync(actor!, management, cancellationToken) : [];
     }
 
+    public async Task<MaintenanceQueuePage?> QueueAsync(MaintenanceQueueQuery query, CancellationToken cancellationToken = default)
+    {
+        var actor = await current.GetAsync(cancellationToken);
+        return query.IsValid && CanUse(actor, true) ? await store.QueueAsync(actor!, query, cancellationToken) : null;
+    }
+
     public async Task<RequestDetails?> ReadAsync(Guid id, bool management, CancellationToken cancellationToken = default)
     {
         var actor = await current.GetAsync(cancellationToken);
