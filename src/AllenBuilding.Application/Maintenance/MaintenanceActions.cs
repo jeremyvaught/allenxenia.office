@@ -19,16 +19,23 @@ public sealed class MaintenanceActions(ICurrentActor current, IMaintenanceStore 
         return CanUse(actor, management) ? await store.ReadAsync(actor!, id, management, cancellationToken) : null;
     }
 
-    public async Task<MaintenanceResult> SubmitAsync(SubmitRequest command, CancellationToken cancellationToken = default)
+    public Task<MaintenanceResult> SubmitAsync(SubmitRequest command, CancellationToken cancellationToken = default) => Submit(command, false, cancellationToken);
+    public Task<MaintenanceResult> SubmitOnBehalfAsync(SubmitRequest command, CancellationToken cancellationToken = default) => Submit(command, true, cancellationToken);
+    public async Task<IReadOnlyList<RequestMemberChoice>> MembersAsync(bool management, CancellationToken cancellationToken = default)
+    {
+        var actor = await current.GetAsync(cancellationToken);
+        return CanUse(actor, management) ? await store.MembersAsync(actor!, management, cancellationToken) : [];
+    }
+    private async Task<MaintenanceResult> Submit(SubmitRequest command, bool management, CancellationToken cancellationToken)
     {
         var actor = await current.GetAsync(cancellationToken);
         if (actor is null) return new(MaintenanceCode.AuthenticationRequired);
-        if (!CanUse(actor, false)) return new(MaintenanceCode.Unavailable);
+        if (!CanUse(actor, management)) return new(MaintenanceCode.Unavailable);
         if (command.OperationId == Guid.Empty || command.MembershipId == Guid.Empty) return new(MaintenanceCode.ValidationFailed);
         // Validate using the same domain constructor before opening the persistence transaction.
         try { WorkOrder.Submit(Guid.NewGuid(), command.MembershipId, actor.UserId, command.Title, command.Description, command.Location, time.GetUtcNow()); }
         catch (ArgumentException) { return new(MaintenanceCode.ValidationFailed); }
-        return await store.SubmitAsync(actor, command, Hash(command), time.GetUtcNow(), cancellationToken);
+        return await store.SubmitAsync(actor, command, management ? Hash(new { command, management }) : Hash(command), time.GetUtcNow(), management, cancellationToken);
     }
 
     public async Task<MaintenanceResult> ChangeAsync(ChangeRequest command, bool management, CancellationToken cancellationToken = default)

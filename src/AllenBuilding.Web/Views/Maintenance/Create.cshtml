@@ -1,17 +1,19 @@
 @model NewRequestForm
-@{ ViewData["Title"] = "Report an issue"; var memberships = (IReadOnlyList<MembershipChoice>)ViewData["Memberships"]!; }
+@{ ViewData["Title"] = "Report an issue"; var memberships = (IReadOnlyList<AllenBuilding.Application.Maintenance.RequestMemberChoice>)ViewData["Memberships"]!; var manager = ViewData["Manager"] is true; }
 <div class="page">
     <section class="mx-auto max-w-2xl rounded-2xl border border-line bg-panel p-6 sm:p-8">
         <p class="mb-2 text-sm text-muted">MAINTENANCE</p><h1 class="mb-3 text-3xl font-semibold">What needs attention?</h1>
         <p class="mb-6 text-muted">Give your building manager enough detail to locate and assess the issue. For immediate danger, call 911.</p>
-        <form method="post" class="space-y-5">
+        @if (manager) { <p class="mb-6 text-muted">Record this request for the selected active tenant. Their original membership owns it; history records that a manager submitted it.</p> }
+        <form asp-action="@(manager ? "CreateOnBehalf" : "Create")" method="post" class="space-y-5">
             <div asp-validation-summary="All" role="alert"></div><input asp-for="OperationId" type="hidden" />
-            <div><label asp-for="MembershipId" class="mb-2 block">Office</label><select asp-for="MembershipId" class="field">@foreach (var membership in memberships) { <option value="@membership.Id">@membership.Suite</option> }</select></div>
+            <div><label asp-for="MembershipId" class="mb-2 block">Office</label><select asp-for="MembershipId" class="field">@foreach (var membership in memberships) { <option value="@membership.Id">@membership.Suite@(manager ? " · " + membership.RequesterEmail : "")</option> }</select></div>
             <div><label asp-for="Title" class="mb-2 block">Brief description</label><input asp-for="Title" class="field" maxlength="120" placeholder="For example, a leaking sink" /></div>
             <div><label asp-for="Location" class="mb-2 block">Where is it?</label><input asp-for="Location" class="field" maxlength="160" placeholder="Room or area" /></div>
-            <div><label asp-for="Description" class="mb-2 block">Details</label><textarea asp-for="Description" rows="6" maxlength="4000" class="field"></textarea><p class="mt-2 text-sm text-muted">Your request is private to you and building management.</p></div>
+            <div><label asp-for="Description" class="mb-2 block">Details</label><textarea asp-for="Description" rows="6" maxlength="4000" class="field"></textarea><p class="mt-2 text-sm text-muted">@(manager ? "The request is private to the selected tenant and building management." : "Your request is private to you and building management.")</p></div>
             <button class="button w-full sm:w-auto">Submit maintenance request</button>
         </form>
-        <a asp-action="Index" class="mt-4 flex min-h-11 items-center underline">Return to your requests</a>
+        <p class="mt-4 text-sm text-muted">Showing up to 100 eligible memberships.</p>
+        <a asp-action="@(manager ? "Manage" : "Index")" class="mt-4 flex min-h-11 items-center underline">Return to your requests</a>
     </section>
 </div>

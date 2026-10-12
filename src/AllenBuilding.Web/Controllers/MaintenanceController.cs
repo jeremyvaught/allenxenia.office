@@ -1,16 +1,14 @@
 using AllenBuilding.Application.Access;
 using AllenBuilding.Application.Maintenance;
-using AllenBuilding.Infrastructure.Persistence;
 using AllenBuilding.Web.Models;
 using AllenBuilding.Web.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace AllenBuilding.Web.Controllers;
 
 [Authorize, ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-public sealed class MaintenanceController(MaintenanceActions actions, ICurrentActor current, OfficeDbContext db, TimeProvider time) : Controller
+public sealed class MaintenanceController(MaintenanceActions actions) : Controller
 {
     [HttpGet] public async Task<IActionResult> Index() => View(await actions.ListAsync(false));
 
@@ -44,6 +42,24 @@ public sealed class MaintenanceController(MaintenanceActions actions, ICurrentAc
         return Outcome(result, false);
     }
 
+    [Authorize(Policy = OfficeSecurity.ManagerPolicy), HttpGet]
+    public async Task<IActionResult> CreateOnBehalf()
+    {
+        if (!await Choices(true)) return NotFound();
+        ViewData["Manager"] = true;
+        return View("Create", new NewRequestForm());
+    }
+    [Authorize(Policy = OfficeSecurity.ManagerPolicy), HttpPost]
+    public async Task<IActionResult> CreateOnBehalf(NewRequestForm form)
+    {
+        if (!ModelState.IsValid)
+        {
+            if (!await Choices(true)) return NotFound();
+            ViewData["Manager"] = true; Response.StatusCode = 400; return View("Create", form);
+        }
+        return Outcome(await actions.SubmitOnBehalfAsync(new(form.OperationId, form.MembershipId, form.Title, form.Description, form.Location)), true);
+    }
+
     [HttpPost]
     public async Task<IActionResult> Change(ChangeRequestForm form) => ModelState.IsValid
         ? Outcome(await actions.ChangeAsync(form.Command(), false), false) : Error(MaintenanceCode.ValidationFailed);
@@ -60,17 +76,9 @@ public sealed class MaintenanceController(MaintenanceActions actions, ICurrentAc
         return View("Details", details);
     }
 
-    private async Task<bool> Choices()
+    private async Task<bool> Choices(bool management = false)
     {
-        var actor = await current.GetAsync();
-        if (!MaintenanceActions.CanUse(actor, false)) return false;
-        var now = time.GetUtcNow();
-        var choices = await (from membership in db.Memberships.AsNoTracking()
-                             join grant in db.ActiveGrants on membership.Id equals grant.MembershipId
-                             join suite in db.Suites on membership.SuiteId equals suite.Id
-                             where membership.UserId == actor!.UserId && membership.RevokedAt == null &&
-                                 membership.StartsAt <= now && (membership.EndsAt == null || membership.EndsAt > now)
-                             select new MembershipChoice(membership.Id, suite.Name)).ToListAsync();
+        var choices = await actions.MembersAsync(management);
         ViewData["Memberships"] = choices;
         return choices.Count > 0;
     }

@@ -3,7 +3,8 @@
 <div class="page">
     <div class="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div><p class="mb-2 text-sm text-muted">ALLEN BUILDING</p><h1 class="text-4xl font-semibold">@(manager ? "Maintenance overview" : "Your maintenance requests")</h1></div>
-        @if (!manager) { <a asp-action="Create" class="button">Report an issue</a> }
+        @if (manager) { <a asp-action="CreateOnBehalf" class="button">Record a tenant request</a> }
+        else { <a asp-action="Create" class="button">Report an issue</a> }
     </div>
     @if (Model.Count == 0) { <p class="rounded-xl border border-line bg-panel p-6">No requests to show.</p> }
     <ul class="space-y-4">

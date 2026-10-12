@@ -32,7 +32,6 @@ public sealed class ChangeRequestForm
     }
 }
 
-public sealed record MembershipChoice(Guid Id, string Suite);
 public sealed record AccessRow(Guid Id, Guid Version, string Suite, string Email);
 public sealed class RevokeAccessForm
 {

@@ -61,6 +61,34 @@ public sealed class MaintenanceHttpTests
         Assert.True(await db.AccountAudits.AnyAsync(x => x.Action == "AccessRevoked"));
     }
 
+    [Fact]
+    public async Task Manager_submission_keeps_tenant_ownership_and_requires_challenged_authority_and_antiforgery()
+    {
+        await using var host = new AccountTestHost(); await host.InitializeAsync();
+        var (managerId, buildingId) = await host.SeedManagerAsync();
+        var (first, second, membership) = await SeedTenants(host, buildingId);
+        using var manager = host.Browser(); await host.LoginManagerAsync(manager, managerId);
+        using var forged = await manager.PostAsync("/Maintenance/CreateOnBehalf", new FormUrlEncodedContent(new Dictionary<string, string>()));
+        Assert.Equal(HttpStatusCode.BadRequest, forged.StatusCode);
+        var values = new[] { ("OperationId", Guid.NewGuid().ToString()), ("MembershipId", membership.ToString()),
+            ("Title", "Telephone report"), ("Description", "Tenant reported a stuck door"), ("Location", "Entrance"), ("RequesterUserId", managerId), ("SuiteId", Guid.NewGuid().ToString()) };
+        using var recorded = await AccountTestHost.PostAsync(manager, "/Maintenance/CreateOnBehalf", "/Maintenance/CreateOnBehalf", values);
+        Assert.Equal(HttpStatusCode.Redirect, recorded.StatusCode);
+        var managerPath = recorded.Headers.Location!.OriginalString;
+        using var replay = await AccountTestHost.PostAsync(manager, "/Maintenance/CreateOnBehalf", "/Maintenance/CreateOnBehalf", values);
+        Assert.Equal(managerPath, replay.Headers.Location!.OriginalString);
+        using var tenant = host.Browser(); using var peer = host.Browser(); await Login(tenant, first); await Login(peer, second);
+        var tenantPath = managerPath.Replace("ManageDetails", "Details", StringComparison.Ordinal);
+        var html = await tenant.GetStringAsync(tenantPath); Assert.Contains("Request recorded by manager for tenant", html);
+        using var deniedRead = await peer.GetAsync(tenantPath); Assert.Equal(HttpStatusCode.NotFound, deniedRead.StatusCode);
+        using var deniedCreate = await tenant.GetAsync("/Maintenance/CreateOnBehalf"); Assert.StartsWith("http://localhost/Account/Denied", deniedCreate.Headers.Location?.OriginalString);
+        using var wrongRoute = await AccountTestHost.PostAsync(manager, managerPath, "/Maintenance/Create", values);
+        Assert.Equal(HttpStatusCode.NotFound, wrongRoute.StatusCode);
+        using var scope = host.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+        var order = await db.WorkOrders.SingleAsync(); Assert.Equal(membership, order.RequesterMembershipId); Assert.NotEqual(managerId, order.RequesterUserId);
+        Assert.Equal(managerId, (await db.WorkOrderHistory.SingleAsync()).ActorId); Assert.Single(await db.MaintenanceReceipts.ToListAsync());
+    }
+
     private static async Task Login(HttpClient client, string email)
     {
         using var result = await AccountTestHost.PostAsync(client, "/Account/Login", "/Account/Login", ("Email", email), ("Password", AccountTestHost.Password));

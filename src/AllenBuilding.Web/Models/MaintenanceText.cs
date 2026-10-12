@@ -9,6 +9,7 @@ public static class MaintenanceText
     public static string History(string action) => action switch
     {
         "Submitted" => "Request submitted",
+        "SubmittedOnBehalf" => "Request recorded by manager for tenant",
         "Triage" => "Priority and trade set",
         "Assign" => "Assignment updated",
         "AssignSelf" => "Assigned to manager",

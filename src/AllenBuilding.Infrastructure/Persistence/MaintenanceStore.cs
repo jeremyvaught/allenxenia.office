@@ -65,21 +65,53 @@ public sealed class MaintenanceStore(OfficeDbContext db, ICurrentActor current, 
             order.Priority, order.Trade, order.Resolution, history, assignment, choices);
     }
 
-    public async Task<MaintenanceResult> SubmitAsync(Actor actor, SubmitRequest command, string hash, DateTimeOffset now, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<RequestMemberChoice>> MembersAsync(Actor actor, bool management, CancellationToken cancellationToken)
+    {
+        var now = time.GetUtcNow();
+        return await (from membership in db.Memberships.AsNoTracking()
+                      join grant in db.ActiveGrants on membership.Id equals grant.MembershipId
+                      join suite in db.Suites on membership.SuiteId equals suite.Id
+                      join user in db.Users on membership.UserId equals user.Id
+                      where membership.RevokedAt == null && membership.StartsAt <= now && (membership.EndsAt == null || membership.EndsAt > now) &&
+                        (management ? actor.ManagedBuildings.Contains(suite.BuildingId) && db.BuildingManagers.Any(x => x.BuildingId == suite.BuildingId && x.UserId == actor.UserId) : membership.UserId == actor.UserId)
+                      orderby suite.Name, membership.Id
+                      select new RequestMemberChoice(membership.Id, suite.Name, management ? user.Email : null)).Take(100).ToListAsync(cancellationToken);
+    }
+
+    public async Task<MaintenanceResult> SubmitAsync(Actor actor, SubmitRequest command, string hash, DateTimeOffset now, bool management, CancellationToken cancellationToken)
     {
         await using var transaction = await AuthorityLocks.BeginAsync(db, cancellationToken);
         await AuthorityLocks.UserAsync(db, actor.UserId, cancellationToken);
+        Guid? building = null;
+        if (management)
+        {
+            building = await (from targetMembership in db.Memberships
+                              join suite in db.Suites on targetMembership.SuiteId equals suite.Id
+                              where targetMembership.Id == command.MembershipId
+                              select (Guid?)suite.BuildingId).SingleOrDefaultAsync(cancellationToken);
+            if (building is null) return new(MaintenanceCode.Unavailable);
+            await AuthorityLocks.ManagerAsync(db, actor.UserId, building.Value, cancellationToken);
+        }
         await AuthorityLocks.MembershipAsync(db, command.MembershipId, cancellationToken);
         var fresh = await current.GetAsync(cancellationToken);
-        if (!MaintenanceActions.CanUse(fresh, false)) return new(MaintenanceCode.Unavailable);
-        var membership = await db.Memberships.AsNoTracking().SingleOrDefaultAsync(x => x.Id == command.MembershipId && x.UserId == actor.UserId, cancellationToken);
-        if (membership is null || !membership.IsActive(time.GetUtcNow()) || !await db.ActiveGrants.AnyAsync(x => x.MembershipId == membership.Id, cancellationToken))
-            return new(MaintenanceCode.Unavailable);
-        var replay = await Replay(actor.UserId, command.OperationId, hash, cancellationToken);
-        if (replay is not null) return replay;
-        var order = WorkOrder.Submit(membership.SuiteId, membership.Id, actor.UserId, command.Title, command.Description, command.Location, now);
+        if (!MaintenanceActions.CanUse(fresh, management) || (management && (!fresh!.ManagedBuildings.Contains(building!.Value) ||
+            !await db.BuildingManagers.AnyAsync(x => x.BuildingId == building && x.UserId == fresh.UserId, cancellationToken)))) return new(MaintenanceCode.Unavailable);
+        var membership = await db.Memberships.AsNoTracking().SingleOrDefaultAsync(x => x.Id == command.MembershipId && (management || x.UserId == actor.UserId), cancellationToken);
+        if (membership is null) return new(MaintenanceCode.Unavailable);
+        if (management)
+        {
+            var replay = await Replay(actor.UserId, command.OperationId, hash, cancellationToken);
+            if (replay is not null) return replay;
+        }
+        if (!membership.IsActive(time.GetUtcNow()) || !await db.ActiveGrants.AnyAsync(x => x.MembershipId == membership.Id, cancellationToken)) return new(MaintenanceCode.Unavailable);
+        if (!management)
+        {
+            var replay = await Replay(actor.UserId, command.OperationId, hash, cancellationToken);
+            if (replay is not null) return replay;
+        }
+        var order = WorkOrder.Submit(membership.SuiteId, membership.Id, membership.UserId, command.Title, command.Description, command.Location, now);
         db.WorkOrders.Add(order);
-        await Record(actor.UserId, command.OperationId, hash, order, "Submitted", null, false, now, cancellationToken);
+        await Record(actor.UserId, command.OperationId, hash, order, management ? "SubmittedOnBehalf" : "Submitted", null, false, now, cancellationToken);
         try
         {
             await db.SaveChangesAsync(cancellationToken); await transaction.CommitAsync(cancellationToken);

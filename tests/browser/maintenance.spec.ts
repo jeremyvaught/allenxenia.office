@@ -183,5 +183,20 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await page.screenshot({ path: `artifacts/browser/billing-tenant-${testInfo.project.name}.png`, fullPage: true });
     await manager.screenshot({ path: `artifacts/browser/billing-manager-${testInfo.project.name}.png`, fullPage: true });
 
+
+    await manager.goto('/Maintenance/Manage');
+    await manager.getByRole('link', { name: 'Record a tenant request', exact: true }).click();
+    await manager.getByLabel('Office', { exact: true }).selectOption(account.membershipId);
+    const behalfTitle = `Phone report ${testInfo.project.name}`;
+    await manager.getByLabel('Brief description').fill(behalfTitle);
+    await manager.getByLabel('Where is it?').fill('Entrance');
+    await manager.getByLabel('Details', { exact: true }).fill('Tenant reported a stuck door by phone.');
+    await manager.getByRole('button', { name: 'Submit maintenance request', exact: true }).click();
+    await expect(manager.getByRole('heading', { level: 1 })).toHaveText(behalfTitle);
+    await expect(manager.getByText('Request recorded by manager for tenant', { exact: false })).toBeVisible();
+    await page.goto(new URL(manager.url()).pathname.replace('ManageDetails', 'Details'));
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(behalfTitle);
+    expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
   } finally { await managerContext.close(); }
 });

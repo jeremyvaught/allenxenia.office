@@ -140,9 +140,38 @@ public static class MaintenanceContract
         Assert.Equal(WorkOrderStatus.Completed, (await Change(MaintenanceAction.Complete, "Sink repaired")).Status);
         Assert.Equal(WorkOrderStatus.Closed, (await Change(MaintenanceAction.Close)).Status);
         Assert.Equal(WorkOrderStatus.Submitted, (await Change(MaintenanceAction.Reopen, "Leak returned")).Status);
+        var onBehalf = new SubmitRequest(Guid.NewGuid(), membershipId, "Reported by phone", "Manager recorded the tenant report", "Entrance");
+        Assert.Equal(MaintenanceCode.Unavailable, (await As(peer, sp => sp.GetRequiredService<MaintenanceActions>().SubmitOnBehalfAsync(onBehalf))).Code);
+        Assert.Equal(MaintenanceCode.Unavailable, (await As(manager with { ChallengedMfa = false }, sp => sp.GetRequiredService<MaintenanceActions>().SubmitOnBehalfAsync(onBehalf))).Code);
+        Assert.DoesNotContain(await As(peer, sp => sp.GetRequiredService<MaintenanceActions>().MembersAsync(true)), x => x.Id == membershipId);
+        Assert.Contains(await As(manager, sp => sp.GetRequiredService<MaintenanceActions>().MembersAsync(true)), x => x.Id == membershipId);
+        Assert.All(await As(tenant, sp => sp.GetRequiredService<MaintenanceActions>().MembersAsync(false)), x => Assert.Null(x.RequesterEmail));
+        var behalfResults = await Task.WhenAll(
+            Task.Run(() => As(manager, sp => sp.GetRequiredService<MaintenanceActions>().SubmitOnBehalfAsync(onBehalf))),
+            Task.Run(() => As(manager, sp => sp.GetRequiredService<MaintenanceActions>().SubmitOnBehalfAsync(onBehalf))));
+        Assert.Equal(behalfResults[0], behalfResults[1]); Assert.Equal(MaintenanceCode.Success, behalfResults[0].Code);
+        Assert.Equal(MaintenanceCode.Conflict, (await As(manager, sp => sp.GetRequiredService<MaintenanceActions>().SubmitOnBehalfAsync(onBehalf with { Title = "Changed recorded request" }))).Code);
+        Assert.NotNull(await As(tenant, sp => sp.GetRequiredService<MaintenanceActions>().ReadAsync(behalfResults[0].WorkOrderId!.Value, false)));
+        Assert.Null(await As(peer, sp => sp.GetRequiredService<MaintenanceActions>().ReadAsync(behalfResults[0].WorkOrderId!.Value, false)));
+        using (var scope = provider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+            var recorded = await db.WorkOrders.SingleAsync(x => x.Id == behalfResults[0].WorkOrderId);
+            Assert.Equal(tenantId, recorded.RequesterUserId); Assert.Equal(membershipId, recorded.RequesterMembershipId);
+            var entry = await db.WorkOrderHistory.SingleAsync(x => x.WorkOrderId == recorded.Id);
+            Assert.Equal(managerId, entry.ActorId); Assert.Equal("SubmittedOnBehalf", entry.Action);
+            var foreignBuilding = new Building { Name = "Behalf foreign building" }; var foreignSuite = new Suite { BuildingId = foreignBuilding.Id, Name = "Foreign suite" };
+            var foreignMembership = Membership.Grant(foreignSuite.Id, tenantId, DateTimeOffset.UtcNow.AddDays(-1));
+            db.AddRange(foreignBuilding, foreignSuite, foreignMembership, new ActiveGrant { UserId = tenantId, SuiteId = foreignSuite.Id, MembershipId = foreignMembership.Id }); await db.SaveChangesAsync();
+            Assert.Equal(MaintenanceCode.Unavailable, (await As(manager, sp => sp.GetRequiredService<MaintenanceActions>().SubmitOnBehalfAsync(onBehalf with { OperationId = Guid.NewGuid(), MembershipId = foreignMembership.Id }))).Code);
+            Assert.DoesNotContain(await As(manager, sp => sp.GetRequiredService<MaintenanceActions>().MembersAsync(true)), x => x.Id == foreignMembership.Id);
+        }
         Guid version;
         using (var scope = provider.CreateScope()) version = (await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().Memberships.SingleAsync(x => x.Id == membershipId)).Version;
         Assert.Equal(MaintenanceCode.Success, await As(manager, sp => sp.GetRequiredService<AccessRevocation>().RevokeAsync(membershipId, version, "Access ended")));
+        Assert.Equal(behalfResults[0], await As(manager, sp => sp.GetRequiredService<MaintenanceActions>().SubmitOnBehalfAsync(onBehalf)));
+        Assert.Equal(MaintenanceCode.Unavailable, (await As(manager, sp => sp.GetRequiredService<MaintenanceActions>().SubmitOnBehalfAsync(onBehalf with { OperationId = Guid.NewGuid() }))).Code);
+        Assert.Null(await As(tenant, sp => sp.GetRequiredService<MaintenanceActions>().ReadAsync(behalfResults[0].WorkOrderId!.Value, false)));
         Assert.Null(await As(tenant, sp => sp.GetRequiredService<MaintenanceActions>().ReadAsync(id, false)));
         Assert.Equal(MaintenanceCode.Unavailable, (await As(tenant, sp => sp.GetRequiredService<MaintenanceActions>().SubmitAsync(submit))).Code);
         using (var scope = provider.CreateScope())
