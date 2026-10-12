@@ -118,6 +118,77 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                     b.ToTable("work_orders", (string)null);
                 });
 
+            modelBuilder.Entity("AllenBuilding.Domain.Tenancy.AccountAudit", b =>
+                {
+                    b.Property<string>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("action");
+
+                    b.Property<string>("ActorId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("actor_id");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<string>("SubjectId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("subject_id");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("account_audit", (string)null);
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Tenancy.AccountMessage", b =>
+                {
+                    b.Property<string>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("ProtectedPayload")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("protected_payload");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("account_messages", (string)null);
+                });
+
             modelBuilder.Entity("AllenBuilding.Domain.Tenancy.Building", b =>
                 {
                     b.Property<string>("Id")
@@ -141,6 +212,76 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                     b.HasKey("Id");
 
                     b.ToTable("buildings", (string)null);
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Tenancy.BuildingManager", b =>
+                {
+                    b.Property<string>("BuildingId")
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("building_id");
+
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("BuildingId", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("building_managers", (string)null);
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Tenancy.Invitation", b =>
+                {
+                    b.Property<string>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime?>("AcceptedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("accepted_at");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("IssuedBy")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("issued_by");
+
+                    b.Property<string>("SuiteId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("suite_id");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("user_id");
+
+                    b.Property<string>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SuiteId");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("invitations", (string)null);
                 });
 
             modelBuilder.Entity("AllenBuilding.Domain.Tenancy.Membership", b =>
@@ -266,6 +407,10 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                     b.Property<DateTime?>("LockoutEnd")
                         .HasColumnType("TEXT")
                         .HasColumnName("lockout_end");
+
+                    b.Property<bool>("MustReplaceRecoveryCodes")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("must_replace_recovery_codes");
 
                     b.Property<string>("NormalizedEmail")
                         .HasMaxLength(256)
@@ -512,6 +657,45 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .WithMany()
                         .HasForeignKey("RequesterMembershipId", "SuiteId", "RequesterUserId")
                         .HasPrincipalKey("Id", "SuiteId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Tenancy.AccountMessage", b =>
+                {
+                    b.HasOne("AllenBuilding.Infrastructure.Identity.OfficeUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Tenancy.BuildingManager", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Tenancy.Building", null)
+                        .WithMany()
+                        .HasForeignKey("BuildingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AllenBuilding.Infrastructure.Identity.OfficeUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Tenancy.Invitation", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Tenancy.Suite", null)
+                        .WithMany()
+                        .HasForeignKey("SuiteId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AllenBuilding.Infrastructure.Identity.OfficeUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

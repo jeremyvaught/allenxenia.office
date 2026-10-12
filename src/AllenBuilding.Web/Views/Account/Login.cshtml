@@ -1,0 +1,4 @@
+@model LoginForm
+@{ ViewData["Title"] = "Sign in"; }
+<div class="page"><section class="form-panel"><p class="mb-2 text-sm text-muted">YOUR OFFICE</p><h1 class="mb-3 text-3xl font-semibold">Welcome back</h1><p class="mb-6 text-muted">Use the email address from your building invitation.</p>
+<form method="post" class="space-y-5"><div asp-validation-summary="All" role="alert"></div><div><label asp-for="Email" class="mb-2 block"></label><input asp-for="Email" class="field" autocomplete="username" /></div><div><label asp-for="Password" class="mb-2 block"></label><input asp-for="Password" class="field" autocomplete="current-password" /></div><button class="button w-full">Sign in</button></form><a asp-controller="Invitation" asp-action="Forgot" class="mt-4 flex min-h-11 items-center underline">Forgot your password?</a></section></div>

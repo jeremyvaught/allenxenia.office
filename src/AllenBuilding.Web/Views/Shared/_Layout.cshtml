@@ -20,7 +20,15 @@
             <div class="flex flex-wrap items-center gap-4 sm:gap-6">
                 <nav aria-label="Main navigation" class="flex gap-4 text-sm font-medium">
                     <a href="/#services" class="flex min-h-11 items-center hover:text-brand">Services</a>
-                    <a href="/#access" class="flex min-h-11 items-center hover:text-brand">Access</a>
+                    @if (User.Identity?.IsAuthenticated == true)
+                    {
+                        <a asp-controller="Portal" asp-action="Index" class="flex min-h-11 items-center hover:text-brand">Your office</a>
+                        <form asp-controller="Account" asp-action="Logout" method="post"><button class="min-h-11">Sign out</button></form>
+                    }
+                    else
+                    {
+                        <a asp-controller="Account" asp-action="Login" class="flex min-h-11 items-center hover:text-brand">Sign in</a>
+                    }
                 </nav>
                 <label class="flex items-center gap-2 text-sm text-muted">
                     <span>Theme</span>

@@ -1,0 +1,3 @@
+@model string[]
+@{ ViewData["Title"] = "Your recovery codes"; }
+<div class="page"><section class="form-panel"><h1 class="mb-3 text-3xl font-semibold">Keep these codes safe</h1><p class="mb-6 text-muted">Each code works once. This is the only time these codes are displayed. Save them in your password manager or another secure place.</p><ul class="mb-6 grid grid-cols-1 gap-3 rounded-lg bg-brand-soft p-4 font-mono sm:grid-cols-2">@foreach (var code in Model) { <li>@code</li> }</ul><a asp-controller="Portal" asp-action="Index" class="button w-full">Continue to your office</a></section></div>

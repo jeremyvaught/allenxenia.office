@@ -14,11 +14,47 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
     public DbSet<Membership> Memberships => Set<Membership>();
     public DbSet<ActiveGrant> ActiveGrants => Set<ActiveGrant>();
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
+    public DbSet<BuildingManager> BuildingManagers => Set<BuildingManager>();
+    public DbSet<Invitation> Invitations => Set<Invitation>();
+    public DbSet<AccountAudit> AccountAudits => Set<AccountAudit>();
+    public DbSet<AccountMessage> AccountMessages => Set<AccountMessage>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
         base.OnModelCreating(model);
         model.Entity<OfficeUser>().Property(x => x.DisplayName).HasMaxLength(120);
+        model.Entity<AccountAudit>(e =>
+        {
+            e.ToTable("account_audit"); e.HasKey(x => x.Id);
+            e.Property(x => x.ActorId).HasMaxLength(450);
+            e.Property(x => x.Action).HasMaxLength(80);
+            e.Property(x => x.SubjectId).HasMaxLength(450);
+        });
+        model.Entity<AccountMessage>(e =>
+        {
+            e.ToTable("account_messages"); e.HasKey(x => x.Id);
+            e.Property(x => x.UserId).HasMaxLength(450);
+            e.Property(x => x.Kind).HasMaxLength(80);
+            e.Property(x => x.ProtectedPayload).HasColumnType("TEXT");
+            e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<BuildingManager>(e =>
+        {
+            e.ToTable("building_managers"); e.HasKey(x => new { x.BuildingId, x.UserId });
+            e.Property(x => x.UserId).HasMaxLength(450);
+            e.HasOne<Building>().WithMany().HasForeignKey(x => x.BuildingId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<Invitation>(e =>
+        {
+            e.ToTable("invitations"); e.HasKey(x => x.Id);
+            e.Property(x => x.UserId).HasMaxLength(450);
+            e.Property(x => x.IssuedBy).HasMaxLength(450);
+            e.Property(x => x.Version).IsConcurrencyToken();
+            e.HasIndex(x => x.UserId).IsUnique();
+            e.HasOne<Suite>().WithMany().HasForeignKey(x => x.SuiteId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        });
         model.Entity<Building>(e =>
         {
             e.ToTable("buildings"); e.HasKey(x => x.Id);

@@ -1,0 +1,3 @@
+@model ResetRequestForm
+@{ ViewData["Title"] = "Reset your password"; }
+<div class="page"><section class="form-panel"><h1 class="mb-3 text-3xl font-semibold">Reset your password</h1><p class="mb-6 text-muted">Enter your account email. Password recovery does not grant or restore tenant access.</p><form method="post" class="space-y-5"><div asp-validation-summary="All" role="alert"></div><div><label asp-for="Email" class="mb-2 block"></label><input asp-for="Email" class="field" autocomplete="email" /></div><button class="button w-full">Request reset link</button></form></section></div>

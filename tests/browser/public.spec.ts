@@ -20,7 +20,7 @@ test('public pages fit a 320px viewport and serve compiled CSS', async ({ page }
   await page.setViewportSize({ width: 320, height: 800 });
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
-  for (const route of ['/', '/Home/Privacy']) {
+  for (const route of ['/', '/Home/Privacy', '/Account/Login', '/Invitation/Forgot']) {
     await page.goto(route);
     await expect(page.locator('h1')).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

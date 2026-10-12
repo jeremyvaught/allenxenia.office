@@ -17,7 +17,19 @@ dotnet test --configuration Release --no-build
 dotnet run --project src/AllenBuilding.Web
 ```
 
-The foundation has domain rules, Identity persistence and separate SQLite/MySQL migrations; tenant sign-in/workflows and external providers are still being built. No production readiness is claimed. Local migrations create an empty database, not default tenant credentials. Never use real tenants or payments in test fixtures.
+The foundation includes invitation-only Identity accounts, challenged manager MFA, recovery, persistent protected keys and separate SQLite/MySQL migrations. Maintenance and external delivery are still being built. No production readiness is claimed. Local migrations create an empty database, not default tenant credentials. Never use real tenants or payments in test fixtures.
+
+After migrating an empty local database, create its first manager interactively:
+
+```sh
+dotnet run --project src/AllenBuilding.Web -- --bootstrap-manager
+```
+
+The command takes a hidden password, refuses to bootstrap once any account exists, and grants access only to the initial building. Sign in, enroll an authenticator, sign in again with a real challenge, and generate recovery codes before management opens. Manager MFA cannot be bypassed with an enabled flag or remembered browser. Sensitive changes require password and factor verification in the preceding five minutes. Every protected request checks the current security stamp and current building grants.
+
+Managers can add suites and record invitations for new accounts. Acceptance consumes a seven-day Identity token and grants exactly the recorded suite in one transaction. Account tokens are read from URL fragments into antiforgery-protected forms so they do not enter request URLs. Password reset tokens expire after two hours; recovery never grants membership. Invitation, reset and security messages are encrypted in a durable queue; **email delivery is not connected yet**. Existing-account suite grants, expired-invitation reissue and operator-assisted lost-device recovery are later increments. A valid recovery-code sign-in can reset a lost authenticator; it revokes sessions and requires enrollment again. Recovery codes are hashed, single use and require replenishment before manager authority returns.
+
+Local protected keys live in ignored `.data/keys` with a restricted directory. Production requires a persistent `Protection__KeyDirectory`, a private wrapping `Protection__CertificatePath` and any `Protection__CertificatePassword` via restricted configuration. Preserve the key directory and wrapping certificate independently of releases and test their recovery. Host-specific certificate provisioning and off-host backup/restore remain release gates. Account rate limits currently partition by the direct peer IP; configure and verify trusted reverse-proxy forwarding before production, never trust arbitrary forwarded headers.
 
 ## Architecture and authority
 
@@ -49,7 +61,7 @@ Apply migrations through the explicit `--migrate` operator command after a recov
 
 ## Frontend and browser verification
 
-The shared MVC layout uses compiled Tailwind v4 and semantic light/dark tokens. System is the initial preference; explicit Light/Dark is retained on the browser and System removes the override. The public page accurately identifies tenant access as being prepared until account workflows ship.
+The shared MVC layout uses compiled Tailwind v4 and semantic light/dark tokens. System is the initial preference; explicit Light/Dark is retained on the browser and System removes the override. Live enrollment remains pending while delivery and pilot operations are completed.
 
 ```sh
 npx playwright install chromium

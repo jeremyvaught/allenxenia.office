@@ -2,7 +2,11 @@ using AllenBuilding.Domain.Maintenance;
 using AllenBuilding.Domain.Tenancy;
 using AllenBuilding.Infrastructure.Identity;
 using AllenBuilding.Infrastructure.Persistence;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace AllenBuilding.IntegrationTests;
 
@@ -101,6 +105,40 @@ public sealed class PersistenceTests
             Assert.False((await db.Memberships.SingleAsync(x => x.Id == membership.Id)).IsActive(now));
             Assert.Equal(WorkOrderStatus.Triaged, (await db.WorkOrders.SingleAsync(x => x.Id == request.Id)).Status);
         }
+        await VerifyProtectedIdentity(create);
+    }
+
+    private static async Task VerifyProtectedIdentity(Func<OfficeDbContext> create)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
+        services.AddScoped<OfficeDbContext>(_ => create());
+        services.AddIdentityCore<OfficeUser>().AddRoles<IdentityRole>().AddEntityFrameworkStores<OfficeDbContext>().AddDefaultTokenProviders();
+        services.Replace(ServiceDescriptor.Scoped<IUserStore<OfficeUser>, ProtectedUserStore>());
+        await using var provider = services.BuildServiceProvider();
+        string id; string code;
+        using (var scope = provider.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<OfficeUser>>();
+            var user = new OfficeUser { UserName = $"identity-{Guid.NewGuid():N}@example.test" };
+            Assert.True((await users.CreateAsync(user, AccountTestHost.Password)).Succeeded); id = user.Id;
+            Assert.True((await users.ResetAuthenticatorKeyAsync(user)).Succeeded);
+            var key = await users.GetAuthenticatorKeyAsync(user);
+            code = (await users.GenerateNewTwoFactorRecoveryCodesAsync(user, 2))!.First();
+            var values = await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().UserTokens.Where(x => x.UserId == id).Select(x => x.Value).ToListAsync();
+            Assert.DoesNotContain(key, values); Assert.All(values, value => Assert.DoesNotContain(code, value));
+        }
+        using var first = provider.CreateScope(); using var second = provider.CreateScope();
+        var a = first.ServiceProvider.GetRequiredService<UserManager<OfficeUser>>();
+        var b = second.ServiceProvider.GetRequiredService<UserManager<OfficeUser>>();
+        var original = (await a.FindByIdAsync(id))!; var stale = (await b.FindByIdAsync(id))!;
+        Assert.True((await a.RedeemTwoFactorRecoveryCodeAsync(original, code)).Succeeded);
+        Assert.False((await b.RedeemTwoFactorRecoveryCodeAsync(stale, code)).Succeeded);
+        using var final = provider.CreateScope();
+        var manager = final.ServiceProvider.GetRequiredService<UserManager<OfficeUser>>();
+        var saved = (await manager.FindByIdAsync(id))!;
+        Assert.True(saved.MustReplaceRecoveryCodes); Assert.Equal(1, await manager.CountRecoveryCodesAsync(saved));
     }
 }
 
