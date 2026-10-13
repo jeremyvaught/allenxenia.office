@@ -1,5 +1,8 @@
+@{ var preference = Context.Request.Cookies[AllenBuilding.Web.Controllers.PreferencesController.ThemeCookie];
+   preference = preference is "light" or "dark" ? preference : "system";
+}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="@(preference == "system" ? null : preference)">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -31,14 +34,19 @@
                         <a asp-controller="Account" asp-action="Login" class="flex min-h-11 items-center hover:text-brand">Sign in</a>
                     }
                 </nav>
+                <form action="/preferences/theme" method="post" class="flex flex-wrap items-center gap-2">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="returnUrl" value="@(Context.Request.Path + Context.Request.QueryString)" />
                 <label class="flex items-center gap-2 text-sm text-muted">
                     <span>Theme</span>
-                    <select data-theme-control aria-label="Theme" class="min-h-11 max-w-28 rounded-lg border border-muted bg-panel px-2 text-ink">
-                        <option value="system">System</option>
-                        <option value="light">Light</option>
-                        <option value="dark">Dark</option>
+                    <select data-theme-control name="value" aria-label="Theme" class="min-h-11 max-w-28 rounded-lg border border-muted bg-panel px-2 text-ink">
+                        <option value="system" selected="@(preference == "system")">System</option>
+                        <option value="light" selected="@(preference == "light")">Light</option>
+                        <option value="dark" selected="@(preference == "dark")">Dark</option>
                     </select>
                 </label>
+                <noscript><button class="quiet-button">Apply theme</button></noscript>
+                </form>
             </div>
         </div>
     </header>
