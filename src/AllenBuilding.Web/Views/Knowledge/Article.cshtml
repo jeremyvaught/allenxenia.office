@@ -1,5 +1,5 @@
 @model AllenBuilding.Application.Knowledge.HelpSource
 @{ ViewData["Title"] = Model.Title; }
 <div class="page"><a asp-action="@(ViewData["Tenant"] is true ? "Tenant" : "Index")" class="mb-6 flex min-h-11 items-center underline">Back to building help</a>
-    <article class="mx-auto max-w-3xl rounded-2xl border border-line bg-panel p-6 sm:p-8"><p class="mb-3 text-sm text-muted">@Model.Building · Published by management</p><h1 class="mb-6 break-words text-3xl font-semibold sm:text-4xl">@Model.Title</h1><p class="whitespace-pre-wrap break-words leading-relaxed">@Model.Body</p><p class="mt-8 border-t border-line pt-4 text-sm text-muted">Updated @Model.EditedAt.ToString("MMM d, yyyy") · Review date @Model.ReviewOn.ToString("MMM d, yyyy")</p></article>
+    <article class="mx-auto max-w-3xl rounded-2xl border border-line bg-panel p-6 sm:p-8"><p class="mb-3 text-sm text-muted">@Model.Building · Published by management</p><h1 class="mb-6 break-words text-3xl font-semibold sm:text-4xl">@Model.Title</h1><p class="whitespace-pre-wrap break-words leading-relaxed">@Model.Body</p><p class="mt-8 border-t border-line pt-4 text-sm text-muted">Updated @OfficeTime.Date(Model.EditedAt) · Review date @Model.ReviewOn.ToString("MMM d, yyyy")</p></article>
 </div>

@@ -8,12 +8,12 @@
         @if (review.State == AssistantReviewState.Completed)
         {
             <h2 class="mb-4 text-lg font-semibold">@(isRequest ? "Request submitted" : "Comment added")</h2>
-            <p class="mb-4">Saved @review.CompletedAt?.ToString("MMM d, yyyy HH:mm 'UTC'"). Confirmation reference: <span class="break-all">@review.OperationId</span></p>
+            <p class="mb-4">Saved @OfficeTime.Timestamp(review.CompletedAt). Confirmation reference: <span class="break-all">@review.OperationId</span></p>
             <a class="button" href="/Maintenance/Details/@review.ResultId">View request and history</a>
         }
         else if (ready)
         {
-            <p class="mb-4">Nothing has been submitted. Confirm only after checking these exact details. This review expires @review.ExpiresAt.ToString("MMM d, yyyy HH:mm 'UTC'").</p>
+            <p class="mb-4">Nothing has been submitted. Confirm only after checking these exact details. This review expires @OfficeTime.Timestamp(review.ExpiresAt).</p>
             @if (isRequest)
             {
                 <h2 class="mb-2 break-words text-lg font-semibold">@review.Title</h2>

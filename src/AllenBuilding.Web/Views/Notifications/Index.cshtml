@@ -9,7 +9,7 @@
     {
         <li class="rounded-xl border border-line bg-panel p-5">
             <div class="flex flex-wrap justify-between gap-3"><h2 class="text-xl font-semibold">@(message.Kind switch { "MaintenanceUpdate" => "Maintenance update", "SecurityNotice" => "Security notice", "PasswordReset" => "Password reset", _ => "Invitation" })</h2><span>@(message.State == MessageState.NeedsReview ? "Needs review" : message.State.ToString())</span></div>
-            <p class="mt-2 text-sm text-muted">@message.CreatedAt.ToString("MMM d, yyyy HH:mm 'UTC'") · @message.Attempts attempt(s)</p>
+            <p class="mt-2 text-sm text-muted">@OfficeTime.Timestamp(message.CreatedAt) · @message.Attempts attempt(s)</p>
             @if (message.State == MessageState.NeedsReview)
             {
                 <p class="mt-4 text-muted">@(message.Error == "DeliveryUnknown" || message.Error == "LeaseExpired" ? "The delivery result could not be confirmed. Check the previous delivery before retrying; the message may already have been sent." : "Delivery could not finish. Resolve the mail configuration or provider failure before retrying.")</p>

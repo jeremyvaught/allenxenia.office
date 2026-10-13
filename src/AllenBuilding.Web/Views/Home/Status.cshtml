@@ -1,0 +1,29 @@
+@model int
+@{
+    var title = Model switch
+    {
+        404 => "Page not found",
+        403 => "Access unavailable",
+        429 => "Please wait a moment",
+        503 => "Temporarily unavailable",
+        _ => "We couldn't complete that request"
+    };
+    ViewData["Title"] = title;
+    var explanation = Model switch
+    {
+        404 => "This page is unavailable. It may have moved, or you may need to sign in to access it.",
+        403 => "Your account can't access this page. Contact building management if you need help.",
+        429 => "Too many requests arrived at once. Wait a moment, then try again.",
+        _ => "Please try again. If the problem continues, contact building management."
+    };
+}
+<section class="mx-auto max-w-3xl px-5 py-16 sm:px-8">
+    <p class="mb-3 text-sm text-muted">@Model</p>
+    <h1 class="text-3xl font-semibold tracking-tight">@title</h1>
+    <p class="mt-5 leading-relaxed text-muted">@explanation</p>
+    <nav aria-label="Recovery navigation" class="mt-8 flex flex-wrap gap-3">
+        <a href="/" class="button">Back to Allen Xenia Office</a>
+        <a href="/Knowledge" class="quiet-button">Building help</a>
+        @if (User.Identity?.IsAuthenticated != true) { <a href="/Account/Login" class="quiet-button">Sign in</a> }
+    </nav>
+</section>

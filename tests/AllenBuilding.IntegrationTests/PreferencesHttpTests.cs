@@ -8,7 +8,8 @@ public sealed class PreferencesHttpTests
     public async Task Anonymous_theme_forms_require_csrf_and_persist_a_validated_choice_without_script()
     {
         await using var host = new AccountTestHost(); await host.InitializeAsync(); using var browser = host.Browser();
-        using var forged = await browser.PostAsync("/preferences/theme", new FormUrlEncodedContent(new Dictionary<string, string> { ["value"] = "dark" })); Assert.Equal(HttpStatusCode.BadRequest, forged.StatusCode); Assert.False(forged.Headers.Contains("Set-Cookie"));
+        using var forged = await browser.PostAsync("/preferences/theme", new FormUrlEncodedContent(new Dictionary<string, string> { ["value"] = "dark" })); Assert.Equal(HttpStatusCode.BadRequest, forged.StatusCode);
+        Assert.DoesNotContain(forged.Headers.TryGetValues("Set-Cookie", out var cookies) ? cookies : [], x => x.StartsWith("allen-office-theme=", StringComparison.Ordinal));
         using var saved = await AccountTestHost.PostAsync(browser, "/", "/preferences/theme", ("value", "dark"), ("returnUrl", "/Home/Privacy"));
         Assert.Equal(HttpStatusCode.Redirect, saved.StatusCode); Assert.Equal("/Home/Privacy", saved.Headers.Location!.OriginalString);
         var cookie = Assert.Single(saved.Headers.GetValues("Set-Cookie")); Assert.Contains("allen-office-theme=dark", cookie); Assert.Contains("samesite=lax", cookie, StringComparison.OrdinalIgnoreCase);

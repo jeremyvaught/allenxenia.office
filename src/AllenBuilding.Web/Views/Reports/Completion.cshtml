@@ -6,7 +6,7 @@
 <div class="page">
     <p class="mb-2 text-sm text-muted">BUILDING MANAGEMENT · REPORTS</p><h1 class="mb-4 text-4xl font-semibold">Maintenance completion times</h1>
     <p class="mb-4 max-w-3xl text-muted">Each submission or reopening starts a workflow cycle. Completion measures time to the first completed repair in that cycle; verification measures time from completion to the manager’s close. Open work and cancellations are counted separately.</p>
-    <p class="mb-6 text-sm text-muted">Snapshot @Model.ObservedAt.ToString("yyyy-MM-dd HH:mm:ss 'UTC'") · All recorded history in the selected building scope.</p>
+    <p class="mb-6 text-sm text-muted">Snapshot @OfficeTime.Timestamp(Model.ObservedAt, true) · All recorded history in the selected building scope.</p>
     <form method="get" class="mb-8 grid items-end gap-4 rounded-2xl border border-line bg-panel p-5 sm:grid-cols-2">
         <div class="min-w-0 flex-1"><label for="completion-building" class="mb-2 block">Building</label><select id="completion-building" name="BuildingId" class="field"><option value="">All managed buildings</option>@foreach (var building in Model.Buildings) { <option value="@building.Id" selected="@(Model.Query.BuildingId == building.Id)">@building.Name</option> }</select></div><button class="button">View report</button>
     </form>

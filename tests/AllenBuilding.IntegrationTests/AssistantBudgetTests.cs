@@ -1,9 +1,29 @@
+using System.Net;
+using System.Security.Claims;
 using AllenBuilding.Web.Hosting;
+using Microsoft.AspNetCore.Http;
 
 namespace AllenBuilding.IntegrationTests;
 
 public sealed class AssistantBudgetTests
 {
+    [Fact]
+    public void An_authenticated_budget_survives_ip_changes_and_untrusted_identity_claims_cannot_select_it()
+    {
+        var context = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(ClaimTypes.NameIdentifier, "confirmed-person")], "Identity.Application"))
+        };
+        context.Connection.RemoteIpAddress = IPAddress.Parse("192.0.2.10");
+        var partition = AssistantRequestIdentity.Partition(context); var budget = new AssistantBudget(new Clock());
+        for (var attempt = 0; attempt < 20; attempt++) Assert.True(budget.TryAdmit(partition));
+        context.Connection.RemoteIpAddress = IPAddress.Parse("192.0.2.11");
+        Assert.False(budget.TryAdmit(AssistantRequestIdentity.Partition(context)));
+        context.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, "confirmed-person")]));
+        var anonymous = AssistantRequestIdentity.Partition(context);
+        Assert.NotEqual(partition, anonymous); Assert.StartsWith("ip:", anonymous);
+    }
     [Fact]
     public void Hourly_limit_counts_failures_and_global_budget_survives_partition_rotation()
     {

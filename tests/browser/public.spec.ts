@@ -1,5 +1,29 @@
 import { test, expect } from '@playwright/test';
 
+test('missing pages keep their status and native themes at 320px', async ({ browser }, testInfo) => {
+  const context = await browser.newContext({ baseURL: 'http://127.0.0.1:5088', javaScriptEnabled: false,
+    viewport: { width: 320, height: 800 }, colorScheme: 'dark' });
+  try {
+    const page = await context.newPage();
+    for (const path of ['/page-that-does-not-exist', '/Knowledge/Article/11111111-1111-1111-1111-111111111111']) {
+      const response = await page.goto(path);
+      expect(response?.status()).toBe(404);
+      await expect(page.getByRole('heading', { name: 'Page not found', exact: true })).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }
+    await page.screenshot({ path: testInfo.outputPath('missing-dark-320.png'), fullPage: true });
+    await page.getByLabel('Theme', { exact: true }).selectOption('light');
+    await page.getByRole('button', { name: 'Apply theme', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Page not found', exact: true })).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('missing-light-320.png'), fullPage: true });
+    await page.getByRole('link', { name: 'Back to Allen Xenia Office', exact: true }).click();
+    await expect(page).toHaveURL('http://127.0.0.1:5088/');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  } finally { await context.close(); }
+});
+
 test('assistant native forms preserve origin without disclosing query paths at 320px', async ({ browser }) => {
   const context = await browser.newContext({ baseURL: 'http://127.0.0.1:5088', javaScriptEnabled: false, viewport: { width: 320, height: 800 } });
   try {

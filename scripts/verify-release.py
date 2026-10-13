@@ -121,6 +121,10 @@ def verify_release(release):
             for path in ['/health/live', '/', '/css/app.css']:
                 status, _headers, _body = request(web, path)
                 if status != 200: raise ValueError('Published page or static asset unavailable.')
+            for path in ['/missing-release-page', '/Knowledge/Article/11111111-1111-1111-1111-111111111111']:
+                status, _headers, body = request(web, path)
+                if status != 404 or 'Page not found' not in body or '/css/app.css' not in body:
+                    raise ValueError('Published status page lost its status or styled recovery.')
             status, _headers, _body = request(web, '/Portal')
             if status != 302: raise ValueError('Protected page did not require sign-in.')
             status, headers, body = request(web, '/Account/Login')
@@ -156,7 +160,7 @@ def verify_release(release):
             if original_counts != counts('office_release_proof') or original_counts != counts('office_release_restored'): raise ValueError('Recovery probes changed application rows.')
             frameworks = json.loads((release / 'AllenBuilding.Web.runtimeconfig.json').read_text())['runtimeOptions']
             runtime_evidence = frameworks.get('includedFrameworks') if self_contained else command(['docker', 'run', '--rm', runtime, 'dotnet', '--list-runtimes']).decode().strip().splitlines()
-            evidence = {'format': 1, 'application_revision': manifest['source_revision'], 'profile': manifest.get('profile', 'portable'), 'runtime_image': runtime, 'host_dotnet': 'absent; bundled runtime used' if self_contained else 'installed', 'runtime': runtime_evidence, 'tables': len(original_counts), 'counts': original_counts, 'public_static_live_ready': 'passed', 'private_sign_in_required': 'passed', 'unattended_manager_recovery': 'refused', 'separate_database_restore': 'matching table counts and ready', 'protected_form_with_restored_keys': 'passed', 'protected_form_without_keys': 'rejected', 'external_financial_writes': 'disabled', 'scope': 'Synthetic local containers and empty accounts; not actual Forge, off-host recovery, tenant pilot, Nginx/Supervisor or payment reconciliation proof'}
+            evidence = {'format': 1, 'application_revision': manifest['source_revision'], 'profile': manifest.get('profile', 'portable'), 'runtime_image': runtime, 'host_dotnet': 'absent; bundled runtime used' if self_contained else 'installed', 'runtime': runtime_evidence, 'tables': len(original_counts), 'counts': original_counts, 'public_static_live_ready': 'passed', 'styled_missing_pages_and_articles': '404 with recovery navigation', 'private_sign_in_required': 'passed', 'unattended_manager_recovery': 'refused', 'separate_database_restore': 'matching table counts and ready', 'protected_form_with_restored_keys': 'passed', 'protected_form_without_keys': 'rejected', 'external_financial_writes': 'disabled', 'scope': 'Synthetic local containers and empty accounts; not actual Forge, off-host recovery, tenant pilot, Nginx/Supervisor or payment reconciliation proof'}
             filename = artifacts / ('published-' + manifest['source_revision'][:12] + '-' + identifier[:8] + '.json'); private_write(filename, evidence)
             return filename
         finally:

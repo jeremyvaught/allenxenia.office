@@ -5,7 +5,7 @@
         {
             <li><a asp-action="@(manager ? "ManageDetails" : "Details")" asp-route-id="@request.Id" class="block rounded-xl border border-line bg-panel p-5 hover:ring-2 hover:ring-brand">
                 <div class="flex flex-wrap items-start justify-between gap-3"><h2 class="min-w-0 break-words text-xl font-semibold">@request.Title</h2><span class="rounded-lg bg-brand-soft px-3 py-1 text-sm">@MaintenanceText.Status(request.Status)</span></div>
-                <p class="mt-2 text-sm text-muted">@request.Suite · Submitted @request.CreatedAt.ToString("MMM d, yyyy")</p>
+                <p class="mt-2 text-sm text-muted">@request.Suite · Submitted @OfficeTime.Date(request.CreatedAt)</p>
                 @if (manager) {
                     var observed = (DateTimeOffset)ViewData["ObservedAt"]!;
                     var age = Math.Max(0, (int)(observed - request.CreatedAt).TotalDays);

@@ -6,7 +6,7 @@
 <div class="page">
     <p class="mb-2 text-sm text-muted">BUILDING MANAGEMENT · REPORTS</p><h1 class="mb-4 text-4xl font-semibold">Maintenance aging</h1>
     <p class="mb-3 max-w-3xl text-muted">Active work includes submitted, triaged, assigned and in-progress requests. Completed work awaiting verification is counted separately. Closed and cancelled requests are excluded.</p>
-    <p class="mb-6 text-sm text-muted">Snapshot @Model.ObservedAt.ToString("yyyy-MM-dd HH:mm:ss 'UTC'") · Age uses elapsed time since original submission, including reopened requests. Each page reflects current records when loaded.</p>
+    <p class="mb-6 text-sm text-muted">Snapshot @OfficeTime.Timestamp(Model.ObservedAt, true) · Age uses elapsed time since original submission, including reopened requests. Each page reflects current records when loaded.</p>
     <section aria-label="Maintenance aging totals" class="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         @foreach (var bucket in new[] { MaintenanceAgeBucket.Under7Days, MaintenanceAgeBucket.From7To30Days, MaintenanceAgeBucket.AtLeast30Days, MaintenanceAgeBucket.AwaitingVerification }) {
             <a asp-action="Maintenance" asp-route-BuildingId="@query.BuildingId" asp-route-Bucket="@bucket" class="rounded-2xl border border-line bg-panel p-5"><span class="block text-sm text-muted">@Label(bucket)</span><strong class="mt-2 block text-3xl font-semibold">@Model.Totals.For(bucket)</strong></a>
@@ -20,7 +20,7 @@
     <p class="mb-4 text-sm text-muted">@Model.Totals.Active active @(Model.Totals.Active == 1 ? "request" : "requests") · @Model.Totals.For(query.Bucket) in the selected group · Page @query.Page · up to @MaintenanceAgingQuery.PageSize per page. Totals cover the whole selected building scope, regardless of page or age group.</p>
     @if (Model.Items.Count == 0) { <p class="rounded-xl border border-line bg-panel p-6">No requests in this group.</p> }
     <ul class="grid gap-4">@foreach (var item in Model.Items) {
-        <li class="rounded-2xl border border-line bg-panel p-5"><a asp-controller="Maintenance" asp-action="ManageDetails" asp-route-id="@item.Id" class="block break-words text-xl font-semibold underline">@item.Title</a><p class="mt-2 text-muted">@item.Building · @item.Suite</p><p class="mt-2 text-sm">@MaintenanceText.Status(item.Status) · @((long)Math.Floor((Model.ObservedAt - item.CreatedAt).TotalDays)) days since submission</p><p class="mt-2 text-sm text-muted">Submitted @item.CreatedAt.ToString("yyyy-MM-dd HH:mm 'UTC'")</p></li>
+        <li class="rounded-2xl border border-line bg-panel p-5"><a asp-controller="Maintenance" asp-action="ManageDetails" asp-route-id="@item.Id" class="block break-words text-xl font-semibold underline">@item.Title</a><p class="mt-2 text-muted">@item.Building · @item.Suite</p><p class="mt-2 text-sm">@MaintenanceText.Status(item.Status) · @((long)Math.Floor((Model.ObservedAt - item.CreatedAt).TotalDays)) days since submission</p><p class="mt-2 text-sm text-muted">Submitted @OfficeTime.Timestamp(item.CreatedAt)</p></li>
     }</ul>
     <nav aria-label="Report pages" class="mt-6 flex flex-wrap gap-3">
         @if (query.Page > 1) { <a asp-action="Maintenance" asp-route-BuildingId="@query.BuildingId" asp-route-Bucket="@query.Bucket" asp-route-Page="@(query.Page - 1)" class="quiet-button">Previous page</a> }

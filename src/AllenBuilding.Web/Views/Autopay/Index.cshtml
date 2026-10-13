@@ -10,7 +10,7 @@
             <p class="mb-3">@(authorization.State switch { AutopayState.AwaitingMethod when authorization.CanContinueSetup => "Payment-method setup ready", AutopayState.AwaitingMethod => "Preparing payment-method setup", AutopayState.AwaitingProvider => "Checking provider setup", AutopayState.Active => "Verified active", AutopayState.StopPending => "Stop requested · verification pending", AutopayState.Stopped => "Verified stopped", _ => "Review required" })</p>
             <p class="text-muted">Due day @authorization.DueDay, clamped to the last day of shorter months.</p><p class="mt-2">First rent month: @authorization.FirstPeriodStartsOn.ToString("yyyy-MM"); first due: @authorization.FirstDueOn.ToString("yyyy-MM-dd").</p>
             @if (authorization.EndsBefore is { } end) { <p class="mt-2">Authorized rent months end before @end.ToString("yyyy-MM-dd").</p> }
-            @if (authorization.StopEffectiveAt is { } cutoff) { <p class="mt-3">Requested cutoff: @cutoff.ToString("yyyy-MM-dd HH:mm 'UTC'"). Cancellation is confirmed only after provider verification.</p> }
+            @if (authorization.StopEffectiveAt is { } cutoff) { <p class="mt-3">Requested cutoff: @OfficeTime.Timestamp(cutoff). Cancellation is confirmed only after provider verification.</p> }
             @if (authorization.CanContinueSetup) {
                 <p class="mt-4 text-muted">Continue to Stripe to save your card for the reviewed monthly schedule. Saving a card does not pay rent or confirm active autopay.</p>
                 <form asp-action="Continue" method="post" class="mt-3"><input type="hidden" name="id" value="@authorization.Id" /><button class="button">Continue payment-method setup</button></form>

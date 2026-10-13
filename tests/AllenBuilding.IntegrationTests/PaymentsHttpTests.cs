@@ -45,9 +45,9 @@ public sealed class PaymentsHttpTests
         using var replay = await Confirm(tenant, ticket); Assert.Equal(route, replay.Headers.Location?.OriginalString);
         var beforeRead = host.Clock.GetUtcNow().AddSeconds(-1);
         var status = await tenant.GetStringAsync(route); Assert.Contains("Preparing checkout", status);
-        var encodedRead = Regex.Match(status, @"App records read (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) UTC").Groups[1].Value;
+        var encodedRead = Regex.Match(status, @"data-records-read-at datetime=""([^""]+)""").Groups[1].Value;
         Assert.NotEmpty(encodedRead);
-        var readAt = DateTimeOffset.ParseExact(encodedRead, "yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal);
+        var readAt = DateTimeOffset.ParseExact(WebUtility.HtmlDecode(encodedRead), "O", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None);
         Assert.InRange(readAt, beforeRead, host.Clock.GetUtcNow()); Assert.Contains("$10.25 USD", status); Assert.DoesNotContain("cus_", status); Assert.DoesNotContain("acct_", status);
         Guid attemptId;
         using (var scope = host.Services.CreateScope())

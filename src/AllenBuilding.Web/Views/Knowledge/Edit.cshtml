@@ -31,7 +31,7 @@
                 @foreach (var entry in article.History)
                 {
                     var revision = entry.Revision;
-                    <details class="border-b border-line py-3"><summary class="min-h-11 cursor-pointer break-words">@revision.Title · @revision.EditedAt.ToString("MMM d, yyyy HH:mm 'UTC'")</summary><p class="my-3 text-sm text-muted">Editor: @entry.EditorName · @(revision.Audience == ArticleAudience.Public ? "Public" : "Active tenants") · Review date @revision.ReviewOn.ToString("MMM d, yyyy")</p><p class="whitespace-pre-wrap break-words">@revision.Body</p></details>
+                    <details class="border-b border-line py-3"><summary class="min-h-11 cursor-pointer break-words">@revision.Title · @OfficeTime.Timestamp(revision.EditedAt)</summary><p class="my-3 text-sm text-muted">Editor: @entry.EditorName · @(revision.Audience == ArticleAudience.Public ? "Public" : "Active tenants") · Review date @revision.ReviewOn.ToString("MMM d, yyyy")</p><p class="whitespace-pre-wrap break-words">@revision.Body</p></details>
                 }
                 @if (article.History.Count == 50) { <p class="mt-4 text-muted">Showing the 50 most recent revisions.</p> }
             </section>

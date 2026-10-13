@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using AllenBuilding.Application.Assistant;
 using AllenBuilding.Infrastructure.Assistant;
 
@@ -34,6 +35,14 @@ public static class OfficeAssistant
         builder.Services.AddSingleton<AssistantBudget>();
         builder.Services.AddSingleton<AssistantConversations>();
     }
+}
+
+public static class AssistantRequestIdentity
+{
+    public static string Partition(HttpContext context) =>
+        context.User.Identity?.IsAuthenticated == true && context.User.FindFirstValue(ClaimTypes.NameIdentifier) is { Length: > 0 } user
+            ? "user:" + user
+            : "ip:" + (context.Connection.RemoteIpAddress?.ToString() ?? "local");
 }
 
 // Conservative initial single-process budget; production remains disabled.

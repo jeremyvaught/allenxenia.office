@@ -76,11 +76,12 @@ builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.AddConcurrencyLimiter("Readiness", limiter => { limiter.PermitLimit = 2; limiter.QueueLimit = 0; });
-    options.AddConcurrencyLimiter("AssistantPages", limiter => { limiter.PermitLimit = 2; limiter.QueueLimit = 0; });
+    options.AddPolicy("AssistantPages", context => RateLimitPartition.GetConcurrencyLimiter(
+        AssistantRequestIdentity.Partition(context), _ => new ConcurrencyLimiterOptions { PermitLimit = 2, QueueLimit = 0 }));
     options.AddConcurrencyLimiter("PaymentActions", limiter => { limiter.PermitLimit = 2; limiter.QueueLimit = 0; });
     options.AddConcurrencyLimiter("PaymentWebhook", limiter => { limiter.PermitLimit = 2; limiter.QueueLimit = 0; });
     options.AddPolicy("AssistantTurns", context => RateLimitPartition.GetFixedWindowLimiter(
-        context.Connection.RemoteIpAddress?.ToString() ?? "local", _ => new FixedWindowRateLimiterOptions
+        AssistantRequestIdentity.Partition(context), _ => new FixedWindowRateLimiterOptions
         { PermitLimit = 5, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
     options.AddPolicy("Accounts", context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "local", _ => new FixedWindowRateLimiterOptions
@@ -157,9 +158,10 @@ if (dispatch)
 }
 
 app.UseOfficeProxy();
+app.UseExceptionHandler("/Home/Error");
+app.UseStatusCodePagesWithReExecute("/Home/Status", "?code={0}");
 if (!app.Environment.IsDevelopment())
 {
-    app.UseExceptionHandler("/Home/Error");
     app.UseHsts();
     app.UseHttpsRedirection();
 }

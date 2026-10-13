@@ -15,7 +15,7 @@
 <section class="mt-8"><h2 class="mb-4 text-2xl font-semibold">Unaccepted invitations</h2><div class="grid gap-4 md:grid-cols-2">
 @foreach (var invitation in (IReadOnlyList<InvitationRow>)ViewData["Invitations"]!)
 {
-    <article class="min-w-0 rounded-2xl border border-line bg-panel p-5"><h3 class="break-words font-semibold">@invitation.Email · @invitation.Suite</h3><p class="my-3 text-sm text-muted">@invitation.Status · Expires @invitation.ExpiresAt.ToString("MMM d, yyyy HH:mm 'UTC'")</p>
+    <article class="min-w-0 rounded-2xl border border-line bg-panel p-5"><h3 class="break-words font-semibold">@invitation.Email · @invitation.Suite</h3><p class="my-3 text-sm text-muted">@invitation.Status · Expires @OfficeTime.Timestamp(invitation.ExpiresAt)</p>
         <form asp-action="ChangeInvitation" method="post" class="space-y-3"><input name="InvitationId" value="@invitation.Id" type="hidden" /><input name="Version" value="@invitation.Version" type="hidden" />
             <label for="invitation-reason-@invitation.Id" class="block">Reason for invitation change</label><input id="invitation-reason-@invitation.Id" name="Reason" maxlength="2000" required class="field" />
             <p class="text-sm text-muted">Reissue approves a new seven-day activation window and invalidates every previous link. Revoking an invitation cannot remove access that has already been accepted.</p>

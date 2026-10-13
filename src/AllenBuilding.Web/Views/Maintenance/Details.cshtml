@@ -34,7 +34,7 @@
                 <h2 class="mb-5 text-xl font-semibold">Request history</h2><ol class="space-y-5">
                 @foreach (var entry in Model.History)
                 {
-                    <li class="border-l-2 border-line pl-4"><p class="font-semibold">@MaintenanceText.History(entry.Action) · @MaintenanceText.Status(entry.Status) @(entry.Internal ? "· Internal note" : "")</p><time datetime="@entry.At.ToString("O")" class="text-sm text-muted">@entry.At.ToString("MMM d, yyyy HH:mm 'UTC'")</time>
+                    <li class="border-l-2 border-line pl-4"><p class="font-semibold">@MaintenanceText.History(entry.Action) · @MaintenanceText.Status(entry.Status) @(entry.Internal ? "· Internal note" : "")</p><time datetime="@entry.At.ToString("O")" class="text-sm text-muted">@OfficeTime.Timestamp(entry.At)</time>
                         @if (entry.Note is not null) { <p class="mt-2 whitespace-pre-wrap break-words">@entry.Note</p> }
                     </li>
                 }

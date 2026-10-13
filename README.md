@@ -74,7 +74,7 @@ Forge templates are in `ops/forge`; release verification helpers are in `scripts
 
 Build a committed Linux x64 release with `python3 scripts/package-release.py build`, then pass its output directory to `python3 scripts/verify-release.py <release-directory>`. The self-contained package supplies .NET; the accompanying `.tar.gz` preserves executable permissions. Confirm the actual host architecture and OS libraries before deployment. Runtime security updates require rebuilding and deploying a serviced package. `build --profile portable` remains available for hosts with an explicitly managed .NET runtime.
 
-The canonical deployment, MySQL/key backup and independent restore procedure is [the operating runbook](/Users/jeremyvaught/markdown/dotnet/Development/allen-xenia-office-operations.md). Configure and demonstrate its off-host schedule before admitting a real tenant; a local disposable-container restore is separate evidence.
+The canonical deployment, MySQL/key backup and independent restore procedure is the owner's vault document `dotnet/Development/allen-xenia-office-operations.md`. Configure and demonstrate its off-host schedule before admitting a real tenant; a local disposable-container restore is separate evidence. Prefer Forge's database backups with a separate protected-key backup over adding another server package.
 
 Operator MFA recovery uses an interactive, disabled-by-default deployment command (`--recover-manager-mfa`) after independent owner verification. It issues a 15-minute single-use code delivered outside the reset-email inbox, then requires authenticator enrollment, a fresh MFA sign-in and recovery codes. Email/password alone cannot complete recovery.
 

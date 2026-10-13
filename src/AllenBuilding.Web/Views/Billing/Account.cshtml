@@ -19,7 +19,7 @@
     @if (manager && Model.Closure is { } closure)
     {
         <section aria-label="Pending billing closure" class="mb-6 rounded-2xl border border-line bg-panel p-6"><h2 class="mb-3 text-xl font-semibold">Tenancy access ended · Billing closure pending</h2>
-            <p class="mb-3">Access ended @Model.EndedAt?.ToString("yyyy-MM-dd HH:mm 'UTC'"). Provider cleanup and already-dispatched payments still require canonical reconciliation. Existing debt and credits remain.</p>
+            <p class="mb-3">Access ended @OfficeTime.Timestamp(Model.EndedAt). Provider cleanup and already-dispatched payments still require canonical reconciliation. Existing debt and credits remain.</p>
             <p class="mb-4 break-words text-muted">Reason: @closure.Reason</p><a asp-controller="FinancialExceptions" asp-action="Index" class="quiet-button">Review financial exceptions</a></section>
     }
     @if (manager && Model.EndedAt is null)

@@ -25,7 +25,7 @@
     </form>
     @if (Model.Recent.Count > 0) {
         <section class="mt-8"><h2 class="mb-4 text-2xl font-semibold">Recent payment requests</h2><ul class="space-y-3">
-        @foreach (var payment in Model.Recent) { <li class="rounded-xl border border-line bg-panel p-5"><p>@BillingDisplay.Usd(payment.TotalMinorUnits) USD · @payment.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'")</p><a asp-action="Status" asp-route-id="@payment.AttemptId" class="mt-2 flex min-h-11 items-center underline">View payment @(payment.AttemptId.ToString("N")[..8])</a></li> }
+        @foreach (var payment in Model.Recent) { <li class="rounded-xl border border-line bg-panel p-5"><p>@BillingDisplay.Usd(payment.TotalMinorUnits) USD · @OfficeTime.Timestamp(payment.CreatedAt.ToUniversalTime())</p><a asp-action="Status" asp-route-id="@payment.AttemptId" class="mt-2 flex min-h-11 items-center underline">View payment @(payment.AttemptId.ToString("N")[..8])</a></li> }
         </ul><p class="mt-3 text-sm text-muted">Showing up to 50 requests. Open a payment to check its verified status.</p></section>
     }
     <a asp-controller="Billing" asp-action="Account" asp-route-id="@Model.Account.Id" class="mt-6 flex min-h-11 items-center underline">Return to billing</a>

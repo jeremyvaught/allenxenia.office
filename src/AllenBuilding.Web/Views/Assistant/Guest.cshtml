@@ -2,7 +2,7 @@
 @{ ViewData["Title"] = "Continue your maintenance draft"; var members = ViewData["Memberships"] as IReadOnlyList<AllenBuilding.Application.Maintenance.RequestMemberChoice> ?? []; }
 <div class="page max-w-3xl">
     <h1 class="mb-4 text-3xl font-semibold">Your maintenance draft</h1>
-    <p class="mb-5 text-muted">Nothing has been submitted. This temporary draft expires at @Model.ExpiresAt.ToString("HH:mm:ss 'UTC'") and is cleared if the server restarts. Sign in, choose your office and review it before separately confirming.</p>
+    <p class="mb-5 text-muted">Nothing has been submitted. This temporary draft expires at @OfficeTime.Timestamp(Model.ExpiresAt, true) and is cleared if the server restarts. Sign in, choose your office and review it before separately confirming.</p>
     @if (Model.ImportedScope is null)
     {
         <form asp-action="EditGuest" method="post" class="space-y-4 rounded-2xl border border-line bg-panel p-5 sm:p-6">

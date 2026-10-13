@@ -77,7 +77,7 @@ public sealed class AssistantController(AssistantHelp help, AssistantPolicy poli
         if (origin.Length > 0 && origin != Request.Scheme + "://" + Request.Host) return BadRequest();
         if (Request.Headers["Sec-Fetch-Site"] == "cross-site") return BadRequest();
         if (!ModelState.IsValid || string.IsNullOrWhiteSpace(question) || question.Length > 4000) return Answer(new(AssistantModelCode.Invalid));
-        if (!budget.TryAdmit(HttpContext.Connection.RemoteIpAddress?.ToString() ?? "local"))
+        if (!budget.TryAdmit(AssistantRequestIdentity.Partition(HttpContext)))
         { Response.StatusCode = 429; ViewData["Limited"] = true; return View("Index"); }
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(HttpContext.RequestAborted);
         deadline.CancelAfter(TimeSpan.FromSeconds(60));

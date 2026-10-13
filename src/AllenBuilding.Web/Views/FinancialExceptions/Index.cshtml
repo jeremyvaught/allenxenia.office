@@ -13,10 +13,10 @@
         <li class="rounded-2xl border border-line bg-panel p-5 sm:p-6">
             <div class="flex flex-wrap justify-between gap-3"><h2 class="text-xl font-semibold">@item.Suite</h2><span class="text-sm font-semibold">@item.State</span></div>
             <p class="mt-2 text-muted">@(item.Failure switch { FinancialFailure.ProviderUnknown => "The provider result could not be confirmed.", FinancialFailure.ProviderMismatch => "Provider evidence does not match the original payment.", FinancialFailure.LedgerChanged => "The obligation changed after payment review.", FinancialFailure.ClaimsIncomplete => "Collection protection needs investigation.", FinancialFailure.ExternalCashMovement => "Returned or reinstated cash needs a reviewed allocation and debt disposition.", _ => "The provider outcome and recorded history need reconciliation." })</p>
-            <p class="mt-3 text-sm">Original collection: @item.AttemptState · Case opened @item.FirstSeenAt.ToString("yyyy-MM-dd HH:mm 'UTC'")</p>
-            <p class="mt-2 text-sm text-muted">Last verified original payment state: @(item.LastVerifiedState ?? "No verified state recorded") @if (item.LastVerifiedAt is { } at) { <span>· @at.ToString("yyyy-MM-dd HH:mm 'UTC'")</span> }</p>
+            <p class="mt-3 text-sm">Original collection: @item.AttemptState · Case opened @OfficeTime.Timestamp(item.FirstSeenAt)</p>
+            <p class="mt-2 text-sm text-muted">Last verified original payment state: @(item.LastVerifiedState ?? "No verified state recorded") @if (item.LastVerifiedAt is { } at) { <span>· @OfficeTime.Timestamp(at)</span> }</p>
             @if (item.WorkState is { } workState) { <p class="mt-2 text-sm text-muted">Background work: @workState · @item.AutomaticAttempts checks · @item.Failures failures
-                @if (workState == CollectionWorkState.Queued && item.NextAttemptAt is { } next) { <span> · Next check @next.ToString("yyyy-MM-dd HH:mm 'UTC'")</span> }</p> }
+                @if (workState == CollectionWorkState.Queued && item.NextAttemptAt is { } next) { <span> · Next check @OfficeTime.Timestamp(next)</span> }</p> }
             <p class="mt-2 text-sm text-muted">This is last-known evidence; opening this page does not contact Stripe.</p>
             <dl class="mt-5 grid gap-3 text-sm sm:grid-cols-2">
                 <div><dt class="text-muted">Provider account / mode</dt><dd class="break-all">@item.ProviderAccount · <span class="inline-block">@(item.LiveMode ? "Live" : "Sandbox")</span></dd></div>
@@ -36,8 +36,8 @@
                         <p class="font-semibold">@(movement.Kind switch { CashMovementKind.Refund => "Refund", CashMovementKind.DisputeWithdrawal => "Dispute withdrawal", _ => "Dispute reinstatement" }) · @((movement.SignedMinorUnits / 100m).ToString("C", System.Globalization.CultureInfo.GetCultureInfo("en-US"))) @movement.Currency</p>
                         <p class="mt-1 text-muted">@(movement.ReviewState switch { CashMovementReviewState.Classified => "Disposition verified", CashMovementReviewState.AppliedPendingVerification => "Allocation / debt disposition recorded — provider agreement pending", CashMovementReviewState.Pending => "Allocation / debt disposition pending", _ => "Review evidence incomplete — investigation required" })</p>
                         <p class="mt-1 break-all text-muted">Source @movement.SourceId</p><p class="mt-1 break-all text-muted">Transaction @movement.TransactionId</p>
-                        <p class="mt-1 text-muted">Provider transaction @movement.ProviderAt.ToString("yyyy-MM-dd HH:mm 'UTC'")</p>
-                        @if (movement.VerifiedAt is { } verifiedAt) { <p class="mt-1 text-muted">Whole payment verified @verifiedAt.ToString("yyyy-MM-dd HH:mm 'UTC'")</p> }
+                        <p class="mt-1 text-muted">Provider transaction @OfficeTime.Timestamp(movement.ProviderAt)</p>
+                        @if (movement.VerifiedAt is { } verifiedAt) { <p class="mt-1 text-muted">Whole payment verified @OfficeTime.Timestamp(verifiedAt)</p> }
                         @if (ViewData["RefundsEnabled"] is true && movement.Kind == CashMovementKind.Refund && movement.ReviewState == CashMovementReviewState.Pending) { <a asp-action="Refund" asp-route-id="@movement.Id" class="quiet-button mt-3">Review debt disposition</a> }
                     </li> }</ul>
                     @if (facts.Count == 50) { <p class="mt-4 text-sm text-muted">Showing the 50 most recent movements; this list is not an account total.</p> }
@@ -50,7 +50,7 @@
                     <ul class="mt-4 space-y-3">@foreach (var source in sources) { <li class="min-w-0 text-sm">
                         <p class="break-all font-semibold">@source.SourceId</p>
                         <p class="mt-1 text-muted">@(source.State switch { CollectionWorkState.Completed => "Cash evidence recorded", CollectionWorkState.Leased => "Verification in progress", CollectionWorkState.NeedsReview => "Manager review required", _ => "Verification queued" }) · @source.Attempts checks · @source.Failures failures</p>
-                        @if (source.State == CollectionWorkState.Queued) { <p class="mt-1 text-muted">Next check @source.NextAttemptAt.ToString("yyyy-MM-dd HH:mm 'UTC'")</p> }
+                        @if (source.State == CollectionWorkState.Queued) { <p class="mt-1 text-muted">Next check @OfficeTime.Timestamp(source.NextAttemptAt)</p> }
                         @if (source.LastError is { } error) { <p class="mt-1 text-muted">@(error switch { "ProviderUnknown" => "The provider result could not be verified.", "LeaseExpired" => "A worker stopped before verification finished.", "RetryLimit" => "Automatic verification reached its time or retry limit.", _ => "Provider evidence requires investigation." })</p> }
                     </li> }</ul>
                     @if (sources.Count == 25) { <p class="mt-4 text-sm text-muted">Showing up to 25 source checks, unfinished checks first. This list is not a cash total.</p> }
@@ -88,7 +88,7 @@
                     <button class="quiet-button">Request provider reconciliation</button>
                 </form>
             }
-            <details class="mt-6 rounded-xl border border-line p-4"><summary class="min-h-11 cursor-pointer font-semibold">Recent recovery history</summary><ol class="mt-3 space-y-3 text-sm">@foreach (var entry in item.History) { <li><span>@entry.Action · @entry.OccurredAt.ToString("yyyy-MM-dd HH:mm 'UTC'")</span>@if (entry.Reason is { } reason) { <p class="mt-1 break-words text-muted">@reason</p> }</li> }</ol>@if (item.History.Count == 20) { <p class="mt-3 text-sm text-muted">Showing the 20 most recent history entries.</p> }</details>
+            <details class="mt-6 rounded-xl border border-line p-4"><summary class="min-h-11 cursor-pointer font-semibold">Recent recovery history</summary><ol class="mt-3 space-y-3 text-sm">@foreach (var entry in item.History) { <li><span>@entry.Action · @OfficeTime.Timestamp(entry.OccurredAt)</span>@if (entry.Reason is { } reason) { <p class="mt-1 break-words text-muted">@reason</p> }</li> }</ol>@if (item.History.Count == 20) { <p class="mt-3 text-sm text-muted">Showing the 20 most recent history entries.</p> }</details>
         </li>
     }
     </ul>

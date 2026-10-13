@@ -8,7 +8,7 @@
 <div class="page">
     <p class="mb-2 text-sm text-muted">BUILDING MANAGEMENT · REPORTS</p><h1 class="mb-4 text-4xl font-semibold">Rent balances</h1>
     <p class="mb-3 max-w-3xl text-muted">Positive balances on issued rent and one-time charges, including older debt and ended tenancies. Recorded credits reduce debt; verified payment allocations and refund reversals change paid amounts. Pending provider work does not establish a payment.</p>
-    <p class="mb-6 text-sm text-muted">App snapshot @Model.ObservedAt.ToString("yyyy-MM-dd HH:mm:ss 'UTC'") · Overdue after the due date in America/New_York (@Model.LocalDate.ToString("yyyy-MM-dd")). This is a current database read, not a fresh Stripe verification or a historical reconstruction.</p>
+    <p class="mb-6 text-sm text-muted">App snapshot @OfficeTime.Timestamp(Model.ObservedAt, true) · Overdue after the due date in America/New_York (@Model.LocalDate.ToString("yyyy-MM-dd")). This is a current database read, not a fresh Stripe verification or a historical reconstruction.</p>
     <section aria-label="Recorded balance totals" class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         @foreach (var entry in new[] { ("Recorded outstanding", Model.Totals.ConfirmedMinor), ("Overdue", Model.Totals.OverdueMinor), ("Held for reconciliation", Model.Totals.HeldMinor), ("Without a recorded hold", Model.Totals.UnheldMinor) }) {
             <div class="rounded-2xl border border-line bg-panel p-5"><span class="block text-sm text-muted">@entry.Item1</span><strong class="mt-2 block break-words text-3xl font-semibold">@Money(entry.Item2)</strong></div>
