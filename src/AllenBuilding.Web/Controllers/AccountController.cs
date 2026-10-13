@@ -35,13 +35,13 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
         if (result.RequiresTwoFactor) return RedirectToAction(nameof(Factor), form.ReturnUrl is null ? null : new { returnUrl = form.ReturnUrl });
         if (result.Succeeded)
         {
-            // Preserve mandatory first-manager setup when skipping the dashboard.
-            if (form.ReturnUrl is not null)
-            {
-                var user = await users.FindByNameAsync(form.Email);
-                if (user is { TwoFactorEnabled: false } && await db.BuildingManagers.AnyAsync(x => x.UserId == user.Id, HttpContext.RequestAborted))
-                    return RedirectToAction(nameof(Enroll));
-            }
+            var user = (await users.FindByNameAsync(form.Email))!;
+            await signIn.SignInWithClaimsAsync(user, false, [OfficeSecurity.TimeClaim(OfficeSecurity.PasswordTime, time.GetUtcNow())]);
+            // First sign-in is a welcome, not an enrollment wizard. Protected manager
+            // destinations still enforce their policies when selected afterward.
+            if (!user.TwoFactorEnabled && !user.MustReplaceRecoveryCodes &&
+                await db.BuildingManagers.AnyAsync(x => x.UserId == user.Id, HttpContext.RequestAborted) &&
+                form.ReturnUrl != "/Account/Enroll") return RedirectToAction("Index", "Portal");
             return AfterSignIn(form.ReturnUrl);
         }
         ModelState.AddModelError("", "Unable to sign in. Check your details or try again later.");
@@ -88,14 +88,18 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
         var user = (await users.GetUserAsync(User))!;
         if (user.TwoFactorEnabled) return RedirectToAction(nameof(Login));
         if (!await EnrollmentAllowed(user)) return View("OperatorEnrollment", new OperatorEnrollmentForm());
+        var firstSetup = !user.MustReplaceRecoveryCodes;
+        if (firstSetup && !FreshEnrollmentPassword(out _)) return LoginAgain("/Account/Enroll");
         var key = await users.GetAuthenticatorKeyAsync(user);
         if (key is null)
         {
             if (!(await users.ResetAuthenticatorKeyAsync(user)).Succeeded) return StatusCode(409);
-            await signIn.RefreshSignInAsync(user);
+            // Resetting the seed changes the stamp. Carry forward the actual password
+            // proof, never turn a refresh into a new password verification.
+            await signIn.SignInWithClaimsAsync(user, false, User.Claims.Where(x => x.Type is OfficeSecurity.PasswordTime or OperatorEnrollment.SessionTime));
             key = await users.GetAuthenticatorKeyAsync(user);
         }
-        return View(new EnrollmentForm { Key = key });
+        return View(new EnrollmentForm { Key = key, FirstSetup = firstSetup });
     }
 
     [Authorize, HttpPost]
@@ -107,6 +111,9 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
         await db.Entry(user).ReloadAsync(HttpContext.RequestAborted);
         if (user.TwoFactorEnabled) return RedirectToAction(nameof(Login));
         if (!await EnrollmentAllowed(user)) return StatusCode(403);
+        var firstSetup = !user.MustReplaceRecoveryCodes;
+        var passwordAt = default(DateTimeOffset);
+        if (firstSetup && !FreshEnrollmentPassword(out passwordAt)) return LoginAgain("/Account/Enroll");
         if (ModelState.IsValid && !await users.IsLockedOutAsync(user) &&
             await users.VerifyTwoFactorTokenAsync(user, users.Options.Tokens.AuthenticatorTokenProvider, NormalizeCode(form.Code)))
         {
@@ -115,9 +122,21 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
             user.MustReplaceRecoveryCodes = true;
             if (!(await users.UpdateAsync(user)).Succeeded) return StatusCode(409);
             invitations.Audit(user.Id, "MfaEnrolled", user.Id);
+            if (firstSetup)
+            {
+                var codes = (await users.GenerateNewTwoFactorRecoveryCodesAsync(user, 10))?.ToArray();
+                if (codes is null) return StatusCode(409);
+                user.MustReplaceRecoveryCodes = false;
+                if (!(await users.UpdateAsync(user)).Succeeded) return StatusCode(409);
+                invitations.Audit(user.Id, "RecoveryCodesReplaced", user.Id);
+                invitations.Queue(user.Id, "SecurityNotice", "Your authenticator was enabled and recovery codes were created.");
+                await db.SaveChangesAsync(); await transaction.CommitAsync();
+                await ChallengedSignIn(user, passwordAt);
+                return View("RecoveryIssued", codes);
+            }
             await db.SaveChangesAsync();
             await transaction.CommitAsync();
-            // Enrollment does not grant management authority. Require a new password + factor challenge.
+            // Recovery enrollment still requires a new password + factor challenge.
             await signIn.SignOutAsync();
             return RedirectToAction(nameof(Login));
         }
@@ -125,6 +144,7 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
         await transaction.CommitAsync();
         ModelState.AddModelError("", "Unable to verify this code. Check your authenticator and try again.");
         form.Key = await users.GetAuthenticatorKeyAsync(user);
+        form.FirstSetup = firstSetup;
         return View(form);
     }
 
@@ -243,4 +263,12 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
             OfficeSecurity.TimeClaim(OfficeSecurity.PasswordTime, passwordAt), OfficeSecurity.TimeClaim(OfficeSecurity.FactorTime, time.GetUtcNow()) });
 
     private static string NormalizeCode(string code) => code.Replace(" ", "", StringComparison.Ordinal).Replace("-", "", StringComparison.Ordinal);
+
+    private bool FreshEnrollmentPassword(out DateTimeOffset verified)
+    {
+        verified = default;
+        if (!long.TryParse(User.FindFirstValue(OfficeSecurity.PasswordTime), out var seconds) ||
+            time.GetUtcNow().ToUnixTimeSeconds() - seconds is < 0 or > 600) return false;
+        verified = DateTimeOffset.FromUnixTimeSeconds(seconds); return true;
+    }
 }

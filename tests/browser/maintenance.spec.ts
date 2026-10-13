@@ -24,6 +24,37 @@ async function login(page: Page, email: string, password: string) {
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 }
 
+test('first manager login needs only a password, with optional single-verification setup later', async ({ browser }, testInfo) => {
+  const directory = readFileSync('artifacts/browser-fixture/current.txt', 'utf8');
+  const account = JSON.parse(readFileSync(join(directory, 'accounts.json'), 'utf8'))[testInfo.project.name];
+  const context = await browser.newContext({ baseURL: 'http://127.0.0.1:5088', javaScriptEnabled: false,
+    viewport: { width: 320, height: 800 }, colorScheme: 'dark' });
+  try {
+    const page = await context.newPage();
+    await login(page, account.firstManagerEmail, account.password);
+    await expect(page).toHaveURL('http://127.0.0.1:5088/Portal');
+    await expect(page.getByRole('heading', { name: 'Welcome to your office', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Set up account security', exact: true })).toBeVisible();
+    await expect(page.getByLabel('Code from your authenticator')).toHaveCount(0);
+    await expect(page.getByText('No active tenant membership.', { exact: false })).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('first-login-dark-320.png'), fullPage: true });
+    await page.getByRole('link', { name: 'Building help', exact: true }).click();
+    await page.goto('/Portal');
+    await page.getByRole('link', { name: 'Set up account security', exact: true }).click();
+    const key = (await page.locator('code').innerText()).trim();
+    await page.getByLabel('Code from your authenticator', { exact: true }).fill(code(key));
+    await page.getByRole('button', { name: 'Verify and enable', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Keep these codes safe', exact: true })).toBeVisible();
+    await expect(page.getByLabel('Password', { exact: true })).toHaveCount(0);
+    await expect(page.locator('section ul li')).toHaveCount(10);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.getByRole('link', { name: 'Continue to your office', exact: true }).click();
+    await expect(page).toHaveURL('http://127.0.0.1:5088/Portal');
+    await expect(page.getByRole('link', { name: 'Manage maintenance', exact: true })).toBeVisible();
+  } finally { await context.close(); }
+});
+
 test('public maintenance entry returns a native tenant sign-in to the unsubmitted form', async ({ browser }, testInfo) => {
   const directory = readFileSync('artifacts/browser-fixture/current.txt', 'utf8');
   const account = JSON.parse(readFileSync(join(directory, 'accounts.json'), 'utf8'))[testInfo.project.name];

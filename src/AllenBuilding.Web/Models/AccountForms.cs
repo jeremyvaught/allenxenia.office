@@ -20,6 +20,7 @@ public sealed class EnrollmentForm
 {
     [Required, StringLength(12)] public string Code { get; set; } = "";
     public string? Key { get; set; }
+    public bool FirstSetup { get; set; }
 }
 
 public sealed class OperatorEnrollmentForm

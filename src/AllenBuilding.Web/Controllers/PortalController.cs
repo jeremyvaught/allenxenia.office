@@ -19,9 +19,14 @@ public sealed class PortalController(ICurrentActor current, OfficeDbContext db, 
         var user = (await users.FindByIdAsync(actor.UserId))!;
         if (actor.ManagedBuildings.Count > 0)
         {
-            if (!user.TwoFactorEnabled) return RedirectToAction("Enroll", "Account");
+            if (!user.TwoFactorEnabled)
+            {
+                // Recovery cannot be mistaken for a new-account welcome.
+                if (user.MustReplaceRecoveryCodes) return RedirectToAction("Enroll", "Account");
+                ViewData["SecuritySetupAvailable"] = true;
+            }
             if (User.HasClaim("amr", "mfa") && user.MustReplaceRecoveryCodes) return RedirectToAction("RecoveryCodes", "Account");
-            if (!actor.ChallengedMfa) return RedirectToAction("Login", "Account");
+            if (user.TwoFactorEnabled && !actor.ChallengedMfa) return RedirectToAction("Login", "Account");
         }
         var now = time.GetUtcNow();
         var memberships = await db.Memberships.AsNoTracking().Where(x => x.UserId == actor.UserId && x.RevokedAt == null &&

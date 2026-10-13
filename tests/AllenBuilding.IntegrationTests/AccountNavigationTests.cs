@@ -84,11 +84,13 @@ public sealed class AccountNavigationTests
         Assert.Equal(HttpStatusCode.Redirect, (await browser.GetAsync("/Management")).StatusCode);
     }
     [Fact]
-    public async Task New_manager_return_cannot_skip_authenticator_enrollment()
+    public async Task First_manager_sign_in_opens_the_portal_without_forcing_security_setup_or_granting_privileged_access()
     {
         await using var host = new AccountTestHost(); await host.InitializeAsync(); await host.SeedManagerAsync(enrolled: false); using var browser = host.Browser();
         using var signedIn = await AccountTestHost.PostAsync(browser, "/Account/Login", "/Account/Login", ("Email", "manager@example.test"), ("Password", AccountTestHost.Password), ("ReturnUrl", "/Maintenance/Manage"));
-        Assert.Equal("/Account/Enroll", signedIn.Headers.Location?.OriginalString);
+        Assert.Equal("/Portal", signedIn.Headers.Location?.OriginalString);
+        using var portal = await browser.GetAsync("/Portal"); Assert.Equal(HttpStatusCode.OK, portal.StatusCode);
+        Assert.Contains("Set up account security", await portal.Content.ReadAsStringAsync());
         Assert.NotEqual(HttpStatusCode.OK, (await browser.GetAsync("/Maintenance/Manage")).StatusCode);
     }
     [Fact]

@@ -126,7 +126,8 @@ public sealed class AccountSecurityTests
         using var login = await AccountTestHost.PostAsync(client, "/Account/Login", "/Account/Login", ("Email", "manager@example.test"), ("Password", AccountTestHost.Password));
         Assert.Equal(HttpStatusCode.Redirect, login.StatusCode);
         using var portal = await client.GetAsync("/Portal");
-        Assert.Equal("/Account/Enroll", portal.Headers.Location?.OriginalString);
+        Assert.Equal(HttpStatusCode.OK, portal.StatusCode);
+        Assert.Contains("Set up account security", await portal.Content.ReadAsStringAsync());
         using var manager = await client.GetAsync("/Management");
         Assert.StartsWith("http://localhost/Account/Denied", manager.Headers.Location?.OriginalString);
     }
@@ -164,7 +165,7 @@ public sealed class AccountSecurityTests
     }
 
     [Fact]
-    public async Task Enrollment_verifies_a_real_code_and_withholds_authority_until_recovery_codes_saved()
+    public async Task Optional_first_enrollment_uses_the_verified_password_and_factor_without_repeat_prompts()
     {
         await using var host = new AccountTestHost(); await host.InitializeAsync();
         var (id, _) = await host.SeedManagerAsync(enrolled: false);
@@ -173,17 +174,56 @@ public sealed class AccountSecurityTests
         using var page = await client.GetAsync("/Account/Enroll");
         using var bad = await AccountTestHost.PostAsync(client, "/Account/Enroll", "/Account/Enroll", ("Code", "wrong"));
         Assert.Contains("Unable to verify", await bad.Content.ReadAsStringAsync());
-        using var good = await AccountTestHost.PostAsync(client, "/Account/Enroll", "/Account/Enroll", ("Code", await host.FactorCodeAsync(id)));
-        Assert.Equal("/Account/Login", good.Headers.Location?.OriginalString);
-        await host.LoginManagerAsync(client, id);
-        using var portal = await client.GetAsync("/Portal");
-        Assert.Equal("/Account/RecoveryCodes", portal.Headers.Location?.OriginalString);
         using var denied = await client.GetAsync("/Management");
         Assert.Equal(HttpStatusCode.Redirect, denied.StatusCode);
-        using var issued = await AccountTestHost.PostAsync(client, "/Account/RecoveryCodes", "/Account/RecoveryCodes",
-            ("Password", AccountTestHost.Password), ("Code", await host.FactorCodeAsync(id)));
-        Assert.Contains("Keep these codes safe", await issued.Content.ReadAsStringAsync());
+        using var good = await AccountTestHost.PostAsync(client, "/Account/Enroll", "/Account/Enroll", ("Code", await host.FactorCodeAsync(id)));
+        Assert.Equal(HttpStatusCode.OK, good.StatusCode);
+        Assert.Contains("Keep these codes safe", await good.Content.ReadAsStringAsync());
+        Assert.DoesNotContain("name=\"Password\"", await good.Content.ReadAsStringAsync());
+        using var scope = host.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<OfficeUser>>();
+        var user = (await users.FindByIdAsync(id))!;
+        Assert.True(user.TwoFactorEnabled); Assert.False(user.MustReplaceRecoveryCodes);
+        Assert.Equal(10, await users.CountRecoveryCodesAsync(user));
         using var manager = await client.GetAsync("/Management"); Assert.Equal(HttpStatusCode.OK, manager.StatusCode);
+        using var portal = await client.GetAsync("/Portal"); Assert.Equal(HttpStatusCode.OK, portal.StatusCode);
+        using var repeat = await AccountTestHost.PostAsync(client, "/Portal", "/Account/Enroll", ("Code", await host.FactorCodeAsync(id)));
+        Assert.DoesNotContain("Keep these codes safe", await repeat.Content.ReadAsStringAsync());
+        Assert.Equal(10, await users.CountRecoveryCodesAsync(user));
+    }
+
+    [Fact]
+    public async Task First_enrollment_cannot_upgrade_an_expired_password_or_revoked_session()
+    {
+        await using var host = new AccountTestHost(); await host.InitializeAsync();
+        var (id, _) = await host.SeedManagerAsync(enrolled: false); using var client = host.Browser();
+        await AccountTestHost.PostAsync(client, "/Account/Login", "/Account/Login", ("Email", "manager@example.test"), ("Password", AccountTestHost.Password));
+        await client.GetAsync("/Account/Enroll");
+        host.Clock.Offset = TimeSpan.FromMinutes(11);
+        using var expired = await AccountTestHost.PostAsync(client, "/Portal", "/Account/Enroll", ("Code", await host.FactorCodeAsync(id)));
+        Assert.Contains("/Account/Login", expired.Headers.Location?.OriginalString);
+        using var scope = host.Services.CreateScope(); var users = scope.ServiceProvider.GetRequiredService<UserManager<OfficeUser>>();
+        var user = (await users.FindByIdAsync(id))!; Assert.False(user.TwoFactorEnabled); Assert.Equal(0, await users.CountRecoveryCodesAsync(user));
+        host.Clock.Offset = TimeSpan.Zero;
+        await AccountTestHost.PostAsync(client, "/Account/Login", "/Account/Login", ("Email", "manager@example.test"), ("Password", AccountTestHost.Password));
+        Assert.True((await users.UpdateSecurityStampAsync(user)).Succeeded);
+        using var revoked = await client.PostAsync("/Account/Enroll", new FormUrlEncodedContent(new Dictionary<string, string> { ["Code"] = await host.FactorCodeAsync(id) }));
+        Assert.Equal(HttpStatusCode.Redirect, revoked.StatusCode); Assert.Contains("/Account/Login", revoked.Headers.Location?.OriginalString);
+    }
+
+    [Fact]
+    public async Task Enrollment_preserves_original_password_time_for_sensitive_actions()
+    {
+        await using var host = new AccountTestHost(); await host.InitializeAsync(); var (id, _) = await host.SeedManagerAsync(enrolled: false);
+        using var client = host.Browser();
+        await AccountTestHost.PostAsync(client, "/Account/Login", "/Account/Login", ("Email", "manager@example.test"), ("Password", AccountTestHost.Password));
+        await client.GetAsync("/Account/Enroll"); host.Clock.Offset = TimeSpan.FromMinutes(6);
+        using var enrolled = await AccountTestHost.PostAsync(client, "/Account/Enroll", "/Account/Enroll", ("Code", await host.FactorCodeAsync(id)));
+        Assert.Contains("Keep these codes safe", await enrolled.Content.ReadAsStringAsync());
+        using var ordinary = await client.GetAsync("/Management"); Assert.Equal(HttpStatusCode.OK, ordinary.StatusCode);
+        using var sensitive = await AccountTestHost.PostAsync(client, "/Management", "/Management/AddSuite", ("Name", "Must still require recent password"));
+        Assert.Equal(HttpStatusCode.Redirect, sensitive.StatusCode); Assert.Contains("/Account/Denied", sensitive.Headers.Location?.OriginalString);
+        using var scope = host.Services.CreateScope(); Assert.Empty(await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().Suites.ToArrayAsync());
     }
 
     [Fact]

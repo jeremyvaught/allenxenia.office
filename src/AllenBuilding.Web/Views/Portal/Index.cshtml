@@ -1,7 +1,15 @@
 @model IReadOnlyList<AllenBuilding.Domain.Tenancy.Membership>
 @{ ViewData["Title"] = "Your office"; }
 <div class="page"><p class="mb-2 text-sm text-muted">ALLEN BUILDING</p><h1 class="mb-6 text-4xl font-semibold">Your office</h1>
+@if (ViewData["SecuritySetupAvailable"] is true)
+{
+    <section class="mb-6 rounded-xl border border-line bg-panel p-6">
+        <h2 class="mb-3 text-2xl font-semibold">Welcome to your office</h2>
+        <p class="mb-5 text-muted">You're signed in. You can set up an authenticator when you're ready. Manager tools require account security to be enabled.</p>
+        <div class="flex flex-wrap gap-3"><a asp-controller="Account" asp-action="Enroll" class="quiet-button">Set up account security</a><a asp-controller="Knowledge" asp-action="Index" class="quiet-button">Building help</a></div>
+    </section>
+}
 @if (ViewData["Manager"] is true) { <div class="mb-6 flex flex-wrap gap-3"><a asp-controller="Management" asp-action="Index" class="quiet-button">Manage building access</a><a asp-controller="Maintenance" asp-action="Manage" class="button">Manage maintenance</a><a asp-controller="Reports" asp-action="Maintenance" class="quiet-button">Maintenance aging report</a><a asp-controller="Reports" asp-action="Completion" class="quiet-button">Completion time report</a><a asp-controller="Knowledge" asp-action="Manage" class="quiet-button">Manage building help</a><a asp-controller="Contractors" asp-action="Index" class="quiet-button">Contractor contacts</a><a asp-controller="Notifications" asp-action="Index" class="quiet-button">Notification delivery</a><a asp-controller="FinancialExceptions" asp-action="Index" class="quiet-button">Financial exceptions</a>@if (ViewData["BillingEnabled"] is true) { <a asp-controller="Billing" asp-action="Manage" class="quiet-button">Manage billing</a><a asp-controller="Reports" asp-action="Rent" class="quiet-button">Rent balance report</a> }</div> }
-@if (Model.Count == 0) { <p class="rounded-xl border border-line bg-panel p-6">No active tenant membership. Contact your building manager if you need access.</p> }
-else { <p class="mb-5 text-muted">Report a maintenance issue, follow progress, and keep the conversation in one place.</p><div class="flex flex-wrap gap-3"><a asp-controller="Maintenance" asp-action="Create" class="button">Report an issue</a><a asp-controller="Maintenance" asp-action="Index" class="quiet-button">Your requests</a><a asp-controller="Knowledge" asp-action="Tenant" class="quiet-button">Building help</a>@if (ViewData["BillingEnabled"] is true) { <a asp-controller="Billing" asp-action="Index" class="quiet-button">Your billing records</a> }</div> }
+@if (Model.Count == 0 && ViewData["Manager"] is not true && ViewData["SecuritySetupAvailable"] is not true) { <p class="rounded-xl border border-line bg-panel p-6">No active tenant membership. Contact your building manager if you need access.</p> }
+@if (Model.Count > 0) { <p class="mb-5 text-muted">Report a maintenance issue, follow progress, and keep the conversation in one place.</p><div class="flex flex-wrap gap-3"><a asp-controller="Maintenance" asp-action="Create" class="button">Report an issue</a><a asp-controller="Maintenance" asp-action="Index" class="quiet-button">Your requests</a><a asp-controller="Knowledge" asp-action="Tenant" class="quiet-button">Building help</a>@if (ViewData["BillingEnabled"] is true) { <a asp-controller="Billing" asp-action="Index" class="quiet-button">Your billing records</a> }</div> }
 </div>

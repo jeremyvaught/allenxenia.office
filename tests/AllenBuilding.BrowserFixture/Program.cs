@@ -76,7 +76,11 @@ foreach (var project in new[] { "chromium", "mobile", "webkit-mobile" })
     setupAuth.ObserveVerifiedSetup(new("acct_browser_payments", false, setupAccount.Id, setupBinding.CustomerId, setupAuth.ConsentHash, "cs_setup_" + project.Replace('-', '_'), setupNow.AddHours(24), AutopaySetupState.Waiting, null, true, false, setupNow), false);
     setupWork.Complete(setupWork.LeaseToken, CollectionWorkOutcome.Waiting, setupNow);
     db.AddRange(setupSuite, setupMember, setupAccount, setupBinding, setupTerms, setupAuth, setupWork, new AutopaySlot { AccountId = setupAccount.Id, AuthorizationId = setupAuth.Id }, new ActiveGrant { UserId = tenant.Id, SuiteId = setupSuite.Id, MembershipId = setupMember.Id }); await db.SaveChangesAsync();
-    fixtures[project] = new { membershipId = membership.Id, paymentAccountId = payAccount.Id, autopayAccountId = autoAccount.Id, autopaySetupAccountId = setupAccount.Id, tenantEmail = tenant.Email, managerEmail = manager.Email, password, key = await users.GetAuthenticatorKeyAsync(manager) };
+    var newManager = new OfficeUser { Email = $"first-manager-{project}@example.test", UserName = $"first-manager-{project}@example.test", EmailConfirmed = true };
+    if (!(await users.CreateAsync(newManager, password)).Succeeded) throw new InvalidOperationException("Fixture first-manager creation failed.");
+    var newBuilding = new Building { Name = $"First sign-in {project}" };
+    db.AddRange(newBuilding, new BuildingManager { UserId = newManager.Id, BuildingId = newBuilding.Id }); await db.SaveChangesAsync();
+    fixtures[project] = new { membershipId = membership.Id, paymentAccountId = payAccount.Id, autopayAccountId = autoAccount.Id, autopaySetupAccountId = setupAccount.Id, tenantEmail = tenant.Email, managerEmail = manager.Email, firstManagerEmail = newManager.Email, password, key = await users.GetAuthenticatorKeyAsync(manager) };
 }
 var path = Path.Combine(directory, "accounts.json");
 await File.WriteAllTextAsync(path, JsonSerializer.Serialize(fixtures));
