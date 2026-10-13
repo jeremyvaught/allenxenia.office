@@ -1,4 +1,5 @@
 using AllenBuilding.Application.Access;
+using AllenBuilding.Application.Diagnostics;
 using AllenBuilding.Domain.Maintenance;
 
 namespace AllenBuilding.Application.Reporting;
@@ -33,20 +34,25 @@ public sealed class ManagementReportQueries(ICurrentActor current, IManagementRe
 {
     public async Task<MaintenanceAgingReport?> MaintenanceAgingAsync(MaintenanceAgingQuery query, CancellationToken cancellationToken = default)
     {
-        if (!query.IsValid) return null;
+        using var operation = OfficeTelemetry.Begin(OfficeOperationKind.MaintenanceAging);
+        operation.Result = OfficeOutcome.Denied;
+        if (!query.IsValid) { operation.Result = OfficeOutcome.Invalid; return null; }
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5), time);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
         try
         {
             var actor = await current.GetAsync(linked.Token);
             if (actor is not { ChallengedMfa: true } || actor.ManagedBuildings.Count == 0) return null;
+            operation.Result = OfficeOutcome.Failure;
             var report = await reader.MaintenanceAgingAsync(actor, query, time.GetUtcNow(), linked.Token);
             // Release protected data only while the current ticket and every reported building remain authorized.
             var fresh = await current.GetAsync(linked.Token);
-            return report is not null && fresh is { ChallengedMfa: true } && fresh.UserId == actor.UserId &&
-                report.Buildings.All(x => fresh.ManagedBuildings.Contains(x.Id)) ? report : null;
+            var allowed = report is not null && fresh is { ChallengedMfa: true } && fresh.UserId == actor.UserId &&
+                report.Buildings.All(x => fresh.ManagedBuildings.Contains(x.Id));
+            operation.Result = allowed ? OfficeOutcome.Success : OfficeOutcome.Denied; return allowed ? report : null;
         }
         catch (OperationCanceledException) when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
-        { throw new TimeoutException("The management report exceeded its deadline."); }
+        { operation.Result = OfficeOutcome.Failure; throw new TimeoutException("The management report exceeded its deadline."); }
+        catch (OperationCanceledException) { operation.Result = OfficeOutcome.Cancelled; throw; }
     }
 }

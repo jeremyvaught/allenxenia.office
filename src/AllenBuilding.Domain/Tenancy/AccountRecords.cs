@@ -24,6 +24,9 @@ public sealed class AccountMessage
     public DateTimeOffset NextAttemptAt { get; set; }
     public Guid LeaseToken { get; set; } = Guid.NewGuid();
     public DateTimeOffset? LeaseUntil { get; set; }
+    public string? OriginTraceId { get; set; }
+    public string? OriginSpanId { get; set; }
+    public Guid? OriginOperationId { get; set; }
     public DateTimeOffset? DeliveredAt { get; set; }
     public string? LastError { get; set; }
 }

@@ -31,7 +31,7 @@ public sealed class NotificationQueue(OfficeDbContext db, IDataProtectionProvide
         message.State = MessageState.Sending; message.LeaseToken = Guid.NewGuid(); message.LeaseUntil = now.AddMinutes(2);
         message.Attempts = checked(message.Attempts + 1); message.CycleAttempts = checked(message.CycleAttempts + 1);
         await db.SaveChangesAsync(cancellationToken); await transaction.CommitAsync(cancellationToken);
-        return new(message.Id, message.LeaseToken);
+        return new(message.Id, message.LeaseToken, message.OriginOperationId, message.OriginTraceId, message.OriginSpanId);
     }
 
     public async Task<EmailEnvelope?> ComposeAsync(MessageLease lease, CancellationToken cancellationToken)

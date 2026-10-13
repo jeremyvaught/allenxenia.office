@@ -778,6 +778,21 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .HasDefaultValue(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc))
                         .HasColumnName("next_attempt_at");
 
+                    b.Property<string>("OriginOperationId")
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("origin_operation_id");
+
+                    b.Property<string>("OriginSpanId")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("origin_span_id");
+
+                    b.Property<string>("OriginTraceId")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("origin_trace_id");
+
                     b.Property<string>("ProtectedPayload")
                         .IsRequired()
                         .HasColumnType("TEXT")

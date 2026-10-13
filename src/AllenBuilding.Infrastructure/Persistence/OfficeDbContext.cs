@@ -1,3 +1,4 @@
+using AllenBuilding.Application.Diagnostics;
 using AllenBuilding.Domain.Billing;
 using AllenBuilding.Domain.Knowledge;
 using AllenBuilding.Domain.Maintenance;
@@ -31,6 +32,19 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
     public DbSet<AccountMessage> AccountMessages => Set<AccountMessage>();
     public DbSet<WorkOrderHistory> WorkOrderHistory => Set<WorkOrderHistory>();
     public DbSet<MaintenanceReceipt> MaintenanceReceipts => Set<MaintenanceReceipt>();
+
+    private void StampMessages()
+    {
+        var origin = OfficeTelemetry.Capture();
+        foreach (var entry in ChangeTracker.Entries<AccountMessage>().Where(x => x.State == EntityState.Added))
+        {
+            entry.Entity.OriginTraceId = origin?.TraceId; entry.Entity.OriginSpanId = origin?.SpanId; entry.Entity.OriginOperationId = origin?.OperationId;
+        }
+    }
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    { StampMessages(); return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken); }
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    { StampMessages(); return base.SaveChanges(acceptAllChangesOnSuccess); }
 
     protected override void OnModelCreating(ModelBuilder model)
     {
@@ -73,6 +87,7 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
             e.Property(x => x.LeaseToken).IsConcurrencyToken();
             e.Property(x => x.NextAttemptAt).HasDefaultValue(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.Zero));
             e.Property(x => x.LastError).HasMaxLength(80);
+            e.Property(x => x.OriginTraceId).HasMaxLength(32); e.Property(x => x.OriginSpanId).HasMaxLength(16);
             e.HasIndex(x => new { x.State, x.NextAttemptAt, x.CreatedAt, x.Id });
             e.HasOne<Building>().WithMany().HasForeignKey(x => x.BuildingId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using AllenBuilding.Application.Access;
+using AllenBuilding.Application.Diagnostics;
 using AllenBuilding.Domain.Maintenance;
 
 namespace AllenBuilding.Application.Maintenance;
@@ -34,6 +35,12 @@ public sealed class MaintenanceActions(ICurrentActor current, IMaintenanceStore 
     }
     private async Task<MaintenanceResult> Submit(SubmitRequest command, bool management, CancellationToken cancellationToken)
     {
+        using var operation = OfficeTelemetry.Begin(OfficeOperationKind.MaintenanceSubmit, command.OperationId);
+        try { var result = await SubmitCore(command, management, cancellationToken); operation.Result = Outcome(result.Code); return result; }
+        catch (OperationCanceledException) { operation.Result = OfficeOutcome.Cancelled; throw; }
+    }
+    private async Task<MaintenanceResult> SubmitCore(SubmitRequest command, bool management, CancellationToken cancellationToken)
+    {
         var actor = await current.GetAsync(cancellationToken);
         if (actor is null) return new(MaintenanceCode.AuthenticationRequired);
         if (!CanUse(actor, management)) return new(MaintenanceCode.Unavailable);
@@ -45,6 +52,12 @@ public sealed class MaintenanceActions(ICurrentActor current, IMaintenanceStore 
     }
 
     public async Task<MaintenanceResult> ChangeAsync(ChangeRequest command, bool management, CancellationToken cancellationToken = default)
+    {
+        using var operation = OfficeTelemetry.Begin(OfficeOperationKind.MaintenanceChange, command.OperationId);
+        try { var result = await ChangeCore(command, management, cancellationToken); operation.Result = Outcome(result.Code); return result; }
+        catch (OperationCanceledException) { operation.Result = OfficeOutcome.Cancelled; throw; }
+    }
+    private async Task<MaintenanceResult> ChangeCore(ChangeRequest command, bool management, CancellationToken cancellationToken)
     {
         var actor = await current.GetAsync(cancellationToken);
         if (actor is null) return new(MaintenanceCode.AuthenticationRequired);
@@ -78,5 +91,12 @@ public sealed class MaintenanceActions(ICurrentActor current, IMaintenanceStore 
         ? actor.ChallengedMfa && actor.ManagedBuildings.Count > 0
         : actor.ManagedBuildings.Count == 0 || actor.ChallengedMfa);
 
+    private static OfficeOutcome Outcome(MaintenanceCode code) => code switch
+    {
+        MaintenanceCode.Success => OfficeOutcome.Success,
+        MaintenanceCode.Conflict => OfficeOutcome.Conflict,
+        MaintenanceCode.ValidationFailed => OfficeOutcome.Invalid,
+        _ => OfficeOutcome.Denied
+    };
     private static string Hash<T>(T value) => Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(value)));
 }

@@ -60,6 +60,7 @@ public sealed class PersistenceTests
             var upgraded = await db.AccountMessages.AsNoTracking().SingleAsync(x => x.Id == messageId);
             Assert.Equal(MessageState.Queued, upgraded.State); Assert.Equal(Guid.Empty, upgraded.LeaseToken);
             Assert.Equal(upgraded.CreatedAt, upgraded.NextAttemptAt);
+            Assert.Null(upgraded.OriginTraceId); Assert.Null(upgraded.OriginSpanId); Assert.Null(upgraded.OriginOperationId);
             Assert.Empty(await db.Database.GetPendingMigrationsAsync());
             db.AddRange(user, building, suite, membership, request,
                 new ActiveGrant { UserId = user.Id, SuiteId = suite.Id, MembershipId = membership.Id });
@@ -124,6 +125,7 @@ public sealed class PersistenceTests
         await AccessContract.VerifyAsync(create);
         await MaintenanceQueueContract.VerifyAsync(create);
         await MaintenanceReportingContract.VerifyAsync(create);
+        await TelemetryPersistenceContract.VerifyAsync(create);
     }
 
     private static async Task VerifyProtectedIdentity(Func<OfficeDbContext> create)

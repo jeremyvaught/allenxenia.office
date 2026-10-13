@@ -1,6 +1,7 @@
 using System.Threading.RateLimiting;
 using AllenBuilding.Infrastructure.Identity;
 using AllenBuilding.Infrastructure.Persistence;
+using AllenBuilding.Web.Diagnostics;
 using AllenBuilding.Web.Security;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -10,6 +11,7 @@ var bootstrap = args.Contains("--bootstrap-manager", StringComparer.Ordinal);
 var dispatch = args.Contains("--dispatch-mail-once", StringComparer.Ordinal);
 if (new[] { migrate, bootstrap, dispatch }.Count(x => x) > 1) throw new InvalidOperationException("Choose one operator command at a time.");
 var builder = WebApplication.CreateBuilder(args.Where(x => x != "--migrate" && x != "--bootstrap-manager" && x != "--dispatch-mail-once").ToArray());
+builder.AddOfficeObservability();
 if (builder.Environment.IsEnvironment("Testing")) builder.WebHost.UseStaticWebAssets();
 builder.Services.AddControllersWithViews(options =>
     options.Filters.Add(new Microsoft.AspNetCore.Mvc.AutoValidateAntiforgeryTokenAttribute()));
@@ -85,6 +87,7 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 app.UseRouting();
+app.Use(OfficeObservability.RequestAsync);
 app.Use(async (context, next) =>
 {
     context.Response.Headers["Referrer-Policy"] = "no-referrer";

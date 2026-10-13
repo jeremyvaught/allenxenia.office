@@ -856,6 +856,24 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .HasDefaultValue(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc))
                         .HasColumnName("next_attempt_at");
 
+                    b.Property<string>("OriginOperationId")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("origin_operation_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("OriginSpanId")
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)")
+                        .HasColumnName("origin_span_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("OriginTraceId")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("origin_trace_id")
+                        .UseCollation("utf8mb4_bin");
+
                     b.Property<string>("ProtectedPayload")
                         .IsRequired()
                         .HasColumnType("TEXT")

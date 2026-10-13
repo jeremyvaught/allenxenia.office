@@ -42,3 +42,11 @@ jobs:
           path: artifacts/reports/
           if-no-files-found: warn
           retention-days: 14
+      - name: Preserve telemetry incident evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: telemetry-incident-evidence
+          path: artifacts/telemetry/
+          if-no-files-found: warn
+          retention-days: 14
