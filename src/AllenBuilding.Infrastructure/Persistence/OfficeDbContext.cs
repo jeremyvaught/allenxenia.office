@@ -16,6 +16,7 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
     public DbSet<PaymentAllocation> PaymentAllocations => Set<PaymentAllocation>();
     public DbSet<BillingCustomerBinding> BillingCustomers => Set<BillingCustomerBinding>();
     public DbSet<PaymentAttempt> PaymentAttempts => Set<PaymentAttempt>();
+    public DbSet<PaymentEventInbox> PaymentEvents => Set<PaymentEventInbox>();
     public DbSet<PaymentAttemptItem> PaymentAttemptItems => Set<PaymentAttemptItem>();
     public DbSet<CollectionGuard> CollectionGuards => Set<CollectionGuard>();
     public DbSet<RentAccount> RentAccounts => Set<RentAccount>();
@@ -203,6 +204,16 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
             e.HasIndex(x => new { x.ProviderAccount, x.LiveMode, x.CustomerId }).IsUnique();
             e.HasOne<RentAccount>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
         });
+        model.Entity<PaymentEventInbox>(e =>
+        {
+            e.ToTable("payment_events"); e.HasKey(x => x.Id); e.Property(x => x.Version).IsConcurrencyToken();
+            e.Property(x => x.ProviderAccount).HasMaxLength(255); e.Property(x => x.EventId).HasMaxLength(255);
+            e.Property(x => x.ResourceId).HasMaxLength(255); e.Property(x => x.EventType).HasMaxLength(100);
+            e.Property(x => x.ApiVersion).HasMaxLength(64); e.Property(x => x.PayloadHash).HasMaxLength(64);
+            e.Property(x => x.State).HasConversion<string>().HasMaxLength(32); e.Property(x => x.ReviewReason).HasMaxLength(64);
+            e.HasIndex(x => new { x.ProviderAccount, x.LiveMode, x.EventId }).IsUnique();
+            e.HasIndex(x => new { x.State, x.ReceivedAt, x.Id });
+        });
         model.Entity<PaymentAttempt>(e =>
         {
             e.ToTable("payment_attempts"); e.HasKey(x => x.Id); e.HasAlternateKey(x => new { x.Id, x.AccountId });
@@ -347,7 +358,7 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
                 }
                 if (mysql && (property.ClrType == typeof(string) || property.GetValueConverter()?.ProviderClrType == typeof(string)))
                     property.SetCollation("utf8mb4_bin");
-                if (mysql && property.ClrType == typeof(string) && property.Name is "ProviderAccount" or "CustomerId" or "SessionId" or "PaymentId" or "CollectionReference")
+                if (mysql && property.ClrType == typeof(string) && property.Name is "ProviderAccount" or "CustomerId" or "SessionId" or "PaymentId" or "CollectionReference" or "EventId" or "ResourceId")
                     MySql.EntityFrameworkCore.Extensions.MySQLPropertyBuilderExtensions.ForMySQLHasCollation(model.Entity(entity.ClrType).Property(property.Name), "utf8mb4_bin");
             }
         }

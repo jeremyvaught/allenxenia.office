@@ -34,6 +34,7 @@ builder.Services.AddScoped<AllenBuilding.Application.Billing.BillingActions>();
 builder.Services.AddSingleton(new AllenBuilding.Application.Billing.CollectionPolicy(false, "", false));
 builder.Services.AddScoped<AllenBuilding.Application.Billing.ICollectionStore, CollectionStore>();
 builder.Services.AddScoped<AllenBuilding.Application.Billing.CollectionActions>();
+builder.Services.AddScoped<AllenBuilding.Application.Billing.IPaymentWebhookReceiver, AllenBuilding.Application.Billing.DisabledPaymentWebhookReceiver>();
 builder.Services.AddScoped<BillingReviewTickets>();
 builder.Services.AddScoped<AllenBuilding.Application.Reporting.IManagementReportReader, ManagementReportReader>();
 builder.Services.AddScoped<AllenBuilding.Application.Reporting.ManagementReportQueries>();
@@ -41,6 +42,7 @@ builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.AddConcurrencyLimiter("Readiness", limiter => { limiter.PermitLimit = 2; limiter.QueueLimit = 0; });
+    options.AddConcurrencyLimiter("PaymentWebhook", limiter => { limiter.PermitLimit = 2; limiter.QueueLimit = 0; });
     options.AddPolicy("Accounts", context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "local", _ => new FixedWindowRateLimiterOptions
         { PermitLimit = 20, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
