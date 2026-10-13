@@ -28,6 +28,27 @@ public sealed class OpenAiAssistantModelTests
         Assert.Equal(AssistantModelCode.Invalid, (await model.AnswerAsync(new("Kitchen", [], false, History: Enumerable.Repeat(new AssistantExchange("Question", "Answer"), 6).ToArray()), default)).Code);
         Assert.Equal(1, calls);
     }
+    [Fact]
+    public async Task Explicit_guest_stage_has_request_only_schema_and_no_tenant_or_execution_authority()
+    {
+        var calls = 0;
+        using var client = new HttpClient(new Handler(async request =>
+        {
+            calls++; using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync()); var root = body.RootElement;
+            Assert.Contains("Payments and autopay collection are currently disabled", root.GetProperty("instructions").GetString());
+            using var input = JsonDocument.Parse(root.GetProperty("input").GetString()!);
+            Assert.True(input.RootElement.GetProperty("CanStageGuest").GetBoolean());
+            Assert.False(input.RootElement.GetProperty("Tenant").GetBoolean()); Assert.False(input.RootElement.GetProperty("CanPrepare").GetBoolean());
+            Assert.Equal("request", Assert.Single(root.GetProperty("text").GetProperty("format").GetProperty("schema").GetProperty("properties").GetProperty("draft").GetProperty("anyOf")[1].GetProperty("properties").GetProperty("kind").GetProperty("enum").EnumerateArray()).GetString());
+            Assert.False(root.TryGetProperty("tools", out _)); Assert.False(root.GetProperty("store").GetBoolean());
+            return Response(new { answer = "Check the temporary draft and sign in", sources = Array.Empty<string>(), route = "new_request", draft = new { kind = "request", title = "Sink", description = "Dripping tap", location = "Kitchen", comment = "" } });
+        }));
+        var model = new OpenAiAssistantModel(client, "synthetic-key");
+        Assert.Equal(AssistantModelCode.Success, (await model.AnswerAsync(new("Prepare draft", [], false, CanStageGuest: true), default)).Code);
+        Assert.Equal(AssistantModelCode.Invalid, (await model.AnswerAsync(new("Prepare draft", [], true, CanStageGuest: true), default)).Code);
+        Assert.Equal(AssistantModelCode.Invalid, (await model.AnswerAsync(new("Prepare draft", [], false, CommentTarget: true, CanStageGuest: true), default)).Code);
+        Assert.Equal(1, calls);
+    }
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

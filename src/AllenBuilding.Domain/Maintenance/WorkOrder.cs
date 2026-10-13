@@ -30,21 +30,26 @@ public sealed class WorkOrder
     {
         if (suiteId == Guid.Empty || membershipId == Guid.Empty)
             throw new ArgumentException("A suite and original membership are required.");
+        var text = NormalizeRequest(title, description, location);
         return new WorkOrder
         {
             Id = Guid.NewGuid(),
             SuiteId = suiteId,
             RequesterMembershipId = membershipId,
             RequesterUserId = Required(requesterUserId, 450),
-            Title = Required(title, 120),
-            Description = Required(description, 4000),
-            Location = Required(location, 160),
+            Title = text.Title,
+            Description = text.Description,
+            Location = text.Location,
             Status = WorkOrderStatus.Submitted,
             Version = Guid.NewGuid(),
             CreatedAt = now.ToUniversalTime(),
             UpdatedAt = now.ToUniversalTime()
         };
     }
+
+    // Anonymous drafts share the exact request text rules without inventing an actor or suite.
+    public static (string Title, string Description, string Location) NormalizeRequest(string title, string description, string location)
+        => (Required(title, 120), Required(description, 4000), Required(location, 160));
 
     public void Triage(Priority priority, Trade trade, DateTimeOffset now)
     {

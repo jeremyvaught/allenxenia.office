@@ -6,6 +6,29 @@ namespace AllenBuilding.IntegrationTests;
 public sealed class AssistantConversationTests
 {
     [Fact]
+    public void Guest_transfer_serializes_claims_and_uncertain_preparation_cannot_be_retargeted_or_edited()
+    {
+        var clock = new TestClock(); using var store = new AssistantConversations(clock);
+        using var turn = store.Begin(Guid.Empty, 0, "browser:guest", null, null)!;
+        Assert.True(turn.Complete("Question", new(AssistantModelCode.Success, "Draft ready", GuestDraft: new(AllenBuilding.Domain.Maintenance.AssistantReviewKind.Request, "Sink", "Dripping", "Kitchen"))));
+        Assert.True(turn.Closed); Assert.Empty(store.ReadContext(turn.Id, "browser:guest")!.History);
+        Assert.Null(store.ReadGuest(turn.Id, "another-browser")); var draft = store.ReadGuest(turn.Id, "browser")!;
+        var scope = new AssistantTenantScope("user", Guid.NewGuid(), Guid.NewGuid(), "stamp", "Suite");
+        Assert.Null(store.BeginTransfer(turn.Id, Guid.NewGuid(), "browser", scope));
+        using (var first = store.BeginTransfer(turn.Id, draft.Version, "browser", scope))
+        {
+            Assert.NotNull(first); Assert.Null(store.BeginTransfer(turn.Id, draft.Version, "browser", scope));
+            Assert.False(store.EditGuest(turn.Id, draft.Version, "browser", draft.Draft, true));
+        }
+        Assert.Null(store.BeginTransfer(turn.Id, draft.Version, "browser", scope with { UserId = "other" }));
+        Assert.Null(store.BeginTransfer(turn.Id, draft.Version, "browser", scope with { MembershipId = Guid.NewGuid() }));
+        Assert.Null(store.BeginTransfer(turn.Id, draft.Version, "browser", scope with { Version = Guid.NewGuid() }));
+        Assert.False(store.EditGuest(turn.Id, draft.Version, "browser", draft.Draft, false));
+        using var retry = store.BeginTransfer(turn.Id, draft.Version, "browser", scope); Assert.NotNull(retry);
+        var review = Guid.NewGuid(); Assert.True(retry.Complete(review)); Assert.Equal(review, store.ReadGuest(turn.Id, "browser")!.ReviewId);
+        clock.Offset = TimeSpan.FromMinutes(11); Assert.Null(store.ReadGuest(turn.Id, "browser"));
+    }
+    [Fact]
     public void Leases_serialize_turns_and_reject_wrong_owners_sequences_scopes_and_targets()
     {
         using var store = new AssistantConversations(new TestClock()); var member = Guid.NewGuid(); var target = Guid.NewGuid();

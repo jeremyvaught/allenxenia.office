@@ -15,7 +15,8 @@ public static class OfficeAssistant
         var tenantHelp = builder.Configuration.GetValue<bool?>("Assistant:TenantHelpEnabled") ?? builder.Environment.IsDevelopment();
         var actions = builder.Configuration.GetValue<bool?>("Assistant:ActionsEnabled") ?? builder.Environment.IsDevelopment();
         var followUps = builder.Configuration.GetValue<bool?>("Assistant:FollowUpsEnabled") ?? builder.Environment.IsDevelopment();
-        builder.Services.AddSingleton(new AssistantPolicy(enabled, enabled && tenantHelp, builder.Configuration.GetValue<bool>("Billing:PlanningEnabled"), enabled && tenantHelp && actions, enabled && followUps));
+        var guestDrafts = builder.Configuration.GetValue<bool?>("Assistant:GuestDraftsEnabled") ?? builder.Environment.IsDevelopment();
+        builder.Services.AddSingleton(new AssistantPolicy(enabled, enabled && tenantHelp, builder.Configuration.GetValue<bool>("Billing:PlanningEnabled"), enabled && tenantHelp && actions, enabled && followUps, enabled && followUps && tenantHelp && actions && guestDrafts));
         if (enabled)
         {
             builder.Services.AddHttpClient("OfficeAssistant", client => client.Timeout = TimeSpan.FromSeconds(55))

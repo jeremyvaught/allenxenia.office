@@ -29,6 +29,14 @@
                 <a class="button" href="/Assistant/Review/@Model.Review.Review.Id?conversationId=@Model.Review.Review.ConversationId">Review @(Model.Review.Review.Kind == AllenBuilding.Domain.Maintenance.AssistantReviewKind.Request ? "maintenance request" : "comment")</a>
             </section>
         }
+        @if (ViewData["GuestDraftId"] is Guid guestDraftId)
+        {
+            <section class="mt-6 border-t border-line pt-5" aria-label="Temporary maintenance draft">
+                <h3 class="mb-3 font-semibold">Your temporary draft is ready</h3>
+                <p class="mb-4">Check the details, then sign in and choose your office. You will review and separately confirm before anything is submitted.</p>
+                <a class="button" href="/Assistant/Guest/@guestDraftId">Continue maintenance draft</a>
+            </section>
+        }
         @if (Model.Requests is not null)
         {
             <section aria-label="Your maintenance records" class="mt-6 border-t border-line pt-5">
@@ -71,7 +79,7 @@
                 <li><a href="/Knowledge/@(source.Audience == AllenBuilding.Domain.Knowledge.ArticleAudience.ActiveTenant ? "TenantArticle" : "Article")/@source.ArticleId" class="inline-flex min-h-11 items-center break-words text-brand underline">@source.Title</a><p class="text-sm text-muted">Review date: @source.ReviewOn.ToString("MMM d, yyyy")</p></li>
             }</ul>
         }
-        @if (Model.Next is not null && Model.Review is null) { <a href="@Model.Next.Path" class="quiet-button mt-5">@Model.Next.Label</a> }
+        @if (Model.Next is not null && Model.Review is null && Model.GuestDraft is null) { <a href="@Model.Next.Path" class="quiet-button mt-5">@Model.Next.Label</a> }
     }
     else if (ViewData["SearchInvalid"] is true) { <p>Enter a title or location of up to 120 characters. <a href="/Maintenance" class="underline">Open your requests to search again</a>.</p> }
     else if (ViewData["ConversationUnavailable"] is true) { <p>This conversation is busy, expired or no longer available. Start fresh using the link below. No action was submitted.</p> }
@@ -109,11 +117,11 @@
             </select>
             <label for="question" class="mb-2 block font-semibold">Your question</label>
             <textarea id="question" name="question" rows="4" maxlength="4000" required class="field" aria-describedby="assistant-privacy"></textarea>
-            <p id="assistant-privacy" class="mt-3 text-sm leading-relaxed text-muted">Your question, matching published guidance and earlier messages in this conversation are sent to OpenAI. Don't include passwords, payment details or sensitive personal information. @(ViewData["FollowUpsEnabled"] is true ? "This temporary conversation is available for up to six questions, thirty minutes of inactivity or two hours total. Expired messages are removed from server memory within a minute; a restart clears them. Start fresh to change scope." : "Each question starts fresh.") Prepared drafts and confirmation records are stored securely in your account.</p>
+            <p id="assistant-privacy" class="mt-3 text-sm leading-relaxed text-muted">Your question, matching published guidance and earlier messages in this conversation are sent to OpenAI. Don't include passwords, payment details or sensitive personal information. @(ViewData["FollowUpsEnabled"] is true ? "This temporary conversation is available for up to six questions, thirty minutes of inactivity or two hours total. Expired messages are removed from server memory within a minute; a restart clears them. Start fresh to change scope." : "Each question starts fresh.") A signed-out draft stays in server memory for ten minutes. After you sign in and explicitly choose an office, the reviewed draft and confirmation records are stored securely in your account.</p>
             <div class="mt-5 flex flex-wrap items-center gap-3"><button class="button" data-assistant-send>Ask assistant</button><button type="button" class="quiet-button" data-assistant-stop hidden>Stop</button><p data-assistant-progress role="status" class="text-sm text-muted"></p></div>
         </form>
     }
-    else if (enabled) { <p class="text-sm text-muted">@(Model?.Review is not null ? "Open the review above to edit, cancel or confirm your draft." : "This conversation reached its limit.") Start fresh for another question.</p> }
+    else if (enabled) { <p class="text-sm text-muted">@(Model?.Review is not null || Model?.GuestDraft is not null ? "Open the review above to edit, cancel or confirm your draft." : "This conversation reached its limit.") Start fresh for another question.</p> }
     <div class="mt-6 flex flex-wrap gap-3"><a href="/Knowledge" class="quiet-button">Browse building help</a><a href="/Assistant" class="quiet-button">Start fresh or change scope</a><a href="/Portal" class="quiet-button">Your office</a></div>
 </div>
 @section Scripts { <script src="~/js/assistant.js" asp-append-version="true" defer></script> }

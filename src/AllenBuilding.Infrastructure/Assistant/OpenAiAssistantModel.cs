@@ -11,7 +11,7 @@ namespace AllenBuilding.Infrastructure.Assistant;
 public sealed class OpenAiAssistantModel(HttpClient client, string key) : IAssistantModel
 {
     public const string Model = "gpt-5.4-mini-2026-03-17";
-    public const string PromptVersion = "building-help-4";
+    public const string PromptVersion = "building-help-5";
     public const int MaxInputBytes = 12000;
     private const string Instructions = """
         You help people use Allen Xenia Office. Answer briefly using only the supplied published excerpts.
@@ -26,14 +26,15 @@ public sealed class OpenAiAssistantModel(HttpClient client, string key) : IAssis
         Do not provide emergency dispatch; direct urgent issues to emergency services/building management.
         Cite only supplied article IDs. Use plain text, no HTML, Markdown links, URLs or code.
         route is a fixed page identifier: help, login, requests, new_request, billing, autopay.
-        For a guest, requests/new_request/billing/autopay require sign-in; prefer login.
+        For a guest, private records and submission require sign-in. A permitted guest draft is only temporary.
+        Payments and autopay collection are currently disabled. Never offer to accept payment or enroll autopay.
         Financial questions always go to billing/autopay; never state an account amount yourself.
         For a tenant asking about existing maintenance, choose requests. The server will show current record cards.
         For tenant record lookups, explain that the record cards or secure page provide the authoritative values.
         You do not receive those records; do not claim there are none or guess their values.
         """;
     private const string Preparation = """
-        If CanPrepare is true, you may propose one draft for explicit human review, never execute or confirm it.
+        If CanPrepare or CanStageGuest is true, you may propose one draft for explicit human review, never execute or confirm it.
         Use only facts and wording in the user's current and prior questions. Never invent a location, problem detail or comment.
         If CommentTarget is false, draft kind is request with title (1-120 chars), description (1-4000),
         location (1-160) and empty comment; route is new_request. If required information is missing,
@@ -41,7 +42,9 @@ public sealed class OpenAiAssistantModel(HttpClient client, string key) : IAssis
         requested draft when Question supplies the missing detail. Combine explicit user details across questions.
         If CommentTarget is true, draft kind is comment with comment (1-2000 chars) and empty title,
         description and location; route is requests. The server has already selected the exact request.
-        A draft is not a submitted request/comment. Tell the user to open the server review and confirm there.
+        A draft is not a submitted request/comment. For CanStageGuest, tell the user to check the temporary
+        draft, sign in, choose their office and review it before separately confirming. A guest cannot prepare
+        a comment or access tenant information. For CanPrepare, tell the user to open the review and confirm there.
         For help, record lookups, financial questions or emergencies, draft is null. Never prepare financial actions.
         """;
     private static readonly JsonElement Schema = JsonSerializer.Deserialize<JsonElement>("""
@@ -69,9 +72,10 @@ public sealed class OpenAiAssistantModel(HttpClient client, string key) : IAssis
             input.Sources.Any(x => x.Title.Length > 180 || x.Excerpt.Length > 800)) return new(AssistantModelCode.Invalid);
         // Put the latest message last, after chronological history. Sending old requests after the
         // current answer caused the live model to repeat an already-satisfied clarification.
-        var payload = JsonSerializer.Serialize(new { input.History, input.Sources, input.Tenant, input.CanPrepare, input.CommentTarget, input.Question });
-        if (input.CanPrepare && !input.Tenant) return new(AssistantModelCode.Invalid);
-        var instructions = Instructions + (input.CanPrepare ? "\n" + Preparation : "");
+        var payload = JsonSerializer.Serialize(new { input.History, input.Sources, input.Tenant, input.CanPrepare, input.CommentTarget, input.CanStageGuest, input.Question });
+        if ((input.CanPrepare && !input.Tenant) || (input.CanStageGuest && (input.Tenant || input.CanPrepare || input.CommentTarget))) return new(AssistantModelCode.Invalid);
+        var draftEnabled = input.CanPrepare || input.CanStageGuest;
+        var instructions = Instructions + (draftEnabled ? "\n" + Preparation : "");
         if (Encoding.UTF8.GetByteCount(payload) + Encoding.UTF8.GetByteCount(instructions) > MaxInputBytes)
             return new(AssistantModelCode.Invalid);
         try
@@ -87,7 +91,7 @@ public sealed class OpenAiAssistantModel(HttpClient client, string key) : IAssis
                 reasoning = new { effort = "none" },
                 instructions,
                 input = payload,
-                text = new { format = new { type = "json_schema", name = "building_help", strict = true, schema = input.CanPrepare ? PreparationSchema(input.CommentTarget) : Schema } }
+                text = new { format = new { type = "json_schema", name = "building_help", strict = true, schema = draftEnabled ? PreparationSchema(input.CommentTarget) : Schema } }
             });
             // No automatic retries: a timeout must not multiply spend or resend private content.
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
@@ -107,7 +111,7 @@ public sealed class OpenAiAssistantModel(HttpClient client, string key) : IAssis
                 .Where(x => x.GetProperty("type").GetString() == "output_text").Select(x => x.GetProperty("text").GetString()).ToArray();
             if (texts.Length != 1 || texts[0] is null) return new(AssistantModelCode.Invalid);
             using var result = JsonDocument.Parse(texts[0]!); var value = result.RootElement;
-            if (value.EnumerateObject().Count() != (input.CanPrepare ? 4 : 3)) return new(AssistantModelCode.Invalid);
+            if (value.EnumerateObject().Count() != (draftEnabled ? 4 : 3)) return new(AssistantModelCode.Invalid);
             var answer = value.GetProperty("answer").GetString(); var route = value.GetProperty("route").GetString();
             var sources = value.GetProperty("sources").EnumerateArray().Select(x => Guid.Parse(x.GetString()!)).ToArray();
             if (string.IsNullOrWhiteSpace(answer) || answer.Length > 3000 || sources.Length > 5 ||
@@ -116,7 +120,7 @@ public sealed class OpenAiAssistantModel(HttpClient client, string key) : IAssis
             var usage = root.GetProperty("usage"); var inputTokens = usage.GetProperty("input_tokens").GetInt32(); var outputTokens = usage.GetProperty("output_tokens").GetInt32();
             if (inputTokens < 0 || outputTokens is < 0 or > 2048) return new(AssistantModelCode.Invalid);
             AssistantDraft? proposed = null;
-            if (input.CanPrepare && value.GetProperty("draft") is { ValueKind: not JsonValueKind.Null } draft)
+            if (draftEnabled && value.GetProperty("draft") is { ValueKind: not JsonValueKind.Null } draft)
             {
                 if (draft.EnumerateObject().Count() != 5 || draft.GetProperty("kind").GetString() != (input.CommentTarget ? "comment" : "request") ||
                     route != (input.CommentTarget ? "requests" : "new_request")) return new(AssistantModelCode.Invalid);

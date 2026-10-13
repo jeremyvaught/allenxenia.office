@@ -157,7 +157,14 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
         return View(form);
     }
 
-    [Authorize, HttpPost] public async Task<IActionResult> Logout() { await signIn.SignOutAsync(); return RedirectToAction("Index", "Home"); }
+    [Authorize, HttpPost]
+    public async Task<IActionResult> Logout()
+    {
+        await signIn.SignOutAsync();
+        Response.Cookies.Delete(AssistantController.GuestHintCookie);
+        Response.Cookies.Delete("office.assistant", new CookieOptions { Path = "/Assistant" });
+        return RedirectToAction("Index", "Home");
+    }
     [HttpGet] public IActionResult Denied() => View();
 
     private async Task<bool> VerifyPasswordAndFactor(OfficeUser user, ReauthenticateForm form)

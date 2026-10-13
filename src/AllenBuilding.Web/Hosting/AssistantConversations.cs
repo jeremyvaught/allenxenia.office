@@ -1,9 +1,13 @@
 using AllenBuilding.Application.Assistant;
+using AllenBuilding.Domain.Maintenance;
 
 namespace AllenBuilding.Web.Hosting;
 
 // Local, bounded, transient follow-ups. No raw transcript is written to disk/browser storage.
 // Production persistent conversations, cleanup policy and durable spend accounting are separate gates.
+public sealed record AssistantGuestDraft(Guid Id, Guid Version, AssistantDraft Draft, IReadOnlyList<AssistantSource> Sources,
+    DateTimeOffset ExpiresAt, Guid ReviewConversationId, AssistantTenantScope? ImportedScope = null, Guid? ReviewId = null);
+
 public sealed class AssistantConversations : IDisposable
 {
     public const int Capacity = 128;
@@ -35,6 +39,60 @@ public sealed class AssistantConversations : IDisposable
         }
     }
 
+    public AssistantGuestDraft? ReadGuest(Guid id, string browser)
+    {
+        lock (_sync) return GuestEntry(id, browser)?.Guest;
+    }
+    private Entry? GuestEntry(Guid id, string browser)
+    {
+        if (!_entries.TryGetValue(id, out var entry) || entry.Owner != browser + ":guest" || entry.Guest is null) return null;
+        if (Expired(entry, _time.GetUtcNow()) || entry.Guest.ExpiresAt <= _time.GetUtcNow()) { _entries.Remove(id); return null; }
+        return entry;
+    }
+    public bool EditGuest(Guid id, Guid version, string browser, AssistantDraft draft, bool cancel)
+    {
+        lock (_sync)
+        {
+            var entry = GuestEntry(id, browser);
+            if (entry?.Guest is not { } guest || guest.Version != version || entry.Busy || guest.ImportedScope is not null) return false;
+            if (cancel) { _entries.Remove(id); return true; }
+            if (draft.Kind != AssistantReviewKind.Request || draft.Comment != "") return false;
+            var text = WorkOrder.NormalizeRequest(draft.Title, draft.Description, draft.Location);
+            entry.Guest = guest with { Version = Guid.NewGuid(), Draft = draft with { Title = text.Title, Description = text.Description, Location = text.Location } };
+            return true;
+        }
+    }
+    public GuestTransfer? BeginTransfer(Guid id, Guid version, string browser, AssistantTenantScope scope)
+    {
+        lock (_sync)
+        {
+            var entry = GuestEntry(id, browser);
+            if (entry?.Guest is not { } guest || guest.Version != version || entry.Busy ||
+                (guest.ImportedScope is not null && guest.ImportedScope != scope)) return null;
+            // Bind even a failed/uncertain preparation to the original authenticated scope. A retry
+            // cannot retarget a possibly committed canonical review or mutate its draft.
+            entry.Guest = guest with { ImportedScope = scope }; entry.Busy = true;
+            return new(this, id, entry);
+        }
+    }
+    public sealed class GuestTransfer : IDisposable
+    {
+        private readonly AssistantConversations _store;
+        private readonly Guid _id;
+        private readonly Entry _entry;
+        internal GuestTransfer(AssistantConversations store, Guid id, Entry entry) { _store = store; _id = id; _entry = entry; }
+        public AssistantGuestDraft Draft => _entry.Guest!;
+        public bool Complete(Guid reviewId)
+        {
+            lock (_store._sync)
+            {
+                if (_store.GuestEntry(_id, _entry.Owner[..^6]) != _entry) return false;
+                _entry.Guest = Draft with { ReviewId = reviewId }; return true;
+            }
+        }
+        public void Dispose() { lock (_store._sync) _entry.Busy = false; }
+    }
+
     public Lease? Begin(Guid id, int sequence, string owner, Guid? membership, Guid? target)
     {
         lock (_sync)
@@ -58,7 +116,7 @@ public sealed class AssistantConversations : IDisposable
         }
     }
 
-    private static bool Expired(Entry entry, DateTimeOffset now) => now - entry.LastSeen >= TimeSpan.FromMinutes(30) || now - entry.Created >= TimeSpan.FromHours(2);
+    private static bool Expired(Entry entry, DateTimeOffset now) => (entry.Guest is { } guest && guest.ExpiresAt <= now) || now - entry.LastSeen >= TimeSpan.FromMinutes(30) || now - entry.Created >= TimeSpan.FromHours(2);
     private bool Finish(Lease lease, string question, AssistantAnswer answer)
     {
         lock (_sync)
@@ -67,9 +125,16 @@ public sealed class AssistantConversations : IDisposable
             if (!_entries.TryGetValue(lease.Id, out var entry) || entry != lease.Entry || !entry.Busy || Expired(entry, now)) return false;
             var history = (entry.Context?.History ?? []).Append(new AssistantExchange(question.Trim(), answer.Text)).ToArray();
             entry.Context = new(answer.Scope, answer.ContextualSources ?? [], history);
+            if (answer.GuestDraft is { } draft)
+            {
+                if (!entry.Owner.EndsWith(":guest", StringComparison.Ordinal) || entry.Membership is not null || entry.Target is not null || answer.Scope is not null) return false;
+                entry.Guest = new(lease.Id, Guid.NewGuid(), draft, answer.ContextualSources ?? [], now.AddMinutes(10), Guid.NewGuid());
+                // Retain payload/provenance only once prepared, never transfer the raw conversation.
+                entry.Context = new(null, answer.ContextualSources ?? [], []);
+            }
             entry.Sequence++; entry.LastSeen = now; entry.Busy = false;
             // A prepared write ends language turns; its canonical review has its own durable lifecycle.
-            entry.Closed = answer.Review is not null || entry.Sequence >= MaxTurns || history.Sum(x => x.Question.Length + x.Answer.Length) >= 10000;
+            entry.Closed = answer.GuestDraft is not null || answer.Review is not null || entry.Sequence >= MaxTurns || history.Sum(x => x.Question.Length + x.Answer.Length) >= 10000;
             return true;
         }
     }
@@ -93,6 +158,7 @@ public sealed class AssistantConversations : IDisposable
         public bool Busy { get; set; }
         public bool Closed { get; set; }
         public AssistantConversationContext? Context { get; set; }
+        public AssistantGuestDraft? Guest { get; set; }
     }
     public sealed class Lease : IDisposable
     {

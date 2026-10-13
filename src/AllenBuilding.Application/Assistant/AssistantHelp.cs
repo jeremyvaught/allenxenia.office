@@ -4,18 +4,28 @@ using AllenBuilding.Application.Maintenance;
 
 namespace AllenBuilding.Application.Assistant;
 
-public sealed record AssistantPolicy(bool Enabled, bool TenantHelpEnabled = false, bool BillingEnabled = false, bool ActionsEnabled = false, bool FollowUpsEnabled = false);
+public sealed record AssistantPolicy(bool Enabled, bool TenantHelpEnabled = false, bool BillingEnabled = false, bool ActionsEnabled = false, bool FollowUpsEnabled = false, bool GuestDraftsEnabled = false);
 public sealed record AssistantLink(string Label, string Path);
 public sealed record AssistantAnswer(AssistantModelCode Code, string Text = "", IReadOnlyList<HelpSource>? Sources = null,
     AssistantLink? Next = null, AssistantTenantScope? Scope = null, IReadOnlyList<AssistantSource>? ContextualSources = null,
     IReadOnlyList<RequestSummary>? Requests = null, IReadOnlyList<BillingAccount>? Billing = null, AssistantReviewView? Review = null, RequestDetails? Target = null,
-    IReadOnlyList<AssistantExchange>? History = null, DateTimeOffset? RecordsCheckedAt = null, string? RequestSearch = null);
+    IReadOnlyList<AssistantExchange>? History = null, DateTimeOffset? RecordsCheckedAt = null, string? RequestSearch = null, AssistantDraft? GuestDraft = null);
 
 // Only server-held prior exchanges enter context. Original membership and the union of source
 // revisions are checked before reuse and carried through output/confirmation admission.
 public sealed class AssistantHelp(KnowledgeActions knowledge, IAssistantModel model, AssistantPolicy policy, IAssistantTenantAccess access,
     MaintenanceActions maintenance, BillingActions billing, AssistantMaintenance actions, TimeProvider time)
 {
+    public async Task<bool> PublicSourcesCurrentAsync(IReadOnlyList<AssistantSource> sources, CancellationToken cancellationToken)
+    {
+        if (sources.Count > 5) return false;
+        foreach (var source in sources)
+        {
+            var current = await knowledge.FindAsync(KnowledgeScope.Public, id: source.ArticleId, cancellationToken: cancellationToken);
+            if (current.Count != 1 || current[0].RevisionId != source.RevisionId) return false;
+        }
+        return true;
+    }
     public async Task<AssistantAnswer> FindRequestsAsync(Guid membershipId, string? search, CancellationToken cancellationToken)
     {
         if (!policy.Enabled || !policy.TenantHelpEnabled) return new(AssistantModelCode.Unavailable);
@@ -26,7 +36,7 @@ public sealed class AssistantHelp(KnowledgeActions knowledge, IAssistantModel mo
             Requests: records, RecordsCheckedAt: time.GetUtcNow(), RequestSearch: search.Trim());
     }
     public async Task<AssistantAnswer> AskAsync(string? question, CancellationToken cancellationToken = default, Guid? membershipId = null, Guid? requestId = null, Guid conversationId = default,
-        AssistantConversationContext? previous = null)
+        AssistantConversationContext? previous = null, bool guest = false)
     {
         if (!policy.Enabled) return new(AssistantModelCode.Unavailable);
         if (string.IsNullOrWhiteSpace(question) || question.Length > 4000) return new(AssistantModelCode.Invalid);
@@ -79,7 +89,7 @@ public sealed class AssistantHelp(KnowledgeActions knowledge, IAssistantModel mo
             .Where(x => x.Score > 0).OrderByDescending(x => x.Score).ThenBy(x => x.Source.ArticleId).Take(5 - retained.Count).Select(x => x.Source)).ToArray();
         var contextual = sources.Select(x => new AssistantSource(x.ArticleId, x.RevisionId,
             x.Title[..Math.Min(x.Title.Length, 180)], x.Body[..Math.Min(x.Body.Length, 800)])).ToArray();
-        var reply = await model.AnswerAsync(new(question.Trim(), contextual, scope is not null, scope is not null && policy.ActionsEnabled, target is not null, previous?.History), cancellationToken);
+        var reply = await model.AnswerAsync(new(question.Trim(), contextual, scope is not null, scope is not null && policy.ActionsEnabled, target is not null, previous?.History, guest && scope is null && policy.TenantHelpEnabled && policy.GuestDraftsEnabled && policy.FollowUpsEnabled && policy.ActionsEnabled), cancellationToken);
         if (reply.Code != AssistantModelCode.Success) return new(reply.Code);
         if (reply.Answer.Length is < 1 or > 3000 || reply.Sources is null || reply.Sources.Count > 5 ||
             reply.Sources.Any(id => !sources.Any(x => x.ArticleId == id))) return new(AssistantModelCode.Invalid);
@@ -109,14 +119,29 @@ public sealed class AssistantHelp(KnowledgeActions knowledge, IAssistantModel mo
             ? await billing.ReadForMembershipAsync(scope.MembershipId, cancellationToken) : null;
         var recordsCheckedAt = requests is not null || accounts is not null ? time.GetUtcNow() : (DateTimeOffset?)null;
         AssistantReviewView? review = null;
+        AssistantDraft? guestDraft = null;
         if (reply.Draft is not null)
         {
-            if (scope is null || !policy.ActionsEnabled) return new(AssistantModelCode.Denied);
-            var prepared = await actions.PrepareAsync(conversationId, scope, reply.Draft, target, contextual, cancellationToken);
-            if (prepared.Code != MaintenanceCode.Success) return new(prepared.Code == MaintenanceCode.Unavailable ? AssistantModelCode.Denied : AssistantModelCode.Invalid);
-            review = prepared.View;
+            if (scope is null)
+            {
+                if (!guest || !policy.TenantHelpEnabled || !policy.GuestDraftsEnabled || !policy.FollowUpsEnabled || !policy.ActionsEnabled ||
+                    reply.Draft.Kind != AllenBuilding.Domain.Maintenance.AssistantReviewKind.Request || reply.Draft.Comment != "" || reply.Route != "new_request") return new(AssistantModelCode.Denied);
+                try
+                {
+                    var text = AllenBuilding.Domain.Maintenance.WorkOrder.NormalizeRequest(reply.Draft.Title, reply.Draft.Description, reply.Draft.Location);
+                    guestDraft = reply.Draft with { Title = text.Title, Description = text.Description, Location = text.Location };
+                }
+                catch (ArgumentException) { return new(AssistantModelCode.Invalid); }
+            }
+            else
+            {
+                if (!policy.ActionsEnabled) return new(AssistantModelCode.Denied);
+                var prepared = await actions.PrepareAsync(conversationId, scope, reply.Draft, target, contextual, cancellationToken);
+                if (prepared.Code != MaintenanceCode.Success) return new(prepared.Code == MaintenanceCode.Unavailable ? AssistantModelCode.Denied : AssistantModelCode.Invalid);
+                review = prepared.View;
+            }
         }
         return new(AssistantModelCode.Success, reply.Answer, sources.Where(x => reply.Sources.Contains(x.ArticleId)).ToArray(), next, scope, contextual, requests, accounts, review, target, previous?.History,
-            recordsCheckedAt);
+            recordsCheckedAt, GuestDraft: guestDraft);
     }
 }

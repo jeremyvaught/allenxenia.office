@@ -19,6 +19,9 @@ public sealed class AssistantController(AssistantHelp help, AssistantPolicy poli
     IAssistantTenantAccess access, ICompositeViewEngine views, AssistantMaintenance actions, TimeProvider time,
     AssistantConversations conversations, IDataProtectionProvider protection) : Controller
 {
+    public const string GuestHintCookie = "office.assistant-draft";
+    private bool GuestEnabled => policy.Enabled && policy.GuestDraftsEnabled && policy.FollowUpsEnabled && policy.ActionsEnabled && policy.TenantHelpEnabled;
+
     [HttpGet]
     public async Task<IActionResult> Index(Guid? membershipId, Guid? requestId)
     {
@@ -83,7 +86,7 @@ public sealed class AssistantController(AssistantHelp help, AssistantPolicy poli
         { ViewData["ConversationUnavailable"] = true; Response.StatusCode = 409; return View("Index"); }
         try
         {
-            var result = await help.AskAsync(question, deadline.Token, membershipId, requestId, conversation?.Id ?? Guid.NewGuid(), conversation?.Previous);
+            var result = await help.AskAsync(question, deadline.Token, membershipId, requestId, conversation?.Id ?? Guid.NewGuid(), conversation?.Previous, guest: User.Identity?.IsAuthenticated != true);
             if (conversation is not null)
             {
                 if (result.Code == AssistantModelCode.Success)
@@ -92,6 +95,14 @@ public sealed class AssistantController(AssistantHelp help, AssistantPolicy poli
                     ViewData["ConversationId"] = conversation.Id; ViewData["Sequence"] = conversation.Sequence;
                     ViewData["ConversationClosed"] = conversation.Closed;
                     ViewData["ActiveConversation"] = conversation.Id;
+                    if (result.GuestDraft is not null)
+                    {
+                        ViewData["GuestDraftId"] = conversation.Id;
+                        // Only a navigation hint. The protected browser cookie, server entry and
+                        // current authorization remain mandatory; this ID grants no access.
+                        Response.Cookies.Append(GuestHintCookie, conversation.Id.ToString("D"), new CookieOptions
+                        { HttpOnly = true, Secure = Request.IsHttps, SameSite = SameSiteMode.Strict, IsEssential = true, Path = "/", MaxAge = TimeSpan.FromMinutes(10) });
+                    }
                 }
                 else if (result.Code == AssistantModelCode.Denied) conversation.Forget();
                 // Failure pages intentionally show no retained private text. Start fresh or retry the
@@ -107,8 +118,10 @@ public sealed class AssistantController(AssistantHelp help, AssistantPolicy poli
         catch (Exception exception) when (exception is System.Data.Common.DbException or Microsoft.EntityFrameworkCore.DbUpdateException)
         { return Answer(new(AssistantModelCode.Unavailable)); }
     }
-    private string ConversationOwner()
+    private string ConversationOwner() => BrowserOwner() + ":" + (User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "guest");
+    private string BrowserOwner()
     {
+        if (HttpContext.Items["AssistantBrowser"] is string cached) return cached;
         const string cookie = "office.assistant";
         var protector = protection.CreateProtector("OfficeAssistant.TransientBrowser.v1");
         string? token = null;
@@ -123,8 +136,66 @@ public sealed class AssistantController(AssistantHelp help, AssistantPolicy poli
             Response.Cookies.Append(cookie, protector.Protect(token), new CookieOptions
             { HttpOnly = true, Secure = Request.IsHttps, SameSite = SameSiteMode.Strict, IsEssential = true, Path = "/Assistant", MaxAge = TimeSpan.FromHours(2) });
         }
-        // Authentication transitions cannot transfer a guest/other-user conversation to this session.
-        return token + ":" + (User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "guest");
+        HttpContext.Items["AssistantBrowser"] = token; return token;
+    }
+    [HttpGet, EnableRateLimiting("Readiness")]
+    public async Task<IActionResult> Guest(Guid id)
+    {
+        if (!GuestEnabled) return NotFound();
+        var draft = conversations.ReadGuest(id, BrowserOwner());
+        if (draft is null || !await help.PublicSourcesCurrentAsync(draft.Sources, HttpContext.RequestAborted))
+        { Response.Cookies.Delete(GuestHintCookie); return NotFound(); }
+        if (draft.ImportedScope is { } original)
+        {
+            var current = await access.CaptureAsync(original.MembershipId, HttpContext.RequestAborted);
+            if (current != original) return NotFound();
+            if (draft.ReviewId is { } review) return RedirectToAction(nameof(Review), new { id = review, conversationId = draft.ReviewConversationId });
+            ViewData["Memberships"] = new[] { new RequestMemberChoice(original.MembershipId, original.Suite) };
+        }
+        else ViewData["Memberships"] = User.Identity?.IsAuthenticated == true ? await maintenance.MembersAsync(false, HttpContext.RequestAborted) : Array.Empty<RequestMemberChoice>();
+        return draft.ImportedScope is { } bound ? await ProtectedView("Guest", draft, bound, draft.Sources) : View(draft);
+    }
+    [HttpPost, RequestSizeLimit(20000), EnableRateLimiting("Readiness")]
+    public async Task<IActionResult> EditGuest(Guid id, Guid version, string? title, string? description, string? location, bool cancel)
+    {
+        if (!GuestEnabled) return NotFound(); if (!ModelState.IsValid || !SameOrigin()) return BadRequest();
+        var browser = BrowserOwner(); var draft = conversations.ReadGuest(id, browser);
+        if (draft is null || !await help.PublicSourcesCurrentAsync(draft.Sources, HttpContext.RequestAborted)) return NotFound();
+        try
+        {
+            if (!conversations.EditGuest(id, version, browser, new(AssistantReviewKind.Request, title ?? "", description ?? "", location ?? ""), cancel)) return Conflict();
+        }
+        catch (ArgumentException) { return BadRequest(); }
+        if (cancel) { Response.Cookies.Delete(GuestHintCookie); return RedirectToAction(nameof(Index)); }
+        return RedirectToAction(nameof(Guest), new { id });
+    }
+    [Authorize, HttpPost, RequestSizeLimit(10000), EnableRateLimiting("PaymentActions")]
+    public async Task<IActionResult> ImportGuest(Guid id, Guid version, Guid membershipId)
+    {
+        if (!GuestEnabled) return NotFound(); if (!ModelState.IsValid || !SameOrigin()) return BadRequest();
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(HttpContext.RequestAborted); deadline.CancelAfter(TimeSpan.FromSeconds(10));
+        try
+        {
+            var scope = await access.CaptureAsync(membershipId, deadline.Token); if (scope is null) return NotFound();
+            using var transfer = conversations.BeginTransfer(id, version, BrowserOwner(), scope); if (transfer is null) return Conflict();
+            var draft = transfer.Draft;
+            if (!await help.PublicSourcesCurrentAsync(draft.Sources, deadline.Token)) return NotFound();
+            if (draft.ReviewId is { } prior)
+            {
+                var review = await actions.ReadAsync(prior, draft.ReviewConversationId, deadline.Token);
+                if (review is null || review.Scope != scope) return NotFound();
+                return RedirectToAction(nameof(Review), new { id = prior, conversationId = draft.ReviewConversationId });
+            }
+            // Import only canonical text/public provenance. Never reuse guest history, identity,
+            // generated permission claims or browser payload as authenticated authority.
+            var prepared = await actions.PrepareAsync(draft.ReviewConversationId, scope, draft.Draft, null, draft.Sources, deadline.Token);
+            if (prepared.Code != MaintenanceCode.Success || prepared.View is null) return ActionError(prepared.Code);
+            if (!transfer.Complete(prepared.View.Review.Id)) return Conflict();
+            Response.Cookies.Delete(GuestHintCookie);
+            return RedirectToAction(nameof(Review), new { id = prepared.View.Review.Id, conversationId = draft.ReviewConversationId });
+        }
+        catch (Exception exception) when (exception is System.Data.Common.DbException or Microsoft.EntityFrameworkCore.DbUpdateException or OperationCanceledException)
+        { if (HttpContext.RequestAborted.IsCancellationRequested) throw; return StatusCode(503); }
     }
     [Authorize, HttpPost, RequestSizeLimit(10000), EnableRateLimiting("Readiness")]
     public async Task<IActionResult> Find(Guid membershipId, string? search)

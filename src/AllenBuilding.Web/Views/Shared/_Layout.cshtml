@@ -51,6 +51,10 @@
             </div>
         </div>
     </header>
+    @if (Guid.TryParse(Context.Request.Cookies[AllenBuilding.Web.Controllers.AssistantController.GuestHintCookie], out var guestHint))
+    {
+        <div class="border-b border-line bg-brand-soft px-5 py-3 text-sm"><div class="mx-auto max-w-7xl"><a href="/Assistant/Guest/@guestHint" class="inline-flex min-h-11 items-center font-semibold text-brand underline">Continue your maintenance draft</a><p class="text-muted">Nothing has been submitted.</p></div></div>
+    }
     <main id="main" tabindex="-1" class="flex-1">@RenderBody()</main>
     <footer class="border-t border-line">
         <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-7 text-sm text-muted sm:px-8">
