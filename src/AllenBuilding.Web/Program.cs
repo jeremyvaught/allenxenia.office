@@ -28,6 +28,8 @@ builder.Services.AddScoped<AllenBuilding.Application.Knowledge.KnowledgeActions>
 builder.Services.AddScoped<AllenBuilding.Application.Billing.IBillingStore, BillingStore>();
 builder.Services.AddScoped<AllenBuilding.Application.Billing.BillingActions>();
 builder.Services.AddScoped<BillingReviewTickets>();
+builder.Services.AddScoped<AllenBuilding.Application.Reporting.IManagementReportReader, ManagementReportReader>();
+builder.Services.AddScoped<AllenBuilding.Application.Reporting.ManagementReportQueries>();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;

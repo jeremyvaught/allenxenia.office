@@ -34,3 +34,11 @@ jobs:
       - run: ./scripts/verify-mysql.sh
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
+      - name: Preserve SQL report evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sql-report-evidence
+          path: artifacts/reports/
+          if-no-files-found: warn
+          retention-days: 14

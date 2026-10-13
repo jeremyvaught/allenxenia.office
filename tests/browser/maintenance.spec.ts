@@ -213,6 +213,20 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await expect(manager.getByRole('link', { name: new RegExp(behalfTitle) })).toBeVisible();
     expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await manager.screenshot({ path: `artifacts/browser/queue-${testInfo.project.name}.png`, fullPage: true });
+    await manager.goto('/Portal');
+    await manager.getByRole('link', { name: 'Maintenance aging report', exact: true }).click();
+    await expect(manager.getByRole('heading', { level: 1 })).toHaveText('Maintenance aging');
+    await expect(manager.getByRole('link', { name: new RegExp(behalfTitle) })).toBeVisible();
+    await expect(manager.getByRole('link', { name: new RegExp(`Leaking sink ${testInfo.project.name}`) })).toHaveCount(0);
+    await manager.getByLabel('Age group', { exact: true }).selectOption('AwaitingVerification');
+    await manager.getByRole('button', { name: 'View report', exact: true }).click();
+    await expect(manager.getByRole('link', { name: new RegExp(behalfTitle) })).toHaveCount(0);
+    expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await manager.getByRole('link', { name: 'Reset report', exact: true }).click();
+    await manager.screenshot({ path: `artifacts/browser/report-${testInfo.project.name}.png`, fullPage: true });
+    await page.goto('/Reports/Maintenance');
+    await expect(page).toHaveURL(/\/Account\/Denied/);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Access unavailable');
 
   } finally { await managerContext.close(); }
 });
