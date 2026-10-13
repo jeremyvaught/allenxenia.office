@@ -14,6 +14,7 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
 {
     public DbSet<SettlementPayment> SettlementPayments => Set<SettlementPayment>();
     public DbSet<PaymentAllocation> PaymentAllocations => Set<PaymentAllocation>();
+    public DbSet<CustomerProvision> CustomerProvisions => Set<CustomerProvision>();
     public DbSet<BillingCustomerBinding> BillingCustomers => Set<BillingCustomerBinding>();
     public DbSet<PaymentAttempt> PaymentAttempts => Set<PaymentAttempt>();
     public DbSet<CollectionWork> CollectionWork => Set<CollectionWork>();
@@ -198,6 +199,18 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
             e.HasOne<RentAgreement>().WithMany().HasForeignKey(x => new { x.AgreementId, x.AccountId })
                 .HasPrincipalKey(x => new { x.Id, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.IssuedBy).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<CustomerProvision>(e =>
+        {
+            e.ToTable("customer_provisions"); e.HasKey(x => x.Id); e.Ignore(x => x.ProviderIdempotencyKey);
+            e.Property(x => x.Version).IsConcurrencyToken(); e.Property(x => x.LeaseToken).IsConcurrencyToken();
+            e.Property(x => x.ActorId).HasMaxLength(450); e.Property(x => x.ProviderAccount).HasMaxLength(255); e.Property(x => x.CustomerId).HasMaxLength(255);
+            e.Property(x => x.State).HasConversion<string>().HasMaxLength(32); e.Property(x => x.ApiVersion).HasMaxLength(64); e.Property(x => x.LastError).HasMaxLength(64);
+            e.Property(x => x.OriginTraceId).HasMaxLength(32); e.Property(x => x.OriginSpanId).HasMaxLength(16);
+            e.HasIndex(x => new { x.AccountId, x.ProviderAccount, x.LiveMode }).IsUnique();
+            e.HasIndex(x => new { x.State, x.NextAttemptAt, x.CreatedAt, x.Id });
+            e.HasOne<RentAccount>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.ActorId).OnDelete(DeleteBehavior.Restrict);
         });
         model.Entity<BillingCustomerBinding>(e =>
         {
