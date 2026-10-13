@@ -66,11 +66,13 @@ The MySQL script requires Docker and creates a disposable loopback database. Its
 
 Tenant-walkthrough fixes: 134 domain and 493 ordinary integration checks and twenty-four browser journeys pass, including native 320px first login, optional setup and the maintenance loop. Release has zero warnings/errors. Nine Python helper checks passed at the preceding checkpoint. The shared actual MySQL contract was verified in the earlier remediation; no SQL/schema changes occurred in this follow-up. The preceding revision `a5a21b1` supplies a verified 393-file self-contained Linux x64 package; styled missing-page/article responses, isolated Production/MySQL restore and wrapped-key continuity pass on an image without .NET installed. Browser emulation does not establish real-device acceptance. Coverage remains from the earlier assistant checkpoint.
 
+Hosted verification: [the first successful Verify run](https://github.com/jeremyvaught/allenxenia.office/actions/runs/38460919289) tested published revision `c919e4b`, including actual MySQL, browser journeys, coverage, Linux packaging and independent restore. Its five artifacts provide downloadable evidence. This establishes hosted verification, not operation on the actual Forge server.
+
 ## Scope and launch limits
 
 Payment collection is disabled server-side. Monthly rent, one-time charges and verified receipts are the intended payment scope. Refunds are handled manually by check; automated refunds, disputes and elaborate financial exceptions are outside scope. Dormant financial code is incomplete and must not be enabled as delivered functionality.
 
-Real SMTP delivery, the actual Forge runtime/database configuration, production backups/key recovery, off-host restore, hosted CI and a tenant pilot still need evidence. Assistant persistence/stream replay, durable production cost controls and broad model evaluation are later disabled stages.
+Real SMTP delivery, the actual Forge runtime/database configuration, production backups/key recovery, off-host restore and a tenant pilot still need evidence. Assistant persistence/stream replay, durable production cost controls and broad model evaluation are later disabled stages.
 
 Forge templates are in `ops/forge`; release verification helpers are in `scripts`. Production requires explicit trusted proxy addresses, separate MySQL runtime/migration credentials, persistent wrapped Data Protection keys and approved private configuration. `AllenXeniaOffice.Build` is the fixed encryption namespace: changing a display name must never change it.
 

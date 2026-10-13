@@ -1,8 +1,8 @@
 # Allen Xenia Office build
 
-This is a new implementation in `/Users/jeremyvaught/sites/allenxenia.office-build`. Do not copy or modify the old application as the implementation strategy. Use it as behavior/evidence reference.
+This repository is the new ground-up implementation. Do not copy or modify the old application as the implementation strategy. Use it as behavior/evidence reference.
 
-Follow the canonical PRD and spec in `/Users/jeremyvaught/markdown/dotnet/Development/`. Owner instructions override prior incremental-migration assumptions: build from the ground up; SQLite for local development and MySQL for production. Keep business outcomes consistent across both providers; use separate provider migrations and real MySQL integration tests for constraints, transactions and locks.
+Follow the canonical PRD and spec in the owner’s Obsidian vault under `dotnet/Development/`. Owner instructions override prior incremental-migration assumptions: build from the ground up; SQLite for local development and MySQL for production. Keep business outcomes consistent across both providers; use separate provider migrations and real MySQL integration tests for constraints, transactions and locks.
 
 Use MVC/Razor, built-in DI and feature-oriented Domain/Application/Infrastructure/Web layers. Use Tailwind v4 with System/Light/Dark (System default), responsive public and authenticated flows. Authorization and consequential-action confirmation are server responsibilities. Provider calls occur outside database transactions.
 
