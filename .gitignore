@@ -27,3 +27,5 @@ test-results/
 !scripts/package-release.py
 **/__pycache__/
 *.pyc
+
+!scripts/verify-release.py

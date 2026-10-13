@@ -73,8 +73,17 @@ var app = builder.Build();
 
 if (migrate)
 {
-    using var scope = app.Services.CreateScope();
-    await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().Database.MigrateAsync();
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().Database.MigrateAsync();
+    }
+    catch (Exception)
+    {
+        Console.Error.WriteLine("Migration failed. Keep writers stopped and inspect the applied schema through the authorized operator; do not continue activation.");
+        Environment.ExitCode = 1;
+    }
+    finally { await app.DisposeAsync(); }
     return;
 }
 

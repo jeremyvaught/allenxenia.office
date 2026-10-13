@@ -5,7 +5,7 @@ namespace AllenBuilding.Infrastructure.Persistence;
 
 public static class MySqlConnectionPolicy
 {
-    public static string Validate(string connection, bool local)
+    public static string Validate(string connection, bool local, bool migrations = false)
     {
         MySqlConnectionStringBuilder options;
         try { options = new MySqlConnectionStringBuilder(connection); }
@@ -24,11 +24,18 @@ public static class MySqlConnectionPolicy
         if (!loopback && !socket && options.SslMode != MySqlSslMode.VerifyFull)
             throw new InvalidOperationException("Cross-host MySQL connections require verified hostname and certificate trust with SslMode=VerifyFull.");
         options.MaximumPoolSize = explicitPool ? options.MaximumPoolSize : 10;
+        if (migrations)
+        {
+            if (options.MinimumPoolSize > 2) throw new InvalidOperationException("The isolated migration process permits at most two connections.");
+            options.MaximumPoolSize = Math.Min(options.MaximumPoolSize, 2);
+        }
         options.ConnectionTimeout = Math.Min(options.ConnectionTimeout, 5);
         options.DefaultCommandTimeout = Math.Min(options.DefaultCommandTimeout, 15);
         if (options.ConnectionTimeout == 0 || options.DefaultCommandTimeout == 0)
             throw new InvalidOperationException("Production MySQL requires bounded connection and command timeouts.");
-        options.ConnectionReset = true;
+        // Connector/NET 26.7 migration connection cloning fails under Linux with reset enabled.
+        // The exclusive short-lived migrator owns its session; ordinary pooled application sessions still reset.
+        options.ConnectionReset = !migrations;
         return options.ConnectionString;
     }
 }

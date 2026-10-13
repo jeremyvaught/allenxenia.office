@@ -55,6 +55,19 @@ jobs:
 
       - name: Package verified portable release
         run: python3 scripts/package-release.py build
+      - name: Verify published Linux process and MySQL restoration
+        run: |
+          for release in artifacts/releases/release-*; do
+            python3 scripts/verify-release.py "$release"
+          done
+      - name: Preserve published recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: published-recovery-evidence
+          path: artifacts/release-verification/*.json
+          if-no-files-found: warn
+          retention-days: 14
       - name: Preserve portable release
         uses: actions/upload-artifact@v4
         with:

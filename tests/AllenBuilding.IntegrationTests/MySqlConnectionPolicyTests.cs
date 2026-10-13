@@ -25,9 +25,21 @@ public sealed class MySqlConnectionPolicyTests
         using var migrator = new ServiceCollection().AddOfficeStorage(configuration, environment, migrations: true).BuildServiceProvider();
         using var migrationScope = migrator.CreateScope();
         var selected = new MySqlConnectionStringBuilder(migrationScope.ServiceProvider.GetRequiredService<OfficeDbContext>().Database.GetConnectionString());
-        Assert.Equal("migrator", selected.UserID); Assert.Equal(2u, selected.MaximumPoolSize);
+        Assert.Equal("migrator", selected.UserID); Assert.Equal(2u, selected.MaximumPoolSize); Assert.False(selected.ConnectionReset);
         configuration["ConnectionStrings:OfficeMigrator"] = null;
         Assert.Throws<InvalidOperationException>(() => new ServiceCollection().AddOfficeStorage(configuration, environment, migrations: true));
+    }
+
+    [Fact]
+    public void Isolated_migrations_have_a_two_connection_budget_without_reset_but_keep_security_limits()
+    {
+        var supplied = "Server=localhost;Database=office;User ID=migrator;Password=synthetic-secret;SslMode=Disabled;";
+        var migration = new MySqlConnectionStringBuilder(MySqlConnectionPolicy.Validate(supplied, false, migrations: true));
+        Assert.Equal(2u, migration.MaximumPoolSize); Assert.False(migration.ConnectionReset);
+        Assert.False(migration.PersistSecurityInfo); Assert.False(migration.AllowLoadLocalInfile);
+        Assert.Equal(5u, migration.ConnectionTimeout); Assert.Equal(15u, migration.DefaultCommandTimeout);
+        Assert.Throws<InvalidOperationException>(() => MySqlConnectionPolicy.Validate(supplied + "MinimumPoolSize=3;", false, migrations: true));
+        Assert.True(new MySqlConnectionStringBuilder(MySqlConnectionPolicy.Validate(supplied, false)).ConnectionReset);
     }
 
     [Theory]

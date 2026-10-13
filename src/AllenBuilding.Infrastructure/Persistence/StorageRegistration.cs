@@ -33,7 +33,7 @@ public static class StorageRegistration
             var connection = configuration.GetConnectionString(name);
             if (string.IsNullOrWhiteSpace(connection))
                 throw new InvalidOperationException("Set the dedicated runtime or migration connection through restricted configuration.");
-            connection = MySqlConnectionPolicy.Validate(connection, local);
+            connection = MySqlConnectionPolicy.Validate(connection, local, migrations);
             services.AddDbContext<MySqlOfficeDbContext>(o => o.UseMySQL(connection));
             services.AddScoped<OfficeDbContext>(sp => sp.GetRequiredService<MySqlOfficeDbContext>());
         }
