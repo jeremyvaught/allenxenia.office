@@ -4,7 +4,11 @@
         <p class="mb-6 text-sm font-semibold uppercase tracking-widest text-brand">Allen Building · Xenia</p>
         <h1 class="max-w-3xl text-4xl leading-[1.08] font-semibold tracking-tight sm:text-6xl lg:text-7xl">Your building.<br />A little simpler.</h1>
         <p class="mt-7 max-w-xl text-lg leading-relaxed text-muted sm:text-xl">One place for building information, maintenance updates, and the everyday details of your office.</p>
-        <a href="#services" class="mt-9 inline-flex min-h-12 items-center gap-6 rounded-xl bg-brand-soft px-6 py-3 font-semibold text-brand hover:ring-2 hover:ring-brand hover:ring-offset-2 hover:ring-offset-surface">Explore tenant services <span aria-hidden="true">↗</span></a>
+        <div class="mt-9 flex flex-wrap gap-3">
+            <a href="/Maintenance/Create" class="button">Report a maintenance issue</a>
+            <a href="/Maintenance" class="quiet-button">View your requests</a>
+        </div>
+        <p class="mt-4 text-sm text-muted">Sign in with your invited account to use tenant services.</p>
     </div>
     <aside aria-labelledby="tenant-heading" class="rounded-3xl border border-line bg-panel p-7 sm:p-10">
         <span aria-hidden="true" class="mb-8 flex size-16 items-center justify-center rounded-2xl bg-brand-soft text-3xl text-brand">A</span>
@@ -31,7 +35,8 @@
 <section id="access" class="mx-auto max-w-7xl px-5 py-14 sm:px-8 sm:py-20">
     <div class="max-w-2xl">
         <p class="text-sm font-semibold uppercase tracking-widest text-brand">Tenant access</p>
-        <h2 class="mt-4 text-3xl font-semibold tracking-tight">A new portal is taking shape.</h2>
-        <p class="mt-5 leading-relaxed text-muted">Tenant access is being prepared. When enrollment opens, building management will send your invitation. Your existing arrangements with management continue in the meantime.</p>
+        <h2 class="mt-4 text-3xl font-semibold tracking-tight">Your office starts here.</h2>
+        <p class="mt-5 leading-relaxed text-muted">Tenant access is by invitation from building management. Already have an account? Sign in to report an issue, follow your requests, or find building guidance.</p>
+        <div class="mt-6 flex flex-wrap gap-3"><a href="/Account/Login" class="button">Sign in to your office</a><a href="/Knowledge" class="quiet-button">Browse building help</a><a href="/Assistant" class="quiet-button">Ask the office assistant</a></div>
     </div>
 </section>
