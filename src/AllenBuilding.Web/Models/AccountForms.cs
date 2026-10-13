@@ -22,6 +22,11 @@ public sealed class EnrollmentForm
     public string? Key { get; set; }
 }
 
+public sealed class OperatorEnrollmentForm
+{
+    [Required, StringLength(32, MinimumLength = 32)] public string Code { get; set; } = "";
+}
+
 public sealed class ReauthenticateForm
 {
     [Required, DataType(DataType.Password), StringLength(128)] public string Password { get; set; } = "";

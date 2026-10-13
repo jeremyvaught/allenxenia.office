@@ -13,7 +13,7 @@ namespace AllenBuilding.Web.Controllers;
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("Accounts")]
 public sealed class AccountController(UserManager<OfficeUser> users, SignInManager<OfficeUser> signIn,
-    TimeProvider time, AllenBuilding.Infrastructure.Persistence.OfficeDbContext db, AccountInvitations invitations) : Controller
+    TimeProvider time, AllenBuilding.Infrastructure.Persistence.OfficeDbContext db, AccountInvitations invitations, OperatorEnrollment operatorEnrollment) : Controller
 {
     [HttpGet]
     public IActionResult Login(string? returnUrl)
@@ -87,6 +87,7 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
     {
         var user = (await users.GetUserAsync(User))!;
         if (user.TwoFactorEnabled) return RedirectToAction(nameof(Login));
+        if (!await EnrollmentAllowed(user)) return View("OperatorEnrollment", new OperatorEnrollmentForm());
         var key = await users.GetAuthenticatorKeyAsync(user);
         if (key is null)
         {
@@ -100,13 +101,17 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
     [Authorize, HttpPost]
     public async Task<IActionResult> Enroll(EnrollmentForm form)
     {
+        await using var transaction = await AllenBuilding.Infrastructure.Persistence.AuthorityLocks.BeginAsync(db, HttpContext.RequestAborted);
         var user = (await users.GetUserAsync(User))!;
+        await AllenBuilding.Infrastructure.Persistence.AuthorityLocks.InvitationUserAsync(db, user.Id, HttpContext.RequestAborted);
+        await db.Entry(user).ReloadAsync(HttpContext.RequestAborted);
         if (user.TwoFactorEnabled) return RedirectToAction(nameof(Login));
+        if (!await EnrollmentAllowed(user)) return StatusCode(403);
         if (ModelState.IsValid && !await users.IsLockedOutAsync(user) &&
             await users.VerifyTwoFactorTokenAsync(user, users.Options.Tokens.AuthenticatorTokenProvider, NormalizeCode(form.Code)))
         {
-            await using var transaction = await db.Database.BeginTransactionAsync();
             if (!(await users.SetTwoFactorEnabledAsync(user, true)).Succeeded) return StatusCode(409);
+            if (!(await users.RemoveAuthenticationTokenAsync(user, OperatorEnrollment.Provider, OperatorEnrollment.RequiredToken)).Succeeded) return StatusCode(409);
             user.MustReplaceRecoveryCodes = true;
             if (!(await users.UpdateAsync(user)).Succeeded) return StatusCode(409);
             invitations.Audit(user.Id, "MfaEnrolled", user.Id);
@@ -117,9 +122,34 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
             return RedirectToAction(nameof(Login));
         }
         await users.AccessFailedAsync(user);
+        await transaction.CommitAsync();
         ModelState.AddModelError("", "Unable to verify this code. Check your authenticator and try again.");
         form.Key = await users.GetAuthenticatorKeyAsync(user);
         return View(form);
+    }
+
+    [Authorize, HttpPost]
+    public async Task<IActionResult> AuthorizeEnrollment(OperatorEnrollmentForm form)
+    {
+        var user = (await users.GetUserAsync(User))!;
+        if (!ModelState.IsValid || user.SecurityStamp is null ||
+            !await operatorEnrollment.AuthorizeAsync(user.Id, user.SecurityStamp, form.Code.Trim(), HttpContext.RequestAborted))
+        {
+            ModelState.Remove(nameof(form.Code)); form.Code = "";
+            ModelState.AddModelError("", "Unable to verify this recovery code. Ask the verified operator for a new code if it expired or was already used.");
+            Response.StatusCode = 400; return View("OperatorEnrollment", form);
+        }
+        await db.Entry(user).ReloadAsync(HttpContext.RequestAborted);
+        await signIn.SignInWithClaimsAsync(user, false, [OfficeSecurity.TimeClaim(OperatorEnrollment.SessionTime, time.GetUtcNow())]);
+        return RedirectToAction(nameof(Enroll));
+    }
+
+    private async Task<bool> EnrollmentAllowed(OfficeUser user)
+    {
+        if (User.FindFirstValue(users.Options.ClaimsIdentity.SecurityStampClaimType) != user.SecurityStamp) return false;
+        if (await operatorEnrollment.RequiredAsync(user) != "true") return true;
+        return long.TryParse(User.FindFirstValue(OperatorEnrollment.SessionTime), out var at) &&
+            time.GetUtcNow().ToUnixTimeSeconds() - at is >= 0 and <= 600;
     }
 
     [Authorize, HttpGet]

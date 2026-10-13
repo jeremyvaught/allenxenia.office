@@ -52,7 +52,7 @@ public static class OperatorRecoveryContract
             return await new OperatorMfaRecovery(services.GetRequiredService<OfficeDbContext>(), services.GetRequiredService<UserManager<OfficeUser>>(),
                 services.GetRequiredService<AccountInvitations>(), policy ?? new(true, Environment.UserName)).ExecuteAsync(command);
         }
-        RecoverManagerFactor Command(string target, string stamp) => new(target, stamp, "owner-verification-record-42", "Lost device independently verified against established owner contact");
+        RecoverManagerFactor Command(string target, string stamp) => new(target, stamp, "owner-verification-record-42", "Lost device independently verified against established owner contact", new string('A', 32));
         var reviewed = Command(id, original.Stamp);
         Assert.Equal(AccessCode.Unavailable, await Recover(provider, reviewed, new(false, Environment.UserName)));
         Assert.Equal(AccessCode.Unavailable, await Recover(provider, reviewed, new(true, "different-operating-system-identity")));
@@ -82,6 +82,28 @@ public static class OperatorRecoveryContract
         }
         Assert.Equal(AccessCode.Conflict, await Recover(provider, reviewed));
 
+        async Task<bool> Authorize(string code, TimeProvider? clock = null)
+        {
+            using var scope = provider.CreateScope(); var services = scope.ServiceProvider;
+            var users = services.GetRequiredService<UserManager<OfficeUser>>(); var user = (await users.FindByIdAsync(id))!;
+            return await new OperatorEnrollment(services.GetRequiredService<OfficeDbContext>(), users, clock ?? TimeProvider.System)
+                .AuthorizeAsync(id, user.SecurityStamp!, code, default);
+        }
+        await using (var db = create())
+        {
+            var credential = await db.UserTokens.SingleAsync(x => x.UserId == id && x.LoginProvider == OperatorEnrollment.Provider && x.Name == OperatorEnrollment.CodeToken);
+            Assert.DoesNotContain(reviewed.EnrollmentCode, credential.Value);
+        }
+        Assert.False(await Authorize(new string('B', 32)));
+        Assert.False(await Authorize(reviewed.EnrollmentCode, new TestClock { Offset = TimeSpan.FromMinutes(16) }));
+        var admissions = await Task.WhenAll(Authorize(reviewed.EnrollmentCode), Authorize(reviewed.EnrollmentCode));
+        Assert.Equal(1, admissions.Count(x => x)); Assert.False(await Authorize(reviewed.EnrollmentCode));
+        using (var scope = provider.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<OfficeUser>>(); var user = (await users.FindByIdAsync(id))!;
+            Assert.False(user.TwoFactorEnabled); Assert.Equal("true", await users.GetAuthenticationTokenAsync(user, OperatorEnrollment.Provider, OperatorEnrollment.RequiredToken));
+        }
+
         OfficeDbContext Failing()
         {
             using var originalDb = create(); var connection = originalDb.Database.GetConnectionString()!; var interceptor = new FailRecoveryAudit();
@@ -95,6 +117,7 @@ public static class OperatorRecoveryContract
             Assert.True((await db.Users.SingleAsync(x => x.Id == rollbackId)).TwoFactorEnabled);
             Assert.False(await db.AccountAudits.AnyAsync(x => x.SubjectId == rollbackId && x.Action == "OperatorMfaRecovered"));
             Assert.False(await db.AccountMessages.AnyAsync(x => x.UserId == rollbackId && x.Kind == "SecurityNotice"));
+            Assert.False(await db.UserTokens.AnyAsync(x => x.UserId == rollbackId && x.LoginProvider == OperatorEnrollment.Provider));
         }
     }
     private sealed class FailRecoveryAudit : SaveChangesInterceptor

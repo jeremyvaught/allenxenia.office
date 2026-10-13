@@ -34,6 +34,7 @@ public static class OfficeSecurity
         services.Configure<InvitationTokenOptions>(_ => { });
         services.AddScoped<BootstrapManager>();
         services.AddScoped<AccountInvitations>();
+        services.AddScoped<OperatorEnrollment>();
         services.Replace(ServiceDescriptor.Scoped<IUserStore<OfficeUser>, ProtectedUserStore>());
         services.Configure<DataProtectionTokenProviderOptions>(options => options.TokenLifespan = TimeSpan.FromHours(2));
         services.ConfigureApplicationCookie(options =>

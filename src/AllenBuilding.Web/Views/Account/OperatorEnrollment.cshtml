@@ -1,0 +1,11 @@
+@model OperatorEnrollmentForm
+@{ ViewData["Title"] = "Verify account recovery"; }
+<div class="page"><section class="form-panel">
+    <h1 class="mb-3 text-3xl font-semibold">Verify your recovery</h1>
+    <p class="mb-5 text-muted">Enter the one-time code from the verified operator before setting up a new authenticator. This code expires after 15 minutes and must be delivered through your independently verified recovery channel.</p>
+    <form asp-action="AuthorizeEnrollment" method="post" class="space-y-5">
+        <div asp-validation-summary="All" role="alert"></div>
+        <div><label asp-for="Code" class="mb-2 block">Operator recovery code</label><input asp-for="Code" class="field" autocomplete="off" spellcheck="false" /></div>
+        <button class="button w-full">Verify recovery</button>
+    </form>
+</section></div>

@@ -84,11 +84,15 @@ public sealed class AccountInvitations(OfficeDbContext db, UserManager<OfficeUse
 
     public async Task<bool> ResetAsync(string userId, string token, string password)
     {
+        await using var transaction = await AuthorityLocks.BeginAsync(db, CancellationToken.None);
+        await AuthorityLocks.InvitationUserAsync(db, userId, CancellationToken.None);
         var user = await users.FindByIdAsync(userId);
+        if (user is not null) await db.Entry(user).ReloadAsync();
         if (user is not { EmailConfirmed: true }) return false;
-        await using var transaction = await db.Database.BeginTransactionAsync();
         if (!(await users.ResetPasswordAsync(user, token, password)).Succeeded) return false;
+        if (!user.TwoFactorEnabled && !(await users.ResetAuthenticatorKeyAsync(user)).Succeeded) return false;
         Audit(user.Id, "PasswordReset", user.Id);
+        Queue(user.Id, "SecurityNotice", "{}");
         await db.SaveChangesAsync(); await transaction.CommitAsync();
         return true;
     }
