@@ -85,10 +85,16 @@ internal static class RentBalanceSql
         ), balances AS (
           SELECT o.*, o.amount_minor_units - COALESCE(c.amount,0) - COALESCE(p.amount,0) - COALESCE(r.amount,0) AS balance,
             CASE WHEN EXISTS (SELECT 1 FROM collection_guards g WHERE g.obligation_id = o.id)
-              OR EXISTS (SELECT 1 FROM financial_exceptions e JOIN payment_attempt_items i ON i.attempt_id = e.attempt_id
-                         WHERE i.obligation_id = o.id AND e.state <> 'Resolved')
-              OR EXISTS (SELECT 1 FROM cash_movement_reviews v JOIN cash_movements m ON m.id = v.movement_id
-                         JOIN payment_allocations p ON p.payment_id = m.capture_id WHERE p.obligation_id = o.id AND v.state <> 'Classified')
+              OR EXISTS (SELECT 1 FROM financial_exceptions e WHERE e.account_id = o.account_id AND e.state <> 'Resolved')
+              OR EXISTS (SELECT 1 FROM cash_movements m WHERE m.account_id = o.account_id AND NOT EXISTS
+                         (SELECT 1 FROM cash_movement_reviews v WHERE v.movement_id = m.id AND v.state = 'Classified'
+                          AND v.verified_at IS NOT NULL AND v.agreement_hash IS NOT NULL AND LENGTH(v.agreement_hash) = 64))
+              OR EXISTS (SELECT 1 FROM cash_source_work w WHERE w.account_id = o.account_id AND w.state <> 'Completed')
+              OR EXISTS (SELECT 1 FROM collection_work w JOIN payment_attempts a ON a.id = w.attempt_id
+                         WHERE a.account_id = o.account_id AND w.read_only_reconciliation = 1 AND w.state <> 'Completed')
+              OR EXISTS (SELECT 1 FROM payment_attempt_items i JOIN payment_attempts a ON a.id = i.attempt_id
+                         WHERE i.obligation_id = o.id AND a.state NOT IN ('Settled', 'Uncollected')
+                          AND (a.state = 'NeedsReview' OR NOT EXISTS (SELECT 1 FROM collection_guards g WHERE g.obligation_id = o.id)))
               THEN 1 ELSE 0 END AS held
           FROM scoped_obligations o LEFT JOIN credits c ON c.obligation_id = o.id
           LEFT JOIN paid p ON p.obligation_id = o.id LEFT JOIN returned r ON r.obligation_id = o.id

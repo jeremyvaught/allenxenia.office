@@ -14,7 +14,7 @@
             <div class="rounded-2xl border border-line bg-panel p-5"><span class="block text-sm text-muted">@entry.Item1</span><strong class="mt-2 block break-words text-3xl font-semibold">@Money(entry.Item2)</strong></div>
         }
     </section>
-    <p class="mb-6 max-w-3xl text-muted">Held balances remain in recorded outstanding and overdue totals; they must be resolved before collection. An amount without a recorded hold still requires a fresh authorized payment review. Unresolved cash movements below can make affected account records provisional.</p>
+    <p class="mb-6 max-w-3xl text-muted">An unresolved account-wide exception or cash movement holds every charge in that rent account. Held balances remain in recorded outstanding and overdue totals; they must be resolved before collection. An amount without a recorded hold still requires a fresh authorized payment review. Unresolved cash movements below can make affected account records provisional.</p>
     <section aria-label="Overdue aging" class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         @foreach (var entry in new[] { ("1–30 days", Model.Totals.From1To30DaysMinor), ("31–60 days", Model.Totals.From31To60DaysMinor), ("61–90 days", Model.Totals.From61To90DaysMinor), ("Over 90 days", Model.Totals.Over90DaysMinor) }) {
             <div class="rounded-2xl border border-line bg-panel p-5"><span class="block text-sm text-muted">@entry.Item1</span><strong class="mt-2 block text-xl">@Money(entry.Item2)</strong></div>

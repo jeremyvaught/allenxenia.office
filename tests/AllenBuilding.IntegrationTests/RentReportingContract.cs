@@ -67,7 +67,7 @@ public static class RentReportingContract
         { await using var db = create(); return await new ManagementReportQueries(new Current(selected ?? actor), new ManagementReportReader(db), new Clock(now)).RentBalancesAsync(query); }
         var report = (await Read(new()))!;
         Assert.Equal(today, report.LocalDate); Assert.Equal(now, report.ObservedAt); Assert.Equal(513, report.Totals.Count);
-        Assert.Equal(60655, report.Totals.ConfirmedMinor); Assert.Equal(53655, report.Totals.OverdueMinor); Assert.Equal(2830, report.Totals.HeldMinor);
+        Assert.Equal(60655, report.Totals.ConfirmedMinor); Assert.Equal(53655, report.Totals.OverdueMinor); Assert.Equal(60655, report.Totals.HeldMinor); Assert.Equal(0, report.Totals.UnheldMinor);
         Assert.Equal(53055, report.Totals.From1To30DaysMinor); Assert.Equal(200, report.Totals.From31To60DaysMinor); Assert.Equal(200, report.Totals.From61To90DaysMinor); Assert.Equal(200, report.Totals.Over90DaysMinor);
         Assert.Equal(1, report.Totals.OpenExceptions); Assert.Equal(1250, report.Totals.UnresolvedRefundMinor); Assert.Equal(400, report.Totals.UnresolvedDisputeWithdrawalMinor);
         var all = new List<RentBalanceItem>();
@@ -76,7 +76,7 @@ public static class RentReportingContract
         Assert.True(all.Single(x => x.ObligationId == partial.Id).Held); Assert.Contains(all, x => x.ObligationId == small.Id && x.ConfirmedMinor == 25);
         Assert.DoesNotContain(all, x => x.ObligationId == paid.Id); Assert.DoesNotContain(all, x => x.Description.Contains("Foreign", StringComparison.Ordinal));
         Assert.Equal(all.OrderBy(x => x.DueOn).ThenBy(x => x.ObligationId).Select(x => x.ObligationId), all.Select(x => x.ObligationId));
-        var heldReport = (await Read(new(Group: RentBalanceGroup.Held)))!; Assert.Equal(2, heldReport.Items.Count); Assert.All(heldReport.Items, x => Assert.True(x.Held));
+        var heldReport = (await Read(new(Group: RentBalanceGroup.Held)))!; Assert.Equal(50, heldReport.Items.Count); Assert.True(heldReport.HasNext); Assert.All(heldReport.Items, x => Assert.True(x.Held));
         var overdue = (await Read(new(Group: RentBalanceGroup.Overdue)))!; Assert.All(overdue.Items, x => Assert.True(x.DueOn < today));
         var emptyReport = (await Read(new(BuildingId: empty.Id)))!; Assert.Equal(0, emptyReport.Totals.Count); Assert.Equal(0, emptyReport.Totals.OpenExceptions); Assert.Empty(emptyReport.Items);
         Assert.Null(await Read(new(BuildingId: foreign.Id))); Assert.Null(await Read(new(), actor with { ChallengedMfa = false }));
