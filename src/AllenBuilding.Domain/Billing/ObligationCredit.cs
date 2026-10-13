@@ -11,6 +11,7 @@ public sealed class ObligationCredit
     public Guid ObligationId { get; private set; }
     public Guid ReviewedVersion { get; private set; }
     public Guid OperationId { get; private set; }
+    public Guid? SourceMovementId { get; private set; }
     public string ActorId { get; private set; } = "";
     public ObligationCreditKind Kind { get; private set; }
     public long AmountMinorUnits { get; private set; }
@@ -40,5 +41,14 @@ public sealed class ObligationCredit
             Reason = reason,
             RecordedAt = now.ToUniversalTime()
         };
+    }
+
+    // The transaction coordinator links verified returned cash and this credit under the same reviewed operation.
+    public static ObligationCredit RecordRefundCredit(Guid operationId, string actorId, RefundAllocation allocation, long uncreditedCharge, string reason, DateTimeOffset now)
+    {
+        if (allocation is null) throw new ArgumentException("The refund allocation is required.");
+        var credit = RecordLocal(operationId, actorId, new(allocation.ObligationId, allocation.AccountId, allocation.ReviewedVersion, uncreditedCharge),
+            -allocation.SignedMinorUnits, ObligationCreditKind.Credit, reason, now);
+        credit.SourceMovementId = allocation.MovementId; return credit;
     }
 }

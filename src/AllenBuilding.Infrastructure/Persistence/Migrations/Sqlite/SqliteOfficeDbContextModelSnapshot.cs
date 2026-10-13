@@ -259,9 +259,33 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .HasColumnType("TEXT")
                         .HasColumnName("account_id");
 
+                    b.Property<string>("ActorId")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("actor_id");
+
+                    b.Property<DateTime?>("AppliedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("applied_at");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("created_at");
+
+                    b.Property<string>("Disposition")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("disposition");
+
+                    b.Property<string>("OperationId")
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("operation_id");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("reason");
 
                     b.Property<string>("State")
                         .IsRequired()
@@ -277,6 +301,8 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .HasColumnName("version");
 
                     b.HasKey("MovementId");
+
+                    b.HasIndex("ActorId");
 
                     b.HasIndex("MovementId", "AccountId")
                         .IsUnique();
@@ -787,12 +813,22 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .HasColumnType("TEXT")
                         .HasColumnName("reviewed_version");
 
+                    b.Property<string>("SourceMovementId")
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("source_movement_id");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("ActorId", "OperationId")
+                    b.HasIndex("ObligationId", "AccountId");
+
+                    b.HasIndex("SourceMovementId", "AccountId");
+
+                    b.HasIndex("SourceMovementId", "ObligationId")
                         .IsUnique();
 
-                    b.HasIndex("ObligationId", "AccountId");
+                    b.HasIndex("ActorId", "OperationId", "ObligationId")
+                        .IsUnique();
 
                     b.HasIndex("ObligationId", "RecordedAt", "Id");
 
@@ -1102,6 +1138,56 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                     b.HasIndex("State", "NextAttemptAt", "ReceivedAt", "Id");
 
                     b.ToTable("payment_events", (string)null);
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.RefundAllocation", b =>
+                {
+                    b.Property<string>("MovementId")
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("movement_id");
+
+                    b.Property<string>("ObligationId")
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("obligation_id");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("account_id");
+
+                    b.Property<string>("CaptureId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("capture_id");
+
+                    b.Property<string>("ReviewedVersion")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("reviewed_version");
+
+                    b.Property<long>("SignedMinorUnits")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("signed_minor_units");
+
+                    b.HasKey("MovementId", "ObligationId");
+
+                    b.HasIndex("AccountId", "ObligationId");
+
+                    b.HasIndex("CaptureId", "ObligationId");
+
+                    b.HasIndex("CaptureId", "ObligationId", "AccountId");
+
+                    b.HasIndex("MovementId", "CaptureId", "AccountId");
+
+                    b.ToTable("refund_allocations", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_refund_allocation_amount", "signed_minor_units < 0 AND signed_minor_units >= -99999999");
+                        });
                 });
 
             modelBuilder.Entity("AllenBuilding.Domain.Billing.RentAccount", b =>
@@ -2320,6 +2406,11 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
 
             modelBuilder.Entity("AllenBuilding.Domain.Billing.CashMovementReview", b =>
                 {
+                    b.HasOne("AllenBuilding.Infrastructure.Identity.OfficeUser", null)
+                        .WithMany()
+                        .HasForeignKey("ActorId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("AllenBuilding.Domain.Billing.CashMovement", null)
                         .WithOne()
                         .HasForeignKey("AllenBuilding.Domain.Billing.CashMovementReview", "MovementId", "AccountId")
@@ -2432,6 +2523,17 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .HasPrincipalKey("Id", "AccountId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("AllenBuilding.Domain.Billing.CashMovement", null)
+                        .WithMany()
+                        .HasForeignKey("SourceMovementId", "AccountId")
+                        .HasPrincipalKey("Id", "AccountId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("AllenBuilding.Domain.Billing.RefundAllocation", null)
+                        .WithMany()
+                        .HasForeignKey("SourceMovementId", "ObligationId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("AllenBuilding.Domain.Billing.PaymentAllocation", b =>
@@ -2480,6 +2582,23 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .WithMany()
                         .HasForeignKey("ObligationId", "AccountId")
                         .HasPrincipalKey("Id", "AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.RefundAllocation", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Billing.PaymentAllocation", null)
+                        .WithMany()
+                        .HasForeignKey("CaptureId", "ObligationId", "AccountId")
+                        .HasPrincipalKey("PaymentId", "ObligationId", "AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AllenBuilding.Domain.Billing.CashMovement", null)
+                        .WithMany()
+                        .HasForeignKey("MovementId", "CaptureId", "AccountId")
+                        .HasPrincipalKey("Id", "CaptureId", "AccountId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

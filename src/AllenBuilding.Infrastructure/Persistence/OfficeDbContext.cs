@@ -17,6 +17,7 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
     public DbSet<ObligationCredit> ObligationCredits => Set<ObligationCredit>();
     public DbSet<SettlementPayment> SettlementPayments => Set<SettlementPayment>();
     public DbSet<PaymentAllocation> PaymentAllocations => Set<PaymentAllocation>();
+    public DbSet<RefundAllocation> RefundAllocations => Set<RefundAllocation>();
     public DbSet<CustomerProvision> CustomerProvisions => Set<CustomerProvision>();
     public DbSet<BillingCustomerBinding> BillingCustomers => Set<BillingCustomerBinding>();
     public DbSet<PaymentAttempt> PaymentAttempts => Set<PaymentAttempt>();
@@ -296,6 +297,7 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
         {
             e.ToTable("cash_movements", table => table.HasCheckConstraint("CK_cash_movement_amount", "signed_minor_units != 0 AND signed_minor_units >= -99999999 AND signed_minor_units <= 99999999 AND currency = 'USD' AND ((kind = 'DisputeReinstatement' AND signed_minor_units > 0) OR (kind IN ('Refund', 'DisputeWithdrawal') AND signed_minor_units < 0))"));
             e.HasKey(x => x.Id); e.HasAlternateKey(x => new { x.Id, x.AccountId });
+            e.HasAlternateKey(x => new { x.Id, x.CaptureId, x.AccountId });
             e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(32); e.Property(x => x.Currency).HasMaxLength(3);
             foreach (var name in new[] { "ProviderAccount", "CustomerId", "PaymentId", "SourceId", "TransactionId" }) e.Property<string>(name).HasMaxLength(255);
             e.HasIndex(x => new { x.ProviderAccount, x.LiveMode, x.TransactionId }).IsUnique(); e.HasIndex(x => new { x.AccountId, x.RecordedAt, x.Id });
@@ -305,6 +307,8 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
         model.Entity<CashMovementReview>(e =>
         {
             e.ToTable("cash_movement_reviews"); e.HasKey(x => x.MovementId); e.Property(x => x.Version).IsConcurrencyToken(); e.Property(x => x.State).HasConversion<string>().HasMaxLength(32);
+            e.Property(x => x.Disposition).HasConversion<string>().HasMaxLength(32); e.Property(x => x.ActorId).HasMaxLength(450); e.Property(x => x.Reason).HasMaxLength(2000);
+            e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.ActorId).OnDelete(DeleteBehavior.Restrict);
             e.HasIndex(x => new { x.AccountId, x.State, x.CreatedAt });
             e.HasOne<CashMovement>().WithOne().HasForeignKey<CashMovementReview>(x => new { x.MovementId, x.AccountId }).HasPrincipalKey<CashMovement>(x => new { x.Id, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
         });
@@ -313,7 +317,10 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
             e.ToTable("obligation_credits", table => table.HasCheckConstraint("CK_credit_amount", "amount_minor_units > 0 AND amount_minor_units <= 99999999 AND currency = 'USD'"));
             e.HasKey(x => x.Id); e.Property(x => x.ActorId).HasMaxLength(450); e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(32);
             e.Property(x => x.Currency).HasMaxLength(3); e.Property(x => x.Reason).HasMaxLength(2000);
-            e.HasIndex(x => new { x.ActorId, x.OperationId }).IsUnique(); e.HasIndex(x => new { x.ObligationId, x.RecordedAt, x.Id });
+            e.HasIndex(x => new { x.ActorId, x.OperationId, x.ObligationId }).IsUnique(); e.HasIndex(x => new { x.ObligationId, x.RecordedAt, x.Id });
+            e.HasOne<CashMovement>().WithMany().HasForeignKey(x => new { x.SourceMovementId, x.AccountId }).HasPrincipalKey(x => new { x.Id, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<RefundAllocation>().WithMany().HasForeignKey(x => new { x.SourceMovementId, x.ObligationId }).HasPrincipalKey(x => new { x.MovementId, x.ObligationId }).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => new { x.SourceMovementId, x.ObligationId }).IsUnique();
             e.HasOne<Obligation>().WithMany().HasForeignKey(x => new { x.ObligationId, x.AccountId }).HasPrincipalKey(x => new { x.Id, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.ActorId).OnDelete(DeleteBehavior.Restrict);
         });
@@ -336,10 +343,19 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
         {
             e.ToTable("payment_allocations", table => table.HasCheckConstraint("CK_allocation_amount", "amount_minor_units > 0"));
             e.HasKey(x => new { x.PaymentId, x.ObligationId });
+            e.HasAlternateKey(x => new { x.PaymentId, x.ObligationId, x.AccountId });
             e.HasIndex(x => new { x.AttemptId, x.ObligationId }).IsUnique();
             e.HasIndex(x => new { x.AccountId, x.ObligationId });
             e.HasOne<PaymentAttemptItem>().WithMany().HasForeignKey(x => new { x.AttemptId, x.ObligationId, x.AccountId })
                 .HasPrincipalKey(x => new { x.AttemptId, x.ObligationId, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<RefundAllocation>(e =>
+        {
+            e.ToTable("refund_allocations", table => table.HasCheckConstraint("CK_refund_allocation_amount", "signed_minor_units < 0 AND signed_minor_units >= -99999999"));
+            e.HasKey(x => new { x.MovementId, x.ObligationId }); e.HasIndex(x => new { x.AccountId, x.ObligationId });
+            e.HasIndex(x => new { x.CaptureId, x.ObligationId });
+            e.HasOne<CashMovement>().WithMany().HasForeignKey(x => new { x.MovementId, x.CaptureId, x.AccountId }).HasPrincipalKey(x => new { x.Id, x.CaptureId, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<PaymentAllocation>().WithMany().HasForeignKey(x => new { x.CaptureId, x.ObligationId, x.AccountId }).HasPrincipalKey(x => new { x.PaymentId, x.ObligationId, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
         });
         model.Entity<CollectionGuard>(e =>
         {

@@ -1,7 +1,8 @@
 namespace AllenBuilding.Domain.Billing;
 
 public enum CashMovementKind { Refund, DisputeWithdrawal, DisputeReinstatement }
-public enum CashMovementReviewState { Pending, Classified }
+public enum CashMovementReviewState { Pending, Classified, AppliedPendingVerification }
+public enum RefundDisposition { RetainDebt, CreditDebt }
 public sealed record CanonicalCashMovement(string ProviderAccount, bool LiveMode, Guid AccountId, Guid AttemptId, string CustomerId,
     string PaymentId, string SourceId, string TransactionId, CashMovementKind Kind, long SignedMinorUnits, string Currency, DateTimeOffset ProviderAt);
 
@@ -71,6 +72,23 @@ public sealed class CashMovementReview
     public CashMovementReviewState State { get; private set; }
     public Guid Version { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
+    public Guid? OperationId { get; private set; }
+    public string? ActorId { get; private set; }
+    public RefundDisposition? Disposition { get; private set; }
+    public string? Reason { get; private set; }
+    public DateTimeOffset? AppliedAt { get; private set; }
     public static CashMovementReview Open(CashMovement movement) => new()
     { MovementId = movement.Id, AccountId = movement.AccountId, State = CashMovementReviewState.Pending, Version = Guid.NewGuid(), CreatedAt = movement.RecordedAt };
+
+    public void ApplyRefund(CashMovement movement, Guid operationId, string actorId, RefundDisposition disposition, string reason, DateTimeOffset now)
+    {
+        reason = reason?.Trim() ?? "";
+        if (movement is null || movement.Id != MovementId || movement.AccountId != AccountId || movement.Kind != CashMovementKind.Refund ||
+            State != CashMovementReviewState.Pending || operationId == Guid.Empty || string.IsNullOrWhiteSpace(actorId) || actorId.Length > 450 ||
+            !Enum.IsDefined(disposition) || reason.Length is < 1 or > 2000 || now < CreatedAt)
+            throw new InvalidOperationException("A refund disposition requires the pending original fact, authority, operation and reason.");
+        OperationId = operationId; ActorId = actorId; Disposition = disposition; Reason = reason; AppliedAt = now.ToUniversalTime();
+        // Local allocation is not proof that all provider instructions and transactions agree.
+        State = CashMovementReviewState.AppliedPendingVerification; Version = Guid.NewGuid();
+    }
 }

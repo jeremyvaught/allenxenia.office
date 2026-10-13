@@ -292,9 +292,36 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .HasColumnName("account_id")
                         .UseCollation("utf8mb4_bin");
 
+                    b.Property<string>("ActorId")
+                        .HasMaxLength(450)
+                        .HasColumnType("varchar(450)")
+                        .HasColumnName("actor_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<DateTime?>("AppliedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("applied_at");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)")
                         .HasColumnName("created_at");
+
+                    b.Property<string>("Disposition")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("disposition");
+
+                    b.Property<string>("OperationId")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("operation_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("varchar(2000)")
+                        .HasColumnName("reason")
+                        .UseCollation("utf8mb4_bin");
 
                     b.Property<string>("State")
                         .IsRequired()
@@ -311,6 +338,8 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .UseCollation("utf8mb4_bin");
 
                     b.HasKey("MovementId");
+
+                    b.HasIndex("ActorId");
 
                     b.HasIndex("MovementId", "AccountId")
                         .IsUnique();
@@ -872,12 +901,23 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .HasColumnName("reviewed_version")
                         .UseCollation("utf8mb4_bin");
 
+                    b.Property<string>("SourceMovementId")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("source_movement_id")
+                        .UseCollation("utf8mb4_bin");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("ActorId", "OperationId")
+                    b.HasIndex("ObligationId", "AccountId");
+
+                    b.HasIndex("SourceMovementId", "AccountId");
+
+                    b.HasIndex("SourceMovementId", "ObligationId")
                         .IsUnique();
 
-                    b.HasIndex("ObligationId", "AccountId");
+                    b.HasIndex("ActorId", "OperationId", "ObligationId")
+                        .IsUnique();
 
                     b.HasIndex("ObligationId", "RecordedAt", "Id");
 
@@ -1224,6 +1264,61 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                     b.HasIndex("State", "NextAttemptAt", "ReceivedAt", "Id");
 
                     b.ToTable("payment_events", (string)null);
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.RefundAllocation", b =>
+                {
+                    b.Property<string>("MovementId")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("movement_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("ObligationId")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("obligation_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("account_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("CaptureId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("capture_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("ReviewedVersion")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("reviewed_version")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<long>("SignedMinorUnits")
+                        .HasColumnType("bigint")
+                        .HasColumnName("signed_minor_units");
+
+                    b.HasKey("MovementId", "ObligationId");
+
+                    b.HasIndex("AccountId", "ObligationId");
+
+                    b.HasIndex("CaptureId", "ObligationId");
+
+                    b.HasIndex("CaptureId", "ObligationId", "AccountId");
+
+                    b.HasIndex("MovementId", "CaptureId", "AccountId");
+
+                    b.ToTable("refund_allocations", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_refund_allocation_amount", "signed_minor_units < 0 AND signed_minor_units >= -99999999");
+                        });
                 });
 
             modelBuilder.Entity("AllenBuilding.Domain.Billing.RentAccount", b =>
@@ -2569,6 +2664,11 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
 
             modelBuilder.Entity("AllenBuilding.Domain.Billing.CashMovementReview", b =>
                 {
+                    b.HasOne("AllenBuilding.Infrastructure.Identity.OfficeUser", null)
+                        .WithMany()
+                        .HasForeignKey("ActorId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("AllenBuilding.Domain.Billing.CashMovement", null)
                         .WithOne()
                         .HasForeignKey("AllenBuilding.Domain.Billing.CashMovementReview", "MovementId", "AccountId")
@@ -2681,6 +2781,17 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .HasPrincipalKey("Id", "AccountId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("AllenBuilding.Domain.Billing.CashMovement", null)
+                        .WithMany()
+                        .HasForeignKey("SourceMovementId", "AccountId")
+                        .HasPrincipalKey("Id", "AccountId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("AllenBuilding.Domain.Billing.RefundAllocation", null)
+                        .WithMany()
+                        .HasForeignKey("SourceMovementId", "ObligationId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("AllenBuilding.Domain.Billing.PaymentAllocation", b =>
@@ -2729,6 +2840,23 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .WithMany()
                         .HasForeignKey("ObligationId", "AccountId")
                         .HasPrincipalKey("Id", "AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.RefundAllocation", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Billing.PaymentAllocation", null)
+                        .WithMany()
+                        .HasForeignKey("CaptureId", "ObligationId", "AccountId")
+                        .HasPrincipalKey("PaymentId", "ObligationId", "AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AllenBuilding.Domain.Billing.CashMovement", null)
+                        .WithMany()
+                        .HasForeignKey("MovementId", "CaptureId", "AccountId")
+                        .HasPrincipalKey("Id", "CaptureId", "AccountId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
