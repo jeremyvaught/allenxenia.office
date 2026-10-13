@@ -84,8 +84,23 @@ public static class CollectionAdmissionContract
         await using (var db = create())
         {
             var unresolved = await db.PaymentAttempts.SingleAsync(x => x.Id == winningAttemptId);
-            unresolved.RequireReview(); db.CollectionGuards.Remove(await db.CollectionGuards.SingleAsync(x => x.ObligationId == fresh.Id));
+            db.CollectionGuards.Remove(await db.CollectionGuards.SingleAsync(x => x.ObligationId == fresh.Id));
             await db.SaveChangesAsync();
+        }
+        // Every potentially active original protects missing claims, before reconciliation can open a case.
+        foreach (var phase in new[] { PaymentAttemptState.Admitted, PaymentAttemptState.Dispatching, PaymentAttemptState.HandoffReady, PaymentAttemptState.Processing, PaymentAttemptState.NeedsReview })
+        {
+            await using (var db = create())
+            {
+                var original = await db.PaymentAttempts.SingleAsync(x => x.Id == winningAttemptId);
+                if (phase == PaymentAttemptState.Dispatching) original.BeginDispatch(DateTimeOffset.UtcNow);
+                if (phase == PaymentAttemptState.HandoffReady) original.AttachHandoff("cs_missing_guard", DateTimeOffset.UtcNow.AddHours(1), DateTimeOffset.UtcNow);
+                if (phase == PaymentAttemptState.Processing) original.ObserveProcessing("cs_missing_guard");
+                if (phase == PaymentAttemptState.NeedsReview) original.RequireReview();
+                await db.SaveChangesAsync();
+            }
+            var missing = (await Review(fresh.Id)).Single(); Assert.True(missing.Held); Assert.False(missing.HasProviderInstruction);
+            Assert.Equal(CollectionCode.Conflict, (await Admit(concurrent with { OperationId = Guid.NewGuid() })).Code);
         }
         var held = (await Review(fresh.Id)).Single(); Assert.True(held.Held); Assert.False(held.HasProviderInstruction);
         Assert.Equal(CollectionCode.Conflict, (await Admit(concurrent with { OperationId = Guid.NewGuid() })).Code);
