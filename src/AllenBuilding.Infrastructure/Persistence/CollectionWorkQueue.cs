@@ -89,7 +89,8 @@ public sealed class CollectionWorkQueue(OfficeDbContext db, TimeProvider time) :
         var work = await db.CollectionWork.SingleOrDefaultAsync(x => x.AttemptId == lease.Original.Id, token); if (work is null) return false;
         await db.Entry(work).ReloadAsync(token); var now = time.GetUtcNow(); if (!work.Owns(lease.Token, now)) return false;
         var state = await db.PaymentAttempts.AsNoTracking().Where(x => x.Id == lease.Original.Id).Select(x => x.State).SingleAsync(token);
-        var outcome = state is PaymentAttemptState.Settled or PaymentAttemptState.Uncollected ? CollectionWorkOutcome.Finished :
+        var outcome = state == PaymentAttemptState.Settled && projection.Code == ReconciliationCode.NeedsReview ? CollectionWorkOutcome.Review :
+            state is PaymentAttemptState.Settled or PaymentAttemptState.Uncollected ? CollectionWorkOutcome.Finished :
             projection.Code == ReconciliationCode.Conflict || observation.State == ProviderCollectionState.Unknown ? CollectionWorkOutcome.Retry :
             projection.Code == ReconciliationCode.NeedsReview ? CollectionWorkOutcome.Review : CollectionWorkOutcome.Waiting;
         if (work.ReadOnlyReconciliation)

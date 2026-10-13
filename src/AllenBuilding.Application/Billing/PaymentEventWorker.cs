@@ -20,7 +20,7 @@ public interface IPaymentEventQueue
 }
 
 // Event labels are triggers, never financial evidence. Every supported projection uses a current resource read.
-public sealed class PaymentEventWorker(IPaymentEventQueue queue, IPaymentEventResolver resolver, ICollectionGatewayFactory gateways)
+public sealed class PaymentEventWorker(IPaymentEventQueue queue, IPaymentEventResolver resolver, ICollectionGatewayFactory gateways, ICashInventoryReader? cash = null)
 {
     public async Task<bool> ProcessOneAsync(CancellationToken cancellationToken = default)
     {
@@ -39,6 +39,8 @@ public sealed class PaymentEventWorker(IPaymentEventQueue queue, IPaymentEventRe
                 {
                     gateway = gateways.Open(target.Original, target.Profile);
                     observation = await gateway.ReadAsync(target.Original, reference.SessionId!, deadline.Token).WaitAsync(deadline.Token);
+                    if (cash is not null && observation.State == ProviderCollectionState.Paid && observation.Settlement is { } settlement)
+                        observation = observation with { CashInventory = await cash.ReadCapturedInventoryAsync(target.Original, settlement, deadline.Token).WaitAsync(deadline.Token) };
                 }
             }
         }

@@ -31,8 +31,8 @@ public sealed class CollectionWorker(ICollectionWorkQueue queue, ICollectionGate
             else observation = lease.Original.SessionId is { } session
                 ? await gateway.ReadAsync(lease.Original, session, deadline.Token).WaitAsync(deadline.Token)
                 : await gateway.CreateAsync(lease.Original, deadline.Token).WaitAsync(deadline.Token);
-            if (lease.ReadOnly && lease.Original.State == PaymentAttemptState.Settled && observation.State == ProviderCollectionState.Paid)
-                observation = observation with { CashInventory = cash is null ? new(CashObservationState.Invalid) : await cash.ReadInventoryAsync(lease.Original, deadline.Token).WaitAsync(deadline.Token) };
+            if (observation.State == ProviderCollectionState.Paid && observation.Settlement is { } settlement && (cash is not null || lease.ReadOnly && lease.Original.State == PaymentAttemptState.Settled))
+                observation = observation with { CashInventory = cash is null ? new(CashObservationState.Invalid) : await cash.ReadCapturedInventoryAsync(lease.Original, settlement, deadline.Token).WaitAsync(deadline.Token) };
         }
         catch (OperationCanceledException) { observation = new(ProviderCollectionState.Unknown); }
         catch (Exception) { observation = new(ProviderCollectionState.Unknown); }

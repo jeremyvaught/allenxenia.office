@@ -76,6 +76,7 @@ public sealed class CollectionReconciliationStore(OfficeDbContext db, TimeProvid
         var changed = obligations.Any(x => attempt.Items.Single(i => i.ObligationId == x.Id).ReviewedVersion != x.Version);
         var review = observation.State is ProviderCollectionState.Invalid or ProviderCollectionState.Unknown || !completeGuards || changed;
         SettlementPayment? recorded = null;
+        var cashHold = false; var cashFailure = FinancialFailure.ExternalCashMovement;
         if (!review)
         {
             try
@@ -93,7 +94,16 @@ public sealed class CollectionReconciliationStore(OfficeDbContext db, TimeProvid
                         }
                         recorded = SettlementPayment.Record(attempt, fact, time.GetUtcNow()); db.SettlementPayments.Add(recorded);
                         foreach (var obligation in obligations) obligation.FinancialStateChanged();
-                        db.CollectionGuards.RemoveRange(guards); break;
+                        if (observation.CashInventory is { } cash)
+                        {
+                            if (cash.State == CashObservationState.Verified && CashInventoryRules.TryPrepare(attempt, recorded, cash.Inventory, time.GetUtcNow(), out var movements))
+                            {
+                                foreach (var movement in movements) { db.CashMovements.Add(movement); db.CashMovementReviews.Add(CashMovementReview.Open(movement)); }
+                                cashHold = movements.Count != 0;
+                            }
+                            else { cashHold = true; cashFailure = cash.State is CashObservationState.Unknown or CashObservationState.Pending ? FinancialFailure.ProviderUnknown : FinancialFailure.ProviderMismatch; }
+                        }
+                        if (!cashHold) db.CollectionGuards.RemoveRange(guards); break;
                     case ProviderCollectionState.Uncollected when observation.SessionId is { } expired:
                         attempt.ConfirmVerifiedUncollected(attempt.ProviderAccount, attempt.LiveMode, attempt.CustomerId, expired);
                         db.CollectionGuards.RemoveRange(guards); break;
@@ -114,8 +124,9 @@ public sealed class CollectionReconciliationStore(OfficeDbContext db, TimeProvid
                 observation.State == ProviderCollectionState.Unknown ? FinancialFailure.ProviderUnknown : FinancialFailure.ProviderMismatch;
             await ObserveIssue(attempt, failure, observation, cancellationToken);
         }
+        else if (cashHold) await ObserveIssue(attempt, cashFailure, observation, cancellationToken);
         else await ResolveIssue(attempt.Id, observation, cancellationToken);
-        return await Commit(new(review ? ReconciliationCode.NeedsReview : ReconciliationCode.Applied, recorded?.Id), transaction, cancellationToken, lease, eventLease);
+        return await Commit(new(review || cashHold ? ReconciliationCode.NeedsReview : ReconciliationCode.Applied, recorded?.Id), transaction, cancellationToken, lease, eventLease);
     }
     private async Task ObserveIssue(PaymentAttempt attempt, FinancialFailure failure, ProviderCollectionObservation observation, CancellationToken token)
     {

@@ -180,6 +180,17 @@ public sealed class StripeCashMovementTests
         var result = await fixture.Reader.ReadInventoryAsync(fixture.Original, CancellationToken.None); Assert.Equal(CashObservationState.Verified, result.State);
         Assert.Equal("re_cash", Assert.Single(result.Inventory!.Movements).SourceId); Assert.Contains("du_cash", result.Inventory.SourceIds);
     }
+    [Fact]
+    public async Task Pre_ledger_inventory_uses_canonical_capture_without_mutating_a_leased_original()
+    {
+        using var fixture = new Fixture(settled: false); var version = fixture.Original.Version;
+        var settlement = new CanonicalSettlement(fixture.Original.ProviderAccount, false, fixture.Original.CustomerId, "cs_cash", "pi_cash", 1000, "USD");
+        var observed = await fixture.Reader.ReadCapturedInventoryAsync(fixture.Original, settlement, CancellationToken.None);
+        Assert.Equal(CashObservationState.Verified, observed.State); Assert.Equal(-200, Assert.Single(observed.Inventory!.Movements).SignedMinorUnits);
+        Assert.Equal(version, fixture.Original.Version); Assert.Equal(PaymentAttemptState.Dispatching, fixture.Original.State); Assert.Null(fixture.Original.PaymentId);
+        var calls = fixture.Requests.Count; Assert.Equal(CashObservationState.Invalid, (await fixture.Reader.ReadCapturedInventoryAsync(fixture.Original, settlement with { CustomerId = "cus_foreign" }, CancellationToken.None)).State);
+        Assert.Equal(calls, fixture.Requests.Count);
+    }
     private sealed record Request(string Method, string Path);
     private sealed class Fixture : HttpMessageHandler
     {
@@ -201,11 +212,11 @@ public sealed class StripeCashMovementTests
         public bool ChangeRefundCatalog { get; set; }
         private int _refundLists;
         private readonly HttpClient _http;
-        public Fixture()
+        public Fixture(bool settled = true)
         {
             var now = new DateTimeOffset(2026, 10, 12, 12, 0, 0, TimeSpan.Zero); var account = Guid.NewGuid(); var binding = BillingCustomerBinding.Create(account, Merchant, false, "cus_cash", now);
             Original = PaymentAttempt.Admit(Guid.NewGuid(), "payer", binding, [new(Guid.NewGuid(), account, Guid.NewGuid(), 1000)], now); Original.BeginDispatch(now);
-            Original.ApplyVerifiedSettlement(new(Merchant, false, "cus_cash", "cs_cash", "pi_cash", 1000, "USD"));
+            if (settled) Original.ApplyVerifiedSettlement(new(Merchant, false, "cus_cash", "cs_cash", "pi_cash", 1000, "USD"));
             Customer = new() { ["id"] = "cus_cash", ["object"] = "customer", ["livemode"] = false, ["metadata"] = new JsonObject { ["office_account_id"] = account.ToString("D") } };
             Charge = new() { ["id"] = "ch_cash", ["object"] = "charge", ["livemode"] = false, ["customer"] = "cus_cash", ["payment_intent"] = "pi_cash", ["amount"] = 1000, ["amount_captured"] = 1000, ["amount_refunded"] = 200, ["currency"] = "usd", ["paid"] = true, ["captured"] = true };
             Intent = new()

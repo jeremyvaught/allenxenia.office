@@ -9,4 +9,7 @@ public sealed record CashInventoryObservation(CashObservationState State, Verifi
 public interface ICashInventoryReader
 {
     Task<CashInventoryObservation> ReadInventoryAsync(PaymentAttempt original, CancellationToken cancellationToken);
+    // Existing readers safely decline pre-ledger capture until they implement this canonical-evidence port.
+    Task<CashInventoryObservation> ReadCapturedInventoryAsync(PaymentAttempt original, CanonicalSettlement settlement, CancellationToken cancellationToken)
+        => original.State == PaymentAttemptState.Settled ? ReadInventoryAsync(original, cancellationToken) : Task.FromResult(new CashInventoryObservation(CashObservationState.Invalid));
 }

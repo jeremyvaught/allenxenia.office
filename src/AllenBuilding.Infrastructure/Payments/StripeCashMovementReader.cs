@@ -24,16 +24,18 @@ public sealed class StripeCashMovementReader : ICashMovementReader, ICashInvento
         {
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); deadline.CancelAfter(TimeSpan.FromSeconds(20)); var token = deadline.Token;
             if (!PaymentReferences.Valid(sourceId, "re_") && !CashMovement.DisputeReference(sourceId)) return Invalid();
-            var charge = await LoadChargeAsync(original, token); if (charge is null) return Invalid();
-            return await ReadSourceAsync(original, charge, sourceId, token);
+            if (original.State != PaymentAttemptState.Settled) return Invalid();
+            var evidence = CapturedPaymentEvidence.FromSettled(original);
+            var charge = await LoadChargeAsync(evidence, token); if (charge is null) return Invalid();
+            return await ReadSourceAsync(evidence, charge, sourceId, token);
         }
         catch (OperationCanceledException) { return new(CashObservationState.Unknown); }
         catch (HttpRequestException) { return new(CashObservationState.Unknown); }
         catch (StripeException) { return new(CashObservationState.Unknown); }
     }
-    private async Task<Charge?> LoadChargeAsync(PaymentAttempt original, CancellationToken token)
+    private async Task<Charge?> LoadChargeAsync(CapturedPaymentEvidence original, CancellationToken token)
     {
-        if (original.State != PaymentAttemptState.Settled || original.ProviderAccount != _credentials.ProviderAccount || original.LiveMode != _credentials.LiveMode ||
+        if (original.ProviderAccount != _credentials.ProviderAccount || original.LiveMode != _credentials.LiveMode ||
             !PaymentReferences.Valid(original.PaymentId!, "pi_")) return null;
         if ((await new AccountService(_client).GetSelfAsync(cancellationToken: token)).Id != original.ProviderAccount) return null;
         var customer = await new CustomerService(_client).GetAsync(original.CustomerId, cancellationToken: token);
@@ -48,7 +50,7 @@ public sealed class StripeCashMovementReader : ICashMovementReader, ICashInvento
             charge.Amount != original.TotalMinorUnits || charge.AmountCaptured != original.TotalMinorUnits || charge.Currency != "usd") return null;
         return charge;
     }
-    private async Task<CashObservation> ReadSourceAsync(PaymentAttempt original, Charge charge, string sourceId, CancellationToken token, bool allowNoCash = false)
+    private async Task<CashObservation> ReadSourceAsync(CapturedPaymentEvidence original, Charge charge, string sourceId, CancellationToken token, bool allowNoCash = false)
     {
         if (PaymentReferences.Valid(sourceId, "re_"))
         {
@@ -77,6 +79,16 @@ public sealed class StripeCashMovementReader : ICashMovementReader, ICashInvento
     }
 
     public async Task<CashInventoryObservation> ReadInventoryAsync(PaymentAttempt original, CancellationToken cancellationToken)
+    {
+        try { return await ReadInventoryCoreAsync(CapturedPaymentEvidence.FromSettled(original), cancellationToken); }
+        catch (ArgumentException) { return new(CashObservationState.Invalid); }
+    }
+    public async Task<CashInventoryObservation> ReadCapturedInventoryAsync(PaymentAttempt original, CanonicalSettlement settlement, CancellationToken cancellationToken)
+    {
+        try { return await ReadInventoryCoreAsync(CapturedPaymentEvidence.FromSettlement(original, settlement), cancellationToken); }
+        catch (ArgumentException) { return new(CashObservationState.Invalid); }
+    }
+    private async Task<CashInventoryObservation> ReadInventoryCoreAsync(CapturedPaymentEvidence original, CancellationToken cancellationToken)
     {
         try
         {
@@ -147,7 +159,7 @@ public sealed class StripeCashMovementReader : ICashMovementReader, ICashInvento
         .Select(x => new { x.Id, x.ChargeId, x.PaymentIntentId, x.Amount, x.Currency, x.Status, x.Livemode, Transactions = x.BalanceTransactions?.Select(t => t.Id).Order(StringComparer.Ordinal).ToArray() }));
     private static bool MatchesTransaction(BalanceTransaction transaction, string id, string source) => transaction.Id == id && transaction.SourceId == source && transaction.Currency == "usd" &&
         transaction.Status is "available" or "pending" && transaction.ExchangeRate is null && transaction.BalanceType is null or "payments";
-    private static CanonicalCashMovement Fact(PaymentAttempt original, string source, CashMovementKind kind, BalanceTransaction transaction) => new(original.ProviderAccount, original.LiveMode,
+    private static CanonicalCashMovement Fact(CapturedPaymentEvidence original, string source, CashMovementKind kind, BalanceTransaction transaction) => new(original.ProviderAccount, original.LiveMode,
         original.AccountId, original.Id, original.CustomerId, original.PaymentId!, source, transaction.Id, kind, transaction.Amount, "USD", new DateTimeOffset(transaction.Created.ToUniversalTime()));
     private static CashObservation Invalid() => new(CashObservationState.Invalid);
     public void Dispose() => _ownedHttp?.Dispose();
