@@ -75,6 +75,7 @@ public static class OfficeSecurity
         if (production && string.IsNullOrWhiteSpace(keyPath))
             throw new InvalidOperationException("Production requires a persistent Protection:KeyDirectory and wrapping certificate.");
         keyPath ??= Path.Combine(builder.Environment.ContentRootPath, ".data", "keys");
+        if (production) ProtectionFiles.ValidateDirectory(keyPath, builder.Environment.ContentRootPath);
         Directory.CreateDirectory(keyPath);
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(keyPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         var protection = services.AddDataProtection().SetApplicationName("AllenXeniaOffice.Build")
@@ -84,10 +85,16 @@ public static class OfficeSecurity
             throw new InvalidOperationException("Production requires Protection:CertificatePath to wrap protected keys.");
         if (!string.IsNullOrWhiteSpace(certificate))
         {
-            var wrapping = X509CertificateLoader.LoadPkcs12FromFile(certificate,
-                builder.Configuration["Protection:CertificatePassword"], X509KeyStorageFlags.EphemeralKeySet);
-            if (!wrapping.HasPrivateKey) throw new InvalidOperationException("The wrapping certificate must include its private key for recovery.");
-            protection.ProtectKeysWithCertificate(wrapping);
+            try
+            {
+                if (production) ProtectionFiles.ValidateCertificate(certificate, builder.Environment.ContentRootPath);
+                var wrapping = X509CertificateLoader.LoadPkcs12FromFile(certificate,
+                    builder.Configuration["Protection:CertificatePassword"], OperatingSystem.IsMacOS() ? X509KeyStorageFlags.DefaultKeySet : X509KeyStorageFlags.EphemeralKeySet);
+                if (!wrapping.HasPrivateKey) throw new InvalidOperationException();
+                protection.ProtectKeysWithCertificate(wrapping);
+            }
+            catch (Exception exception) when (exception is System.Security.Cryptography.CryptographicException or IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
+            { throw new InvalidOperationException("The wrapping certificate must be a readable private certificate with its private key; keep it outside releases with owner-only file/parent permissions."); }
         }
     }
 
