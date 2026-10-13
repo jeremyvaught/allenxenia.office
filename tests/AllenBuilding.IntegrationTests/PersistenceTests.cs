@@ -39,6 +39,8 @@ public sealed class PersistenceTests
         OfficeDbContext Create() => new MySqlOfficeDbContext(new DbContextOptionsBuilder<MySqlOfficeDbContext>()
             .UseMySQL(connection).Options);
         await VerifyDatabase(Create);
+        var runtime = Environment.GetEnvironmentVariable("OFFICE_TEST_MYSQL_RUNTIME");
+        if (!string.IsNullOrWhiteSpace(runtime)) await MySqlRuntimeRoleContract.VerifyAsync(runtime);
     }
 
     private static async Task VerifyDatabase(Func<OfficeDbContext> create)
