@@ -10,8 +10,9 @@ using Microsoft.EntityFrameworkCore;
 var migrate = args.Contains("--migrate", StringComparer.Ordinal);
 var bootstrap = args.Contains("--bootstrap-manager", StringComparer.Ordinal);
 var dispatch = args.Contains("--dispatch-mail-once", StringComparer.Ordinal);
-if (new[] { migrate, bootstrap, dispatch }.Count(x => x) > 1) throw new InvalidOperationException("Choose one operator command at a time.");
-var builder = WebApplication.CreateBuilder(args.Where(x => x != "--migrate" && x != "--bootstrap-manager" && x != "--dispatch-mail-once").ToArray());
+var recover = args.Contains("--recover-manager-mfa", StringComparer.Ordinal);
+if (new[] { migrate, bootstrap, dispatch, recover }.Count(x => x) > 1) throw new InvalidOperationException("Choose one operator command at a time.");
+var builder = WebApplication.CreateBuilder(args.Where(x => x != "--migrate" && x != "--bootstrap-manager" && x != "--dispatch-mail-once" && x != "--recover-manager-mfa").ToArray());
 builder.AddOfficeRuntimeConfiguration(migrate);
 builder.AddOfficeProxy();
 builder.AddOfficeObservability();
@@ -81,6 +82,18 @@ if (migrate)
     catch (Exception)
     {
         Console.Error.WriteLine("Migration failed. Keep writers stopped and inspect the applied schema through the authorized operator; do not continue activation.");
+        Environment.ExitCode = 1;
+    }
+    finally { await app.DisposeAsync(); }
+    return;
+}
+
+if (recover)
+{
+    try { await ManagerRecoveryCommand.RunAsync(app, builder.Configuration); }
+    catch (Exception)
+    {
+        Console.Error.WriteLine("Manager recovery failed or was not authorized. No successful recovery is claimed; check the audited account state through the authorized operator.");
         Environment.ExitCode = 1;
     }
     finally { await app.DisposeAsync(); }

@@ -33,7 +33,7 @@ public static class MySqlConnectionPolicy
         options.DefaultCommandTimeout = Math.Min(options.DefaultCommandTimeout, 15);
         if (options.ConnectionTimeout == 0 || options.DefaultCommandTimeout == 0)
             throw new InvalidOperationException("Production MySQL requires bounded connection and command timeouts.");
-        // Connector/NET 26.7 migration connection cloning fails under Linux with reset enabled.
+        // Connector/NET 26.7 migrations fail under Linux with reset enabled.
         // The exclusive short-lived migrator owns its session; ordinary pooled application sessions still reset.
         options.ConnectionReset = !migrations;
         return options.ConnectionString;
