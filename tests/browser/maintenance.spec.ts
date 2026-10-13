@@ -24,6 +24,28 @@ async function login(page: Page, email: string, password: string) {
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 }
 
+test('public maintenance entry returns a native tenant sign-in to the unsubmitted form', async ({ browser }, testInfo) => {
+  const directory = readFileSync('artifacts/browser-fixture/current.txt', 'utf8');
+  const account = JSON.parse(readFileSync(join(directory, 'accounts.json'), 'utf8'))[testInfo.project.name];
+  const context = await browser.newContext({ baseURL: 'http://127.0.0.1:5088', javaScriptEnabled: false,
+    viewport: { width: 320, height: 800 }, colorScheme: 'dark' });
+  try {
+    const page = await context.newPage();
+    await page.goto('/');
+    await page.getByRole('link', { name: 'Report a maintenance issue', exact: true }).click();
+    await expect(page).toHaveURL(/\/Account\/Login\?/);
+    await expect(page.locator('[name="ReturnUrl"]')).toHaveValue('/Maintenance/Create');
+    await page.getByLabel('Email', { exact: true }).fill(account.tenantEmail);
+    await page.getByLabel('Password', { exact: true }).fill(account.password);
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(page).toHaveURL('http://127.0.0.1:5088/Maintenance/Create');
+    await expect(page.getByRole('heading', { name: 'What needs attention?', exact: true })).toBeVisible();
+    await expect(page.getByLabel('Brief description', { exact: true })).toHaveValue('');
+    await expect(page.getByRole('button', { name: 'Submit maintenance request', exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  } finally { await context.close(); }
+});
+
 test('tenant and manager complete a private maintenance workflow at 320px', async ({ page, browser }, testInfo) => {
   const directory = readFileSync('artifacts/browser-fixture/current.txt', 'utf8');
   const account = JSON.parse(readFileSync(join(directory, 'accounts.json'), 'utf8'))[testInfo.project.name];

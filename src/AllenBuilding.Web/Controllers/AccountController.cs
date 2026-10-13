@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace AllenBuilding.Web.Controllers;
 
@@ -14,31 +15,55 @@ namespace AllenBuilding.Web.Controllers;
 public sealed class AccountController(UserManager<OfficeUser> users, SignInManager<OfficeUser> signIn,
     TimeProvider time, AllenBuilding.Infrastructure.Persistence.OfficeDbContext db, AccountInvitations invitations) : Controller
 {
-    [HttpGet] public IActionResult Login() => View(new LoginForm());
+    [HttpGet]
+    public IActionResult Login(string? returnUrl)
+    {
+        // Tag helpers otherwise prefer the raw bound query over the sanitized model.
+        ModelState.Remove(nameof(LoginForm.ReturnUrl));
+        return View(new LoginForm { ReturnUrl = SafeReturn(returnUrl) });
+    }
 
     [HttpPost]
     public async Task<IActionResult> Login(LoginForm form)
     {
+        form.ReturnUrl = SafeReturn(form.ReturnUrl);
+        ModelState.Remove(nameof(form.ReturnUrl));
         if (!ModelState.IsValid) return View(form);
         await signIn.SignOutAsync();
         await signIn.ForgetTwoFactorClientAsync();
         var result = await signIn.PasswordSignInAsync(form.Email, form.Password, false, lockoutOnFailure: true);
-        if (result.RequiresTwoFactor) return RedirectToAction(nameof(Factor));
-        if (result.Succeeded) return RedirectToAction("Index", "Portal");
+        if (result.RequiresTwoFactor) return RedirectToAction(nameof(Factor), form.ReturnUrl is null ? null : new { returnUrl = form.ReturnUrl });
+        if (result.Succeeded)
+        {
+            // Preserve mandatory first-manager setup when skipping the dashboard.
+            if (form.ReturnUrl is not null)
+            {
+                var user = await users.FindByNameAsync(form.Email);
+                if (user is { TwoFactorEnabled: false } && await db.BuildingManagers.AnyAsync(x => x.UserId == user.Id, HttpContext.RequestAborted))
+                    return RedirectToAction(nameof(Enroll));
+            }
+            return AfterSignIn(form.ReturnUrl);
+        }
         ModelState.AddModelError("", "Unable to sign in. Check your details or try again later.");
         return View(form);
     }
 
     [HttpGet]
-    public async Task<IActionResult> Factor() => await signIn.GetTwoFactorAuthenticationUserAsync() is null
-        ? RedirectToAction(nameof(Login)) : View(new FactorForm());
+    public async Task<IActionResult> Factor(string? returnUrl)
+    {
+        ModelState.Remove(nameof(FactorForm.ReturnUrl));
+        return await signIn.GetTwoFactorAuthenticationUserAsync() is null
+            ? LoginAgain(returnUrl) : View(new FactorForm { ReturnUrl = SafeReturn(returnUrl) });
+    }
 
     [HttpPost]
     public async Task<IActionResult> Factor(FactorForm form)
     {
+        form.ReturnUrl = SafeReturn(form.ReturnUrl);
+        ModelState.Remove(nameof(form.ReturnUrl));
         var challenge = await HttpContext.AuthenticateAsync(IdentityConstants.TwoFactorUserIdScheme);
         var user = await signIn.GetTwoFactorAuthenticationUserAsync();
-        if (user is null || challenge.Properties?.IssuedUtc is not { } passwordAt) return RedirectToAction(nameof(Login));
+        if (user is null || challenge.Properties?.IssuedUtc is not { } passwordAt) return LoginAgain(form.ReturnUrl);
         if (!ModelState.IsValid) return View(form);
         var result = form.Recovery ? await signIn.TwoFactorRecoveryCodeSignInAsync(form.Code.Trim())
             : await signIn.TwoFactorAuthenticatorSignInAsync(NormalizeCode(form.Code), false, false);
@@ -51,7 +76,7 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
                 await db.SaveChangesAsync();
             }
             await ChallengedSignIn(user, passwordAt, form.Recovery);
-            return RedirectToAction(form.Recovery ? nameof(RecoveryCodes) : "Index", form.Recovery ? "Account" : "Portal");
+            return form.Recovery || (form.ReturnUrl is not null && user.MustReplaceRecoveryCodes) ? RedirectToAction(nameof(RecoveryCodes)) : AfterSignIn(form.ReturnUrl);
         }
         ModelState.AddModelError("", "Unable to verify this code. Try again or sign in again.");
         return View(form);
@@ -166,6 +191,14 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
         return RedirectToAction("Index", "Home");
     }
     [HttpGet] public IActionResult Denied() => View();
+
+    // Navigation is not authorization or confirmation. The destination's GET handler checks
+    // current access; no POST is replayed after sign-in, and recovery always retains its gate.
+    private string? SafeReturn(string? path) => path is { Length: > 0 and <= 2048 } && path[0] == '/' &&
+        !path.Any(char.IsControl) && !path.Contains('\\') && Url.IsLocalUrl(path) ? path : null;
+    private IActionResult LoginAgain(string? path) => RedirectToAction(nameof(Login), SafeReturn(path) is { } destination ? new { returnUrl = destination } : null);
+    private IActionResult AfterSignIn(string? path) => SafeReturn(path) is { } destination
+        ? LocalRedirect(destination) : RedirectToAction("Index", "Portal");
 
     private async Task<bool> VerifyPasswordAndFactor(OfficeUser user, ReauthenticateForm form)
     {
