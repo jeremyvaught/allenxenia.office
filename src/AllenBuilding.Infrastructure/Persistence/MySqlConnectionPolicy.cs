@@ -13,8 +13,8 @@ public static class MySqlConnectionPolicy
         if (local) return options.ConnectionString;
         var supplied = new System.Data.Common.DbConnectionStringBuilder { ConnectionString = options.ConnectionString };
         var explicitPool = supplied.Keys.Cast<string>().Any(x => x.Replace(" ", "", StringComparison.Ordinal).ToLowerInvariant() is "maximumpoolsize" or "maxpoolsize");
-        if (string.IsNullOrWhiteSpace(options.Database) || string.IsNullOrWhiteSpace(options.UserID) ||
-            string.IsNullOrEmpty(options.Password) || !options.Pooling || options.MinimumPoolSize > 10 ||
+        if (string.IsNullOrWhiteSpace(options.Server) || string.IsNullOrWhiteSpace(options.Database) || string.IsNullOrWhiteSpace(options.UserID) ||
+            string.IsNullOrEmpty(options.Password) || !options.Pooling || options.MinimumPoolSize > Math.Min(options.MaximumPoolSize, 10) ||
             (explicitPool && options.MaximumPoolSize is < 1 or > 10) ||
             options.AllowLoadLocalInfile || options.PersistSecurityInfo)
             throw new InvalidOperationException("Production MySQL requires dedicated credentials, a pool of at most ten connections and restricted connection features.");

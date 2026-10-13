@@ -47,6 +47,8 @@ public sealed class MySqlConnectionPolicyTests
     [InlineData("Server=other-host;SslMode=VerifyCA")]
     [InlineData("Server=localhost;MaximumPoolSize=11")]
     [InlineData("Server=localhost;MinimumPoolSize=11")]
+    [InlineData("Server=localhost;MinimumPoolSize=5;MaximumPoolSize=4")]
+    [InlineData("Server=;MaximumPoolSize=4")]
     [InlineData("Server=localhost;Pooling=False")]
     [InlineData("Server=localhost;PersistSecurityInfo=True")]
     [InlineData("Server=localhost;AllowLoadLocalInfile=True")]
