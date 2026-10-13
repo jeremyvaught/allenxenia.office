@@ -12,6 +12,10 @@ namespace AllenBuilding.Infrastructure.Persistence;
 
 public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbContext<OfficeUser>(options)
 {
+    public DbSet<BillingCustomerBinding> BillingCustomers => Set<BillingCustomerBinding>();
+    public DbSet<PaymentAttempt> PaymentAttempts => Set<PaymentAttempt>();
+    public DbSet<PaymentAttemptItem> PaymentAttemptItems => Set<PaymentAttemptItem>();
+    public DbSet<CollectionGuard> CollectionGuards => Set<CollectionGuard>();
     public DbSet<RentAccount> RentAccounts => Set<RentAccount>();
     public DbSet<RentAgreement> RentAgreements => Set<RentAgreement>();
     public DbSet<BillingPeriod> BillingPeriods => Set<BillingPeriod>();
@@ -177,7 +181,7 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
         });
         model.Entity<Obligation>(e =>
         {
-            e.ToTable("obligations"); e.HasKey(x => x.Id); e.Property(x => x.Version).IsConcurrencyToken();
+            e.ToTable("obligations"); e.HasKey(x => x.Id); e.HasAlternateKey(x => new { x.Id, x.AccountId }); e.Property(x => x.Version).IsConcurrencyToken();
             e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(32);
             e.Property(x => x.Currency).HasMaxLength(3); e.Property(x => x.Description).HasMaxLength(120); e.Property(x => x.IssuedBy).HasMaxLength(450);
 
@@ -188,6 +192,47 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
             e.HasOne<RentAgreement>().WithMany().HasForeignKey(x => new { x.AgreementId, x.AccountId })
                 .HasPrincipalKey(x => new { x.Id, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.IssuedBy).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<BillingCustomerBinding>(e =>
+        {
+            e.ToTable("billing_customers"); e.HasKey(x => x.Id); e.HasAlternateKey(x => new { x.Id, x.AccountId, x.ProviderAccount, x.LiveMode, x.CustomerId });
+            e.Property(x => x.ProviderAccount).HasMaxLength(255); e.Property(x => x.CustomerId).HasMaxLength(255);
+            e.HasIndex(x => new { x.AccountId, x.ProviderAccount, x.LiveMode }).IsUnique();
+            e.HasIndex(x => new { x.ProviderAccount, x.LiveMode, x.CustomerId }).IsUnique();
+            e.HasOne<RentAccount>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<PaymentAttempt>(e =>
+        {
+            e.ToTable("payment_attempts"); e.HasKey(x => x.Id); e.HasAlternateKey(x => new { x.Id, x.AccountId });
+            e.Property(x => x.Version).IsConcurrencyToken(); e.Property(x => x.ActorId).HasMaxLength(450);
+            e.Property(x => x.ProviderAccount).HasMaxLength(255); e.Property(x => x.CustomerId).HasMaxLength(255);
+            e.Property(x => x.SessionId).HasMaxLength(255); e.Property(x => x.PaymentId).HasMaxLength(255);
+            e.Property(x => x.Currency).HasMaxLength(3); e.Property(x => x.PayloadHash).HasMaxLength(64);
+            e.Property(x => x.State).HasConversion<string>().HasMaxLength(32);
+            e.Ignore(x => x.ProviderIdempotencyKey);
+            e.HasIndex(x => new { x.ActorId, x.OperationId }).IsUnique();
+            e.HasIndex(x => new { x.ProviderAccount, x.LiveMode, x.SessionId }).IsUnique();
+            e.HasIndex(x => new { x.ProviderAccount, x.LiveMode, x.PaymentId }).IsUnique();
+            e.HasIndex(x => new { x.State, x.CreatedAt, x.Id });
+            e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.ActorId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<BillingCustomerBinding>().WithMany().HasForeignKey(x => new { x.CustomerBindingId, x.AccountId, x.ProviderAccount, x.LiveMode, x.CustomerId })
+                .HasPrincipalKey(x => new { x.Id, x.AccountId, x.ProviderAccount, x.LiveMode, x.CustomerId }).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(x => x.Items).WithOne().HasForeignKey(x => new { x.AttemptId, x.AccountId })
+                .HasPrincipalKey(x => new { x.Id, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
+            e.Navigation(x => x.Items).HasField("_items").UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+        model.Entity<PaymentAttemptItem>(e =>
+        {
+            e.ToTable("payment_attempt_items"); e.HasKey(x => new { x.AttemptId, x.ObligationId });
+            e.HasAlternateKey(x => new { x.AttemptId, x.ObligationId, x.AccountId });
+            e.HasOne<Obligation>().WithMany().HasForeignKey(x => new { x.ObligationId, x.AccountId })
+                .HasPrincipalKey(x => new { x.Id, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<CollectionGuard>(e =>
+        {
+            e.ToTable("collection_guards"); e.HasKey(x => x.ObligationId);
+            e.HasOne<PaymentAttemptItem>().WithMany().HasForeignKey(x => new { x.AttemptId, x.ObligationId, x.AccountId })
+                .HasPrincipalKey(x => new { x.AttemptId, x.ObligationId, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
         });
         model.Entity<BillingReceipt>(e =>
         {
@@ -275,6 +320,8 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
                 }
                 if (mysql && (property.ClrType == typeof(string) || property.GetValueConverter()?.ProviderClrType == typeof(string)))
                     property.SetCollation("utf8mb4_bin");
+                if (mysql && property.ClrType == typeof(string) && property.Name is "ProviderAccount" or "CustomerId" or "SessionId" or "PaymentId")
+                    MySql.EntityFrameworkCore.Extensions.MySQLPropertyBuilderExtensions.ForMySQLHasCollation(model.Entity(entity.ClrType).Property(property.Name), "utf8mb4_bin");
             }
         }
     }

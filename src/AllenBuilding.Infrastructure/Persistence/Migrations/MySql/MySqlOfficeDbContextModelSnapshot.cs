@@ -19,6 +19,57 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                 .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 64);
 
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.BillingCustomerBinding", b =>
+                {
+                    b.Property<string>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("account_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<DateTime>("BoundAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("bound_at");
+
+                    b.Property<string>("CustomerId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("customer_id")
+                        .UseCollation("utf8mb4_bin")
+                        .HasAnnotation("MySQL:Collation", "utf8mb4_bin");
+
+                    b.Property<bool>("LiveMode")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("live_mode");
+
+                    b.Property<string>("ProviderAccount")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("provider_account")
+                        .UseCollation("utf8mb4_bin")
+                        .HasAnnotation("MySQL:Collation", "utf8mb4_bin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId", "ProviderAccount", "LiveMode")
+                        .IsUnique();
+
+                    b.HasIndex("ProviderAccount", "LiveMode", "CustomerId")
+                        .IsUnique();
+
+                    b.ToTable("billing_customers", (string)null);
+                });
+
             modelBuilder.Entity("AllenBuilding.Domain.Billing.BillingPeriod", b =>
                 {
                     b.Property<string>("Id")
@@ -110,6 +161,35 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                     b.ToTable("billing_receipts", (string)null);
                 });
 
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.CollectionGuard", b =>
+                {
+                    b.Property<string>("ObligationId")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("obligation_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("account_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("AttemptId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("attempt_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.HasKey("ObligationId");
+
+                    b.HasIndex("AttemptId", "ObligationId", "AccountId");
+
+                    b.ToTable("collection_guards", (string)null);
+                });
+
             modelBuilder.Entity("AllenBuilding.Domain.Billing.Obligation", b =>
                 {
                     b.Property<string>("Id")
@@ -199,6 +279,176 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                     b.HasIndex("AccountId", "DueOn", "Id");
 
                     b.ToTable("obligations", (string)null);
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.PaymentAttempt", b =>
+                {
+                    b.Property<string>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("account_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("ActorId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("varchar(450)")
+                        .HasColumnName("actor_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("varchar(3)")
+                        .HasColumnName("currency")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("CustomerBindingId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("customer_binding_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("CustomerId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("customer_id")
+                        .UseCollation("utf8mb4_bin")
+                        .HasAnnotation("MySQL:Collation", "utf8mb4_bin");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("expires_at");
+
+                    b.Property<bool>("LiveMode")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("live_mode");
+
+                    b.Property<string>("OperationId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("operation_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("PayloadHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("payload_hash")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("PaymentId")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("payment_id")
+                        .UseCollation("utf8mb4_bin")
+                        .HasAnnotation("MySQL:Collation", "utf8mb4_bin");
+
+                    b.Property<string>("ProviderAccount")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("provider_account")
+                        .UseCollation("utf8mb4_bin")
+                        .HasAnnotation("MySQL:Collation", "utf8mb4_bin");
+
+                    b.Property<string>("SessionId")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("session_id")
+                        .UseCollation("utf8mb4_bin")
+                        .HasAnnotation("MySQL:Collation", "utf8mb4_bin");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("state");
+
+                    b.Property<long>("TotalMinorUnits")
+                        .HasColumnType("bigint")
+                        .HasColumnName("total_minor_units");
+
+                    b.Property<string>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("version")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorId", "OperationId")
+                        .IsUnique();
+
+                    b.HasIndex("ProviderAccount", "LiveMode", "PaymentId")
+                        .IsUnique();
+
+                    b.HasIndex("ProviderAccount", "LiveMode", "SessionId")
+                        .IsUnique();
+
+                    b.HasIndex("State", "CreatedAt", "Id");
+
+                    b.HasIndex("CustomerBindingId", "AccountId", "ProviderAccount", "LiveMode", "CustomerId");
+
+                    b.ToTable("payment_attempts", (string)null);
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.PaymentAttemptItem", b =>
+                {
+                    b.Property<string>("AttemptId")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("attempt_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("ObligationId")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("obligation_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("account_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<long>("AmountMinorUnits")
+                        .HasColumnType("bigint")
+                        .HasColumnName("amount_minor_units");
+
+                    b.Property<string>("ReviewedVersion")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("reviewed_version")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.HasKey("AttemptId", "ObligationId");
+
+                    b.HasIndex("AttemptId", "AccountId");
+
+                    b.HasIndex("ObligationId", "AccountId");
+
+                    b.ToTable("payment_attempt_items", (string)null);
                 });
 
             modelBuilder.Entity("AllenBuilding.Domain.Billing.RentAccount", b =>
@@ -1422,6 +1672,15 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                     b.ToTable("asp_net_user_tokens", (string)null);
                 });
 
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.BillingCustomerBinding", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Billing.RentAccount", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("AllenBuilding.Domain.Billing.BillingPeriod", b =>
                 {
                     b.HasOne("AllenBuilding.Domain.Billing.RentAccount", null)
@@ -1436,6 +1695,16 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                     b.HasOne("AllenBuilding.Domain.Billing.RentAccount", null)
                         .WithMany()
                         .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.CollectionGuard", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Billing.PaymentAttemptItem", null)
+                        .WithMany()
+                        .HasForeignKey("AttemptId", "ObligationId", "AccountId")
+                        .HasPrincipalKey("AttemptId", "ObligationId", "AccountId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
@@ -1465,6 +1734,39 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .HasForeignKey("PeriodId", "AccountId")
                         .HasPrincipalKey("Id", "AccountId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.PaymentAttempt", b =>
+                {
+                    b.HasOne("AllenBuilding.Infrastructure.Identity.OfficeUser", null)
+                        .WithMany()
+                        .HasForeignKey("ActorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AllenBuilding.Domain.Billing.BillingCustomerBinding", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerBindingId", "AccountId", "ProviderAccount", "LiveMode", "CustomerId")
+                        .HasPrincipalKey("Id", "AccountId", "ProviderAccount", "LiveMode", "CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.PaymentAttemptItem", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Billing.PaymentAttempt", null)
+                        .WithMany("Items")
+                        .HasForeignKey("AttemptId", "AccountId")
+                        .HasPrincipalKey("Id", "AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AllenBuilding.Domain.Billing.Obligation", null)
+                        .WithMany()
+                        .HasForeignKey("ObligationId", "AccountId")
+                        .HasPrincipalKey("Id", "AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("AllenBuilding.Domain.Billing.RentAccount", b =>
@@ -1728,6 +2030,11 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.PaymentAttempt", b =>
+                {
+                    b.Navigation("Items");
                 });
 #pragma warning restore 612, 618
         }
