@@ -17,6 +17,268 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
 
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.AutopayAuthorization", b =>
+                {
+                    b.Property<string>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("account_id");
+
+                    b.Property<string>("ActorId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("actor_id");
+
+                    b.Property<string>("AgreementId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("agreement_id");
+
+                    b.Property<string>("AgreementVersion")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("agreement_version");
+
+                    b.Property<string>("ConsentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("consent_hash");
+
+                    b.Property<DateTime>("ConsentedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("consented_at");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("currency");
+
+                    b.Property<string>("CustomerBindingId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("customer_binding_id");
+
+                    b.Property<string>("CustomerId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("customer_id");
+
+                    b.Property<int>("DueDay")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("due_day");
+
+                    b.Property<DateOnly?>("EndsBefore")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("ends_before");
+
+                    b.Property<DateTime>("FirstAnchorUtc")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("first_anchor_utc");
+
+                    b.Property<DateOnly>("FirstDueOn")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("first_due_on");
+
+                    b.Property<DateOnly>("FirstPeriodStartsOn")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("first_period_starts_on");
+
+                    b.Property<DateTime?>("LastVerifiedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("last_verified_at");
+
+                    b.Property<bool>("LiveMode")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("live_mode");
+
+                    b.Property<long>("MonthlyMinorUnits")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("monthly_minor_units");
+
+                    b.Property<string>("OperationId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("operation_id");
+
+                    b.Property<string>("PaymentMethodId")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("payment_method_id");
+
+                    b.Property<string>("ProviderAccount")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("provider_account");
+
+                    b.Property<string>("ReviewedAccountVersion")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("reviewed_account_version");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("state");
+
+                    b.Property<string>("StopActorId")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("stop_actor_id");
+
+                    b.Property<DateTime?>("StopEffectiveAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("stop_effective_at");
+
+                    b.Property<string>("StopOperationId")
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("stop_operation_id");
+
+                    b.Property<DateTime?>("StopRequestedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("stop_requested_at");
+
+                    b.Property<string>("StopTiming")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("stop_timing");
+
+                    b.Property<string>("SubscriptionId")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("subscription_id");
+
+                    b.Property<string>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StopActorId");
+
+                    b.HasIndex("ActorId", "OperationId")
+                        .IsUnique();
+
+                    b.HasIndex("AgreementId", "AccountId");
+
+                    b.HasIndex("AccountId", "State", "FirstPeriodStartsOn");
+
+                    b.HasIndex("CustomerBindingId", "AccountId", "ProviderAccount", "LiveMode", "CustomerId");
+
+                    b.ToTable("autopay_authorizations", (string)null);
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.AutopaySlot", b =>
+                {
+                    b.Property<string>("AccountId")
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("account_id");
+
+                    b.Property<string>("AuthorizationId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("authorization_id");
+
+                    b.HasKey("AccountId");
+
+                    b.HasIndex("AuthorizationId")
+                        .IsUnique();
+
+                    b.HasIndex("AuthorizationId", "AccountId")
+                        .IsUnique();
+
+                    b.ToTable("autopay_slots", (string)null);
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.AutopayWork", b =>
+                {
+                    b.Property<string>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("account_id");
+
+                    b.Property<string>("AuthorizationId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("authorization_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("OriginalOperationId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("original_operation_id");
+
+                    b.Property<string>("ProviderOperationKey")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("provider_operation_key");
+
+                    b.Property<string>("ReviewedAuthorizationVersion")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("reviewed_authorization_version");
+
+                    b.Property<string>("Stage")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("stage");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("state");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuthorizationId", "AccountId");
+
+                    b.HasIndex("AuthorizationId", "Stage", "OriginalOperationId")
+                        .IsUnique();
+
+                    b.HasIndex("State", "CreatedAt", "Id");
+
+                    b.ToTable("autopay_work", (string)null);
+                });
+
             modelBuilder.Entity("AllenBuilding.Domain.Billing.BillingCustomerBinding", b =>
                 {
                     b.Property<string>("Id")
@@ -2568,6 +2830,66 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                     b.HasKey("UserId", "LoginProvider", "Name");
 
                     b.ToTable("asp_net_user_tokens", (string)null);
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.AutopayAuthorization", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Billing.RentAccount", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AllenBuilding.Infrastructure.Identity.OfficeUser", null)
+                        .WithMany()
+                        .HasForeignKey("ActorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AllenBuilding.Infrastructure.Identity.OfficeUser", null)
+                        .WithMany()
+                        .HasForeignKey("StopActorId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("AllenBuilding.Domain.Billing.RentAgreement", null)
+                        .WithMany()
+                        .HasForeignKey("AgreementId", "AccountId")
+                        .HasPrincipalKey("Id", "AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AllenBuilding.Domain.Billing.BillingCustomerBinding", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerBindingId", "AccountId", "ProviderAccount", "LiveMode", "CustomerId")
+                        .HasPrincipalKey("Id", "AccountId", "ProviderAccount", "LiveMode", "CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.AutopaySlot", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Billing.RentAccount", null)
+                        .WithOne()
+                        .HasForeignKey("AllenBuilding.Domain.Billing.AutopaySlot", "AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AllenBuilding.Domain.Billing.AutopayAuthorization", null)
+                        .WithOne()
+                        .HasForeignKey("AllenBuilding.Domain.Billing.AutopaySlot", "AuthorizationId", "AccountId")
+                        .HasPrincipalKey("AllenBuilding.Domain.Billing.AutopayAuthorization", "Id", "AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.AutopayWork", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Billing.AutopayAuthorization", null)
+                        .WithMany()
+                        .HasForeignKey("AuthorizationId", "AccountId")
+                        .HasPrincipalKey("Id", "AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("AllenBuilding.Domain.Billing.BillingCustomerBinding", b =>

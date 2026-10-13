@@ -29,6 +29,7 @@ public sealed class RentAccount
         EndedAt = now.ToUniversalTime(); Version = Guid.NewGuid();
     }
     public void TermsChanged() => Version = Guid.NewGuid();
+    public void AuthorizationChanged() => Version = Guid.NewGuid();
 }
 
 public sealed class RentAgreement

@@ -288,6 +288,33 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await page.goto(refundPath);
     await expect(page).toHaveURL(/\/Account\/Denied/);
 
+    await page.goto(`/Autopay?accountId=${account.autopayAccountId}`);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Monthly autopay');
+    await page.getByRole('button', { name: 'Review monthly autopay', exact: true }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Review monthly autopay');
+    await expect(page.getByRole('checkbox')).not.toBeChecked();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `artifacts/browser/autopay-review-${testInfo.project.name}.png`, fullPage: true });
+    await page.getByRole('link', { name: 'Cancel and return to autopay', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Review monthly autopay', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Review monthly autopay', exact: true }).click();
+    await page.getByRole('checkbox').check();
+    await page.getByRole('button', { name: 'Confirm monthly autopay consent', exact: true }).click();
+    await expect(page.getByText('Preparing payment-method setup', { exact: true })).toBeVisible();
+    await expect(page.getByText('Verified active', { exact: true })).toHaveCount(0);
+    await page.getByLabel('When to stop', { exact: true }).selectOption('EndOfCurrentRentMonth');
+    await page.getByRole('button', { name: 'Review stopping autopay', exact: true }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Review stopping autopay');
+    await page.getByRole('checkbox').check();
+    await page.getByRole('button', { name: 'Confirm stop request', exact: true }).click();
+    await expect(page.getByText('Stop requested · verification pending', { exact: true })).toBeVisible();
+    await expect(page.getByText('Verified stopped', { exact: true })).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    for (const control of await page.locator('main .button, main .quiet-button').all()) {
+      const bounds = await control.boundingBox(); expect(bounds!.height).toBeGreaterThanOrEqual(44);
+    }
+    await page.screenshot({ path: `artifacts/browser/autopay-stop-${testInfo.project.name}.png`, fullPage: true });
+
     await page.goto(`/Payments?accountId=${account.paymentAccountId}`);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Choose what to pay');
     await page.getByRole('button', { name: 'Review selected payment', exact: true }).click();

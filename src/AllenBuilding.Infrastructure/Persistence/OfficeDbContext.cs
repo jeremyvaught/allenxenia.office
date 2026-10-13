@@ -28,6 +28,9 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
     public DbSet<FinancialExceptionHistory> FinancialExceptionHistory => Set<FinancialExceptionHistory>();
     public DbSet<PaymentAttemptItem> PaymentAttemptItems => Set<PaymentAttemptItem>();
     public DbSet<CollectionGuard> CollectionGuards => Set<CollectionGuard>();
+    public DbSet<AutopayAuthorization> AutopayAuthorizations => Set<AutopayAuthorization>();
+    public DbSet<AutopaySlot> AutopaySlots => Set<AutopaySlot>();
+    public DbSet<AutopayWork> AutopayWork => Set<AutopayWork>();
     public DbSet<TenancyClosure> TenancyClosures => Set<TenancyClosure>();
     public DbSet<RentAccount> RentAccounts => Set<RentAccount>();
     public DbSet<RentAgreement> RentAgreements => Set<RentAgreement>();
@@ -174,6 +177,34 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
             e.ToTable("rent_accounts"); e.HasKey(x => x.Id); e.Property(x => x.Version).IsConcurrencyToken();
             e.HasIndex(x => x.MembershipId).IsUnique();
             e.HasOne<Membership>().WithMany().HasForeignKey(x => x.MembershipId).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<AutopayAuthorization>(e =>
+        {
+            e.ToTable("autopay_authorizations"); e.HasKey(x => x.Id); e.HasAlternateKey(x => new { x.Id, x.AccountId }); e.Property(x => x.Version).IsConcurrencyToken();
+            e.Ignore(x => x.AdmitsNewAutomaticWork); e.Ignore(x => x.SetupOperationKey); e.Ignore(x => x.SubscriptionOperationKey); e.Ignore(x => x.StopOperationKey);
+            e.Property(x => x.ActorId).HasMaxLength(450); e.Property(x => x.StopActorId).HasMaxLength(450); e.Property(x => x.Currency).HasMaxLength(3);
+            e.Property(x => x.ProviderAccount).HasMaxLength(255); e.Property(x => x.CustomerId).HasMaxLength(255); e.Property(x => x.PaymentMethodId).HasMaxLength(255); e.Property(x => x.SubscriptionId).HasMaxLength(255);
+            e.Property(x => x.ConsentHash).HasMaxLength(64); e.Property(x => x.State).HasConversion<string>().HasMaxLength(32); e.Property(x => x.StopTiming).HasConversion<string>().HasMaxLength(32);
+            e.HasIndex(x => new { x.ActorId, x.OperationId }).IsUnique(); e.HasIndex(x => new { x.AccountId, x.State, x.FirstPeriodStartsOn });
+            e.HasOne<RentAccount>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<RentAgreement>().WithMany().HasForeignKey(x => new { x.AgreementId, x.AccountId }).HasPrincipalKey(x => new { x.Id, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<BillingCustomerBinding>().WithMany().HasForeignKey(x => new { x.CustomerBindingId, x.AccountId, x.ProviderAccount, x.LiveMode, x.CustomerId })
+                .HasPrincipalKey(x => new { x.Id, x.AccountId, x.ProviderAccount, x.LiveMode, x.CustomerId }).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.ActorId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.StopActorId).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<AutopaySlot>(e =>
+        {
+            e.ToTable("autopay_slots"); e.HasKey(x => x.AccountId); e.HasIndex(x => x.AuthorizationId).IsUnique();
+            e.HasOne<RentAccount>().WithOne().HasForeignKey<AutopaySlot>(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<AutopayAuthorization>().WithOne().HasForeignKey<AutopaySlot>(x => new { x.AuthorizationId, x.AccountId }).HasPrincipalKey<AutopayAuthorization>(x => new { x.Id, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<AutopayWork>(e =>
+        {
+            e.ToTable("autopay_work"); e.HasKey(x => x.Id); e.Property(x => x.ProviderOperationKey).HasMaxLength(255);
+            e.Property(x => x.State).HasConversion<string>().HasMaxLength(32); e.Property(x => x.Stage).HasConversion<string>().HasMaxLength(32);
+            e.HasIndex(x => new { x.AuthorizationId, x.Stage, x.OriginalOperationId }).IsUnique(); e.HasIndex(x => new { x.State, x.CreatedAt, x.Id });
+            e.HasOne<AutopayAuthorization>().WithMany().HasForeignKey(x => new { x.AuthorizationId, x.AccountId }).HasPrincipalKey(x => new { x.Id, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
         });
         model.Entity<TenancyClosure>(e =>
         {

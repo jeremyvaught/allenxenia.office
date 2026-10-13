@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace AllenBuilding.Web.Controllers;
 
 [Authorize, ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-public sealed class BillingController(BillingActions actions, ICurrentActor current, BillingReviewTickets tickets, IConfiguration configuration, TimeProvider time, CollectionPolicy collection) : Controller
+public sealed class BillingController(BillingActions actions, ICurrentActor current, BillingReviewTickets tickets, IConfiguration configuration, TimeProvider time, CollectionPolicy collection, AutopayPolicy autopay) : Controller
 {
     private bool Enabled => configuration.GetValue<bool>("Billing:PlanningEnabled");
     [HttpGet]
@@ -147,6 +147,7 @@ public sealed class BillingController(BillingActions actions, ICurrentActor curr
         var account = (await actions.ReadAsync(management, accountId: id)).SingleOrDefault();
         if (account is null) return NotFound();
         ViewData["Manager"] = management;
+        ViewData["AutopayAvailable"] = !management && autopay.Enabled;
         ViewData["Today"] = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
         return View("Account", account with { CollectionAvailable = !management && collection.Enabled });
     }

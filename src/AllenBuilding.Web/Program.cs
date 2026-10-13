@@ -45,6 +45,11 @@ builder.Services.AddScoped<AllenBuilding.Application.Billing.CollectionActions>(
 builder.Services.AddScoped<AllenBuilding.Application.Billing.IPayerCollectionReader, PayerCollectionReader>();
 builder.Services.AddScoped<AllenBuilding.Application.Billing.PayerCollections>();
 builder.Services.AddScoped<PaymentReviewTickets>();
+// Protected consent pages may be exercised by isolated fixtures; no provider dispatcher is registered yet.
+builder.Services.AddSingleton(new AllenBuilding.Application.Billing.AutopayPolicy(builder.Environment.IsEnvironment("Testing") && builder.Configuration.GetValue<bool>("Billing:AutopayReviewEnabled"), builder.Configuration["Stripe:ProviderAccount"] ?? "", false));
+builder.Services.AddScoped<AllenBuilding.Application.Billing.IAutopayStore, AutopayStore>();
+builder.Services.AddScoped<AllenBuilding.Application.Billing.AutopayPlanning>();
+builder.Services.AddScoped<AutopayReviewTickets>();
 builder.Services.AddSingleton(new AllenBuilding.Application.Billing.FinancialRecoveryPolicy(false));
 builder.Services.AddScoped<AllenBuilding.Application.Billing.IFinancialExceptionStore, FinancialExceptionStore>();
 builder.Services.AddScoped<AllenBuilding.Application.Billing.FinancialExceptionActions>();

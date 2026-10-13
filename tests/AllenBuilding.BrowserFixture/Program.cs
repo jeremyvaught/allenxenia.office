@@ -61,7 +61,12 @@ foreach (var project in new[] { "chromium", "mobile", "webkit-mobile" })
     var paySmall = Obligation.Issue(payAccount.Id, new Money(1000), "Earlier small remainder", new DateOnly(2026, 9, 1), manager.Id, DateTimeOffset.UtcNow);
     var payCredit = ObligationCredit.RecordLocal(Guid.NewGuid(), manager.Id, new(paySmall.Id, payAccount.Id, paySmall.Version, 1000), 975, ObligationCreditKind.Credit, "Approved earlier credit", DateTimeOffset.UtcNow); paySmall.FinancialStateChanged();
     db.AddRange(paySuite, payMember, payAccount, payBinding, payDebt, paySmall, payCredit, new ActiveGrant { UserId = tenant.Id, SuiteId = paySuite.Id, MembershipId = payMember.Id }); await db.SaveChangesAsync();
-    fixtures[project] = new { membershipId = membership.Id, paymentAccountId = payAccount.Id, tenantEmail = tenant.Email, managerEmail = manager.Email, password, key = await users.GetAuthenticatorKeyAsync(manager) };
+    var autoSuite = new Suite { BuildingId = building.Id, Name = "Autopay test office" };
+    var autoMember = Membership.Grant(autoSuite.Id, tenant.Id, DateTimeOffset.UtcNow.AddDays(-1)); var autoAccount = RentAccount.Open(Guid.NewGuid(), autoMember.Id);
+    var autoBinding = BillingCustomerBinding.Create(autoAccount.Id, "acct_browser_payments", false, "cus_auto_" + project.Replace('-', '_'), DateTimeOffset.UtcNow);
+    var autoTerms = RentAgreement.Create(autoAccount.Id, new Money(100000), 31, new DateOnly(2026, 1, 1), null, manager.Id, DateTimeOffset.UtcNow);
+    db.AddRange(autoSuite, autoMember, autoAccount, autoBinding, autoTerms, new ActiveGrant { UserId = tenant.Id, SuiteId = autoSuite.Id, MembershipId = autoMember.Id }); await db.SaveChangesAsync();
+    fixtures[project] = new { membershipId = membership.Id, paymentAccountId = payAccount.Id, autopayAccountId = autoAccount.Id, tenantEmail = tenant.Email, managerEmail = manager.Email, password, key = await users.GetAuthenticatorKeyAsync(manager) };
 }
 var path = Path.Combine(directory, "accounts.json");
 await File.WriteAllTextAsync(path, JsonSerializer.Serialize(fixtures));

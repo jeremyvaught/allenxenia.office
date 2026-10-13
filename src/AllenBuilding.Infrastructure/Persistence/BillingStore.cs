@@ -152,6 +152,18 @@ public sealed partial class BillingStore(OfficeDbContext db, ICurrentActor curre
         if (agreements.Any(x => (x.EndsOn is null || x.EndsOn > x.StartsOn) && x.Id != prior?.Id && x.StartsOn < (replacement.EndsOn ?? DateOnly.MaxValue) && replacement.StartsOn < (x.EndsOn ?? DateOnly.MaxValue)))
             return new(BillingCode.Conflict);
         try { prior?.Supersede(replacement); } catch (InvalidOperationException) { return new(BillingCode.Conflict); }
+        // Changed terms cannot silently amend the original tenant consent. Preserve an existing stop, otherwise queue a stop under this manager action.
+        var activeAutopay = await (from slot in db.AutopaySlots join auth in db.AutopayAuthorizations on slot.AuthorizationId equals auth.Id where slot.AccountId == account.Id select auth).SingleOrDefaultAsync(cancellationToken);
+        if (activeAutopay is not null)
+        {
+            await db.Entry(activeAutopay).ReloadAsync(cancellationToken);
+            if (activeAutopay.State is not (AutopayState.Stopped or AutopayState.StopPending))
+            {
+                activeAutopay.RequestStop(Guid.NewGuid(), actor.UserId, AutopayStopTiming.Immediately, time.GetUtcNow());
+                db.AutopayWork.Add(AutopayWork.Enqueue(activeAutopay, AutopayWorkStage.Stop, time.GetUtcNow()));
+                audit.Audit(actor.UserId, "AutopayStopForChangedTerms", activeAutopay.Id.ToString("D"), "Original agreement " + activeAutopay.AgreementId.ToString("D"));
+            }
+        }
         account.TermsChanged(); db.RentAgreements.Add(replacement);
         return await Commit(transaction, actor, command.OperationId, hash, account, replacement.Id, prior is null ? "RentTermsSet" : "RentTermsReplaced", cancellationToken);
     }

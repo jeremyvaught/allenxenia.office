@@ -1,0 +1,18 @@
+@using AllenBuilding.Domain.Billing
+@model AllenBuilding.Web.Security.AutopayReviewPage
+@{ ViewData["Title"] = Model.Review.Enrollment is not null ? "Review monthly autopay" : "Review stopping autopay"; }
+<div class="page"><p class="mb-2 text-sm text-muted">REVIEW BEFORE CONFIRMING</p><h1 class="mb-3 text-4xl font-semibold">@ViewData["Title"]</h1><p class="mb-6 break-words text-muted">@Model.Review.Suite</p>
+    <section class="mb-6 max-w-3xl rounded-2xl border border-line bg-panel p-6">
+        @if (Model.Review.Enrollment is { } consent) {
+            <dl class="space-y-4"><div><dt class="text-muted">Monthly rent</dt><dd class="text-2xl font-semibold">@BillingDisplay.Usd(consent.Schedule.AmountMinorUnits) USD</dd></div><div><dt class="text-muted">Manager-set due day</dt><dd>@consent.Schedule.DueDay, clamped to the last day in shorter months</dd></div><div><dt class="text-muted">First rent month</dt><dd>@consent.Schedule.FirstPeriodStartsOn.ToString("yyyy-MM")</dd></div><div><dt class="text-muted">First due date · Xenia time</dt><dd>@consent.Schedule.FirstDueOn.ToString("yyyy-MM-dd")</dd></div><div><dt class="text-muted">Agreement ends before</dt><dd>@(consent.Schedule.EndsBefore?.ToString("yyyy-MM-dd") ?? "No end date")</dd></div></dl>
+            <p class="mt-5">This records consent for the reviewed rent account and schedule. Payment-method setup and provider verification follow. Current/partial rent months and one-time charges are excluded. No initial rent payment is authorized by this confirmation.</p>
+        } else {
+            <p class="mb-4">Requested timing: @(Model.Review.Stop!.Timing == AutopayStopTiming.Immediately ? "Immediately" : "End of the current Xenia rent month").</p><p class="mb-4">Reviewed cutoff: @Model.Review.StopEffectiveAt!.Value.ToString("yyyy-MM-dd HH:mm 'UTC'").</p>
+            <p>New local automatic work stops on confirmation. Stripe cancellation remains pending verification. Existing unpaid rent remains owed and already-dispatched payments still need reconciliation.</p>
+        }
+    </section>
+    <form asp-action="Confirm" method="post" class="mb-6 max-w-3xl space-y-5"><input type="hidden" name="ticket" value="@Model.Ticket" />
+        <label class="flex min-h-11 items-start gap-3"><input type="checkbox" name="accepted" value="true" required class="mt-1 size-5 shrink-0" /><span>@(Model.Review.Enrollment is not null ? "I explicitly authorize monthly autopay under these exact rent terms and schedule, after payment-method setup and provider verification." : "I confirm this stop request and understand that existing debt and pending payments remain.")</span></label><button class="button">@(Model.Review.Enrollment is not null ? "Confirm monthly autopay consent" : "Confirm stop request")</button>
+    </form>
+    <a asp-action="Index" asp-route-accountId="@(Model.Review.Enrollment?.AccountId ?? Model.Review.Stopping!.AccountId)" class="quiet-button">Cancel and return to autopay</a>
+</div>

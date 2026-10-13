@@ -66,6 +66,7 @@ public sealed class AutopayAuthorization
     public Guid Id { get; private set; }
     public Guid OperationId { get; private set; }
     public Guid AccountId { get; private set; }
+    public Guid CustomerBindingId { get; private set; }
     public Guid ReviewedAccountVersion { get; private set; }
     public Guid AgreementId { get; private set; }
     public Guid AgreementVersion { get; private set; }
@@ -125,6 +126,7 @@ public sealed class AutopayAuthorization
             ProviderAccount = binding.ProviderAccount,
             LiveMode = binding.LiveMode,
             CustomerId = binding.CustomerId,
+            CustomerBindingId = binding.Id,
             MonthlyMinorUnits = schedule.AmountMinorUnits,
             DueDay = schedule.DueDay,
             FirstPeriodStartsOn = schedule.FirstPeriodStartsOn,
