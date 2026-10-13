@@ -230,6 +230,20 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     }
     await manager.screenshot({ path: `artifacts/browser/report-${testInfo.project.name}.png`, fullPage: true });
     await manager.goto('/Portal');
+    await manager.getByRole('link', { name: 'Rent balance report', exact: true }).click();
+    await expect(manager.getByRole('heading', { level: 1 })).toHaveText('Rent balances');
+    await expect(manager.getByRole('region', { name: 'Recorded balance totals' })).toBeVisible();
+    await expect(manager.getByRole('region', { name: 'Unresolved financial work' })).toBeVisible();
+    await manager.getByLabel('Balance group', { exact: true }).selectOption('Held');
+    await manager.getByRole('button', { name: 'View report', exact: true }).click();
+    await expect(manager.getByLabel('Balance group', { exact: true })).toHaveValue('Held');
+    expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    for (const control of await manager.locator('select, button').all()) {
+      const bounds = await control.boundingBox();
+      if (bounds) { expect(bounds.height).toBeGreaterThanOrEqual(44); expect(bounds.width).toBeGreaterThanOrEqual(44); }
+    }
+    await manager.screenshot({ path: `artifacts/browser/rent-report-${testInfo.project.name}.png`, fullPage: true });
+    await manager.goto('/Portal');
     await manager.getByRole('link', { name: 'Financial exceptions', exact: true }).click();
     await expect(manager.getByRole('heading', { level: 1 })).toHaveText('Financial exceptions');
     await expect(manager.getByText(`acct_browser_${testInfo.project.name.replaceAll('-', '_')}`, { exact: false })).toBeVisible();

@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 
 namespace AllenBuilding.Infrastructure.Persistence;
 
-public sealed class ManagementReportReader(OfficeDbContext db) : IManagementReportReader
+public sealed partial class ManagementReportReader(OfficeDbContext db) : IManagementReportReader
 {
     public async Task<MaintenanceAgingReport?> MaintenanceAgingAsync(Actor actor, MaintenanceAgingQuery query, DateTimeOffset observedAt, CancellationToken cancellationToken)
     {

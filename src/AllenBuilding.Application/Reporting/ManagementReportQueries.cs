@@ -28,9 +28,10 @@ public sealed record MaintenanceAgingReport(MaintenanceAgingQuery Query, DateTim
     IReadOnlyList<MaintenanceAgingItem> Items, bool HasNext, IReadOnlyList<ReportBuilding> Buildings);
 public interface IManagementReportReader
 {
+    Task<RentBalanceReport?> RentBalancesAsync(Actor actor, RentBalanceQuery query, DateTimeOffset observedAt, DateOnly localDate, CancellationToken cancellationToken);
     Task<MaintenanceAgingReport?> MaintenanceAgingAsync(Actor actor, MaintenanceAgingQuery query, DateTimeOffset observedAt, CancellationToken cancellationToken);
 }
-public sealed class ManagementReportQueries(ICurrentActor current, IManagementReportReader reader, TimeProvider time)
+public sealed partial class ManagementReportQueries(ICurrentActor current, IManagementReportReader reader, TimeProvider time)
 {
     public async Task<MaintenanceAgingReport?> MaintenanceAgingAsync(MaintenanceAgingQuery query, CancellationToken cancellationToken = default)
     {

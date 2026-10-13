@@ -10,6 +10,18 @@ namespace AllenBuilding.Web.Controllers;
 public sealed class ReportsController(ManagementReportQueries queries, ILogger<ReportsController> logger) : Controller
 {
     [HttpGet]
+    public async Task<IActionResult> Rent(RentBalanceQuery query, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid || !query.IsValid) return BadRequest();
+        try { var report = await queries.RentBalancesAsync(query, cancellationToken); return report is null ? NotFound() : View(report); }
+        catch (Exception exception) when (exception is TimeoutException or DbException)
+        {
+            logger.LogWarning("Rent balance report unavailable ({FailureType})", exception.GetType().Name);
+            ViewData["RetryAction"] = "Rent"; Response.StatusCode = 503; return View("Unavailable");
+        }
+    }
+
+    [HttpGet]
     public async Task<IActionResult> Maintenance(MaintenanceAgingQuery query, CancellationToken cancellationToken)
     {
         if (!ModelState.IsValid || !query.IsValid) return BadRequest();

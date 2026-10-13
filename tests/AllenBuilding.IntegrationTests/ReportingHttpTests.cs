@@ -70,14 +70,18 @@ public sealed class ReportingHttpTests
         var actor = new Actor("synthetic-report-manager", new HashSet<Guid> { Guid.NewGuid() }, true, false);
         var slow = new SlowReader(); var queries = new ManagementReportQueries(new FixedActor(actor), slow, TimeProvider.System);
         await Assert.ThrowsAsync<TimeoutException>(() => queries.MaintenanceAgingAsync(new())); Assert.True(slow.Cancelled);
+        await Assert.ThrowsAsync<TimeoutException>(() => queries.RentBalancesAsync(new()));
         using var caller = new CancellationTokenSource(); caller.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => queries.MaintenanceAgingAsync(new(), caller.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => queries.RentBalancesAsync(new(), caller.Token));
     }
     private sealed class FixedActor(Actor actor) : ICurrentActor
     { public Task<Actor?> GetAsync(CancellationToken cancellationToken = default) => Task.FromResult<Actor?>(actor); }
     private sealed class SlowReader : IManagementReportReader
     {
         public bool Cancelled { get; private set; }
+        public async Task<RentBalanceReport?> RentBalancesAsync(Actor actor, RentBalanceQuery query, DateTimeOffset observedAt, DateOnly localDate, CancellationToken cancellationToken)
+        { await MaintenanceAgingAsync(actor, new(), observedAt, cancellationToken); return null; }
         public async Task<MaintenanceAgingReport?> MaintenanceAgingAsync(Actor actor, MaintenanceAgingQuery query, DateTimeOffset observedAt, CancellationToken cancellationToken)
         {
             try { await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); return null; }
@@ -86,6 +90,7 @@ public sealed class ReportingHttpTests
     }
     private sealed class FailingReader : IManagementReportReader
     {
+        public Task<RentBalanceReport?> RentBalancesAsync(Actor actor, RentBalanceQuery query, DateTimeOffset observedAt, DateOnly localDate, CancellationToken cancellationToken) => throw new TimeoutException("synthetic-sensitive-diagnostic");
         public Task<MaintenanceAgingReport?> MaintenanceAgingAsync(Actor actor, MaintenanceAgingQuery query, DateTimeOffset observedAt, CancellationToken cancellationToken) =>
             throw new TimeoutException("synthetic-sensitive-diagnostic");
     }

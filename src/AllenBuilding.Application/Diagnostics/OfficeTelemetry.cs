@@ -3,7 +3,7 @@ using System.Diagnostics.Metrics;
 
 namespace AllenBuilding.Application.Diagnostics;
 
-public enum OfficeOperationKind { Http, MaintenanceSubmit, MaintenanceChange, MaintenanceAging, NotificationDispatch, CollectionDispatch, PaymentEvent, CustomerProvision, CashSource }
+public enum OfficeOperationKind { Http, MaintenanceSubmit, MaintenanceChange, MaintenanceAging, RentBalances, NotificationDispatch, CollectionDispatch, PaymentEvent, CustomerProvision, CashSource }
 public enum OfficeOutcome { Success, Denied, Invalid, Conflict, Failure, Cancelled, Retry, Uncertain, Suppressed, LeaseLost }
 public sealed record OriginTrace(string TraceId, string SpanId, Guid? OperationId);
 
@@ -22,6 +22,7 @@ public static class OfficeTelemetry
         OfficeOperationKind.MaintenanceSubmit => "maintenance.submit",
         OfficeOperationKind.MaintenanceChange => "maintenance.change",
         OfficeOperationKind.MaintenanceAging => "maintenance.aging",
+        OfficeOperationKind.RentBalances => "billing.balances",
         OfficeOperationKind.NotificationDispatch => "notification.dispatch",
         OfficeOperationKind.CollectionDispatch => "collection.dispatch",
         OfficeOperationKind.PaymentEvent => "payment.event",
