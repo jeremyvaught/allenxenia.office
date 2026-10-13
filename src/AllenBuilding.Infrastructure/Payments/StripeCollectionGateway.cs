@@ -137,9 +137,12 @@ public sealed class StripeCollectionGateway : ICollectionGateway, IDisposable
             if (intent is null || intent.Status != "succeeded" || intent.AmountReceived != original.TotalMinorUnits || charge is null ||
                 !PaymentReferences.Valid(charge.Id, "ch_") || charge.PaymentIntentId != intent.Id || charge.CustomerId != original.CustomerId || charge.Livemode != original.LiveMode ||
                 !charge.Paid || !charge.Captured || charge.Status != "succeeded" || charge.Amount != original.TotalMinorUnits ||
-                charge.AmountCaptured != original.TotalMinorUnits || charge.AmountRefunded != 0 || charge.Refunded || charge.Disputed || charge.Currency != "usd") return Invalid();
+                charge.AmountCaptured != original.TotalMinorUnits || charge.AmountRefunded < 0 || charge.AmountRefunded > charge.AmountCaptured ||
+                charge.Refunded != (charge.AmountRefunded == charge.AmountCaptured) || charge.Currency != "usd") return Invalid();
             return new(ProviderCollectionState.Paid, session.Id, Settlement: new(original.ProviderAccount, original.LiveMode, original.CustomerId,
-                session.Id, intent.Id, intent.AmountReceived, original.Currency));
+                session.Id, intent.Id, intent.AmountReceived, original.Currency),
+                // A verified gross capture is not proof of unchanged cash/debt. The composed worker must replace this hold with a full inventory read.
+                CashInventory: new(CashObservationState.Invalid));
         }
         if (session.Status == "expired" && session.PaymentStatus == "unpaid" &&
             ((intent is null && session.PaymentIntentId is null) || (intent is { Status: "canceled", AmountReceived: 0 } && intent.LatestChargeId is null)))

@@ -94,8 +94,8 @@ public sealed class StripeCollectionGatewayTests
     [InlineData("intent-owner")]
     [InlineData("intent-review")]
     [InlineData("captured")]
-    [InlineData("refunded")]
-    [InlineData("disputed")]
+    [InlineData("over-refunded")]
+    [InlineData("refund-flag")]
     [InlineData("charge-owner")]
     [InlineData("charge-mode")]
     [InlineData("charge-intent")]
@@ -110,14 +110,33 @@ public sealed class StripeCollectionGatewayTests
             case "intent-owner": intent["customer"] = "cus_wrong"; break;
             case "intent-review": intent["metadata"]!["office_review_hash"] = "different"; break;
             case "captured": charge["captured"] = false; break;
-            case "refunded": charge["amount_refunded"] = 200; break;
-            case "disputed": charge["disputed"] = true; break;
+            case "over-refunded": charge["amount_refunded"] = 1001; break;
+            case "refund-flag": charge["refunded"] = true; break;
             case "charge-owner": charge["customer"] = "cus_wrong"; break;
             case "charge-mode": charge["livemode"] = true; break;
             case "charge-intent": charge["payment_intent"] = "pi_wrong"; break;
         }
         var result = await fixture.Gateway.ReadAsync(fixture.Attempt, "cs_gateway");
         Assert.Equal(ProviderCollectionState.Invalid, result.State); Assert.Null(result.Settlement);
+    }
+
+    [Theory]
+    [InlineData("unchanged")]
+    [InlineData("partial-refund")]
+    [InlineData("full-refund")]
+    [InlineData("disputed")]
+    public async Task Gross_capture_survives_later_returns_but_requires_a_complete_inventory_before_releasing_collection(string state)
+    {
+        using var fixture = new Fixture(); fixture.Paid(); var version = fixture.Attempt.Version;
+        var charge = fixture.Session["payment_intent"]!["latest_charge"]!;
+        if (state == "partial-refund") charge["amount_refunded"] = 200;
+        if (state == "full-refund") { charge["amount_refunded"] = 1000; charge["refunded"] = true; }
+        if (state == "disputed") charge["disputed"] = true;
+        var result = await fixture.Gateway.ReadAsync(fixture.Attempt, "cs_gateway");
+        Assert.Equal(ProviderCollectionState.Paid, result.State); Assert.Equal(1000, result.Settlement!.AmountMinorUnits);
+        Assert.Equal(CashObservationState.Invalid, result.CashInventory!.State); Assert.Null(result.CashInventory.Inventory);
+        Assert.Equal(version, fixture.Attempt.Version); Assert.Equal(PaymentAttemptState.Dispatching, fixture.Attempt.State);
+        Assert.Null(fixture.Attempt.PaymentId); Assert.All(fixture.Requests, x => Assert.Equal("GET", x.Method));
     }
 
     [Fact]
