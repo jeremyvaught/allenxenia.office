@@ -24,6 +24,7 @@ builder.Services.AddOfficeStorage(builder.Configuration, builder.Environment, mi
 builder.Services.AddHealthChecks().AddCheck<DatabaseReadiness>("office-database");
 builder.AddOfficeSecurity();
 builder.AddOfficeNotifications();
+builder.AddOfficeAssistant();
 builder.Services.AddScoped<AllenBuilding.Application.Maintenance.IMaintenanceStore, MaintenanceStore>();
 builder.Services.AddScoped<AllenBuilding.Application.Maintenance.MaintenanceActions>();
 builder.Services.AddScoped<AccessRevocation>();
@@ -77,6 +78,9 @@ builder.Services.AddRateLimiter(options =>
     options.AddConcurrencyLimiter("Readiness", limiter => { limiter.PermitLimit = 2; limiter.QueueLimit = 0; });
     options.AddConcurrencyLimiter("PaymentActions", limiter => { limiter.PermitLimit = 2; limiter.QueueLimit = 0; });
     options.AddConcurrencyLimiter("PaymentWebhook", limiter => { limiter.PermitLimit = 2; limiter.QueueLimit = 0; });
+    options.AddPolicy("AssistantTurns", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "local", _ => new FixedWindowRateLimiterOptions
+        { PermitLimit = 5, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
     options.AddPolicy("Accounts", context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "local", _ => new FixedWindowRateLimiterOptions
         { PermitLimit = 20, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));

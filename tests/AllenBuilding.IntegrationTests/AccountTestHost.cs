@@ -18,11 +18,15 @@ public sealed class AccountTestHost : WebApplicationFactory<Program>
     public const string Password = "Synthetic-account-2026!";
     public TestClock Clock { get; } = new();
     public bool BillingPlanningEnabled { get; init; } = true;
+    public AllenBuilding.Application.Assistant.IAssistantModel? AssistantModel { get; init; }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
         builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Billing:PlanningEnabled"] = BillingPlanningEnabled.ToString() }));
+        if (AssistantModel is not null)
+            builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            { ["Assistant:Enabled"] = "true", ["OPENAI_API_KEY"] = "synthetic-assistant-key" }));
         builder.ConfigureServices(services =>
         {
             services.Replace(ServiceDescriptor.Singleton<TimeProvider>(Clock));
@@ -30,6 +34,11 @@ public sealed class AccountTestHost : WebApplicationFactory<Program>
             services.RemoveAll<DbContextOptions<SqliteOfficeDbContext>>();
             services.RemoveAll<Microsoft.EntityFrameworkCore.Infrastructure.IDbContextOptionsConfiguration<SqliteOfficeDbContext>>();
             services.AddDbContext<SqliteOfficeDbContext>(options => options.UseSqlite($"Data Source={_path};Foreign Keys=True"));
+            if (AssistantModel is not null)
+            {
+                services.Replace(ServiceDescriptor.Singleton(AssistantModel));
+                services.Replace(ServiceDescriptor.Singleton(new AllenBuilding.Application.Assistant.AssistantPolicy(true)));
+            }
         });
     }
 
