@@ -233,6 +233,9 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await manager.getByRole('link', { name: 'Financial exceptions', exact: true }).click();
     await expect(manager.getByRole('heading', { level: 1 })).toHaveText('Financial exceptions');
     await expect(manager.getByText(`acct_browser_${testInfo.project.name.replaceAll('-', '_')}`, { exact: false })).toBeVisible();
+    await expect(manager.getByRole('heading', { name: 'Verified cash movements', exact: true })).toBeVisible();
+    await expect(manager.getByText('Allocation / debt disposition pending', { exact: true })).toBeVisible();
+    await expect(manager.getByText(`Transaction txn_browser_${testInfo.project.name.replaceAll('-', '_')}`, { exact: true })).toBeVisible();
     await manager.getByLabel('Assign case owner', { exact: true }).selectOption({ label: account.managerEmail });
     await manager.getByLabel('Assignment reason', { exact: true }).fill('Review original Stripe outcome.');
     await manager.getByRole('button', { name: 'Assign owner', exact: true }).click();

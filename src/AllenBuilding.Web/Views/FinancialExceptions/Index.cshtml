@@ -12,14 +12,14 @@
     @foreach (var item in Model) {
         <li class="rounded-2xl border border-line bg-panel p-5 sm:p-6">
             <div class="flex flex-wrap justify-between gap-3"><h2 class="text-xl font-semibold">@item.Suite</h2><span class="text-sm font-semibold">@item.State</span></div>
-            <p class="mt-2 text-muted">@(item.Failure switch { FinancialFailure.ProviderUnknown => "The provider result could not be confirmed.", FinancialFailure.ProviderMismatch => "Provider evidence does not match the original payment.", FinancialFailure.LedgerChanged => "The obligation changed after payment review.", FinancialFailure.ClaimsIncomplete => "Collection protection needs investigation.", _ => "The provider outcome and recorded history need reconciliation." })</p>
+            <p class="mt-2 text-muted">@(item.Failure switch { FinancialFailure.ProviderUnknown => "The provider result could not be confirmed.", FinancialFailure.ProviderMismatch => "Provider evidence does not match the original payment.", FinancialFailure.LedgerChanged => "The obligation changed after payment review.", FinancialFailure.ClaimsIncomplete => "Collection protection needs investigation.", FinancialFailure.ExternalCashMovement => "Returned or reinstated cash needs a reviewed allocation and debt disposition.", _ => "The provider outcome and recorded history need reconciliation." })</p>
             <p class="mt-3 text-sm">Original collection: @item.AttemptState · Case opened @item.FirstSeenAt.ToString("yyyy-MM-dd HH:mm 'UTC'")</p>
-            <p class="mt-2 text-sm text-muted">Last verified provider state: @(item.LastVerifiedState ?? "No verified state recorded") @if (item.LastVerifiedAt is { } at) { <span>· @at.ToString("yyyy-MM-dd HH:mm 'UTC'")</span> }</p>
+            <p class="mt-2 text-sm text-muted">Last verified original payment state: @(item.LastVerifiedState ?? "No verified state recorded") @if (item.LastVerifiedAt is { } at) { <span>· @at.ToString("yyyy-MM-dd HH:mm 'UTC'")</span> }</p>
             @if (item.WorkState is { } workState) { <p class="mt-2 text-sm text-muted">Background work: @workState · @item.AutomaticAttempts checks · @item.Failures failures
                 @if (workState == CollectionWorkState.Queued && item.NextAttemptAt is { } next) { <span> · Next check @next.ToString("yyyy-MM-dd HH:mm 'UTC'")</span> }</p> }
             <p class="mt-2 text-sm text-muted">This is last-known evidence; opening this page does not contact Stripe.</p>
             <dl class="mt-5 grid gap-3 text-sm sm:grid-cols-2">
-                <div><dt class="text-muted">Provider account / mode</dt><dd class="break-all">@item.ProviderAccount · @(item.LiveMode ? "Live" : "Sandbox")</dd></div>
+                <div><dt class="text-muted">Provider account / mode</dt><dd class="break-all">@item.ProviderAccount · <span class="inline-block">@(item.LiveMode ? "Live" : "Sandbox")</span></dd></div>
                 <div><dt class="text-muted">Customer</dt><dd class="break-all">@item.CustomerId</dd></div>
                 <div><dt class="text-muted">Checkout session</dt><dd class="break-all">@(item.SessionId ?? "Not confirmed")</dd></div>
                 <div><dt class="text-muted">Payment reference</dt><dd class="break-all">@(item.PaymentId ?? "Not confirmed")</dd></div>
@@ -28,6 +28,19 @@
             </dl>
             <h3 class="mt-5 font-semibold">Reviewed obligation items</h3>
             <ul class="mt-2 space-y-2 text-sm">@foreach (var charge in item.Items) { <li class="break-all">@charge.ObligationId · @((charge.AmountMinorUnits / 100m).ToString("C", System.Globalization.CultureInfo.GetCultureInfo("en-US"))) @charge.Currency <span class="block text-muted">Reviewed version @charge.ReviewedVersion</span></li> }</ul>
+            @if (item.CashFacts is { Count: > 0 } facts) {
+                <section class="mt-6 rounded-xl border border-line p-4">
+                    <h3 class="font-semibold">Verified cash movements</h3>
+                    <p class="mt-2 text-sm text-muted">Original capture history stays intact. Returned money and decisions about debt are separate. Pending review keeps collection on hold.</p>
+                    <ul class="mt-4 space-y-4">@foreach (var movement in facts) { <li class="min-w-0 text-sm">
+                        <p class="font-semibold">@(movement.Kind switch { CashMovementKind.Refund => "Refund", CashMovementKind.DisputeWithdrawal => "Dispute withdrawal", _ => "Dispute reinstatement" }) · @((movement.SignedMinorUnits / 100m).ToString("C", System.Globalization.CultureInfo.GetCultureInfo("en-US"))) @movement.Currency</p>
+                        <p class="mt-1 text-muted">@(movement.ReviewState switch { CashMovementReviewState.Classified => "Disposition recorded", CashMovementReviewState.Pending => "Allocation / debt disposition pending", _ => "Review record missing — investigation required" })</p>
+                        <p class="mt-1 break-all text-muted">Source @movement.SourceId</p><p class="mt-1 break-all text-muted">Transaction @movement.TransactionId</p>
+                        <p class="mt-1 text-muted">Provider transaction @movement.ProviderAt.ToString("yyyy-MM-dd HH:mm 'UTC'")</p>
+                    </li> }</ul>
+                    @if (facts.Count == 50) { <p class="mt-4 text-sm text-muted">Showing the 50 most recent movements; this list is not an account total.</p> }
+                </section>
+            }
             @if (item.State != FinancialExceptionState.Resolved) {
                 <div class="mt-6 grid gap-5 sm:grid-cols-2">
                     <form asp-action="Assign" method="post" class="space-y-3">

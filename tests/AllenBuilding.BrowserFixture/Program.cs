@@ -47,9 +47,11 @@ foreach (var project in new[] { "chromium", "mobile", "webkit-mobile" })
     var debt = Obligation.Issue(account.Id, new Money(2500), "Previous tenancy charge", new DateOnly(2026, 10, 1), manager.Id, DateTimeOffset.UtcNow);
     var attempt = PaymentAttempt.Admit(Guid.NewGuid(), tenant.Id, binding, [new(debt.Id, account.Id, debt.Version, 2500)], DateTimeOffset.UtcNow);
     attempt.BeginDispatch(DateTimeOffset.UtcNow);
-    db.AddRange(oldMembership, account, binding, debt, attempt,
-        new CollectionGuard { AccountId = account.Id, AttemptId = attempt.Id, ObligationId = debt.Id },
-        FinancialException.Open(attempt, FinancialFailure.ProviderUnknown, null, DateTimeOffset.UtcNow));
+    var capture = SettlementPayment.Record(attempt, new(binding.ProviderAccount, false, binding.CustomerId, "cs_browser_" + project.Replace('-', '_'), "pi_browser_" + project.Replace('-', '_'), 2500, "USD"), DateTimeOffset.UtcNow);
+    var movement = CashMovement.Record(capture, attempt, new(binding.ProviderAccount, false, account.Id, attempt.Id, binding.CustomerId, attempt.PaymentId!,
+        "re_browser_" + project.Replace('-', '_'), "txn_browser_" + project.Replace('-', '_'), CashMovementKind.Refund, -500, "USD", DateTimeOffset.UtcNow), DateTimeOffset.UtcNow);
+    db.AddRange(oldMembership, account, binding, debt, attempt, capture, movement, CashMovementReview.Open(movement),
+        FinancialException.Open(attempt, FinancialFailure.ExternalCashMovement, "Paid", DateTimeOffset.UtcNow));
     await db.SaveChangesAsync();
     fixtures[project] = new { membershipId = membership.Id, tenantEmail = tenant.Email, managerEmail = manager.Email, password, key = await users.GetAuthenticatorKeyAsync(manager) };
 }

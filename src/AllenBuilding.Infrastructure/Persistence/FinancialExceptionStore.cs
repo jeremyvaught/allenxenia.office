@@ -47,10 +47,18 @@ public sealed class FinancialExceptionStore(OfficeDbContext db, ICurrentActor cu
                 .Take(25).Select(x => new FinancialCaseItem(x.ObligationId, x.ReviewedVersion, x.AmountMinorUnits, row.Attempt.Currency)).ToListAsync(cancellationToken);
             var history = await db.FinancialExceptionHistory.AsNoTracking().Where(x => x.ExceptionId == row.Issue.Id).OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.Id)
                 .Take(20).Select(x => new FinancialCaseHistory(x.Action, x.ActorUserId, x.Reason, x.OccurredAt)).ToListAsync(cancellationToken);
+            var cash = await (from movement in db.CashMovements.AsNoTracking()
+                              join review in db.CashMovementReviews on movement.Id equals review.MovementId into reviews
+                              from review in reviews.DefaultIfEmpty()
+                              where movement.AccountId == row.Issue.AccountId && movement.AttemptId == row.Attempt.Id
+                              orderby movement.RecordedAt descending, movement.Id descending
+                              select new FinancialCashFact(movement.Id, movement.Kind, movement.SignedMinorUnits, movement.Currency, movement.SourceId,
+                                  movement.TransactionId, movement.ProviderAt, review == null ? null : (CashMovementReviewState?)review.State, review == null ? null : (Guid?)review.Version))
+                .Take(50).ToListAsync(cancellationToken);
             result.Add(new(row.Issue.Id, row.Issue.Version, row.BuildingId, row.Issue.AccountId, row.Attempt.Id, row.Suite, row.Issue.State, row.Issue.Failure,
                 row.Issue.OwnerUserId, row.Attempt.ProviderAccount, row.Attempt.LiveMode, row.Attempt.CustomerId, row.Attempt.SessionId, row.Attempt.PaymentId,
                 row.Attempt.OperationId, row.Attempt.State, row.Issue.LastVerifiedState ?? (row.LastCashAt is null ? null : "Paid"), row.Issue.LastVerifiedAt ?? row.LastCashAt,
-                row.Issue.FirstSeenAt, items, owners, history, row.Work?.Attempts, row.Work?.Failures, row.Work?.State, row.Work?.NextAttemptAt));
+                row.Issue.FirstSeenAt, items, owners, history, row.Work?.Attempts, row.Work?.Failures, row.Work?.State, row.Work?.NextAttemptAt, CashFacts: cash));
         }
         // Discard protected rows when either the ticket or the current management grant ended during the read.
         var fresh = await current.GetAsync(cancellationToken);

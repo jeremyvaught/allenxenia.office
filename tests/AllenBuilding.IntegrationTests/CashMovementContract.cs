@@ -98,7 +98,40 @@ public static class CashMovementContract
             Assert.Equal(2, await db.CashMovementReviews.CountAsync(x => x.AccountId == restored.Original.AccountId && x.State == CashMovementReviewState.Pending));
             Assert.Equal(1000, (await db.SettlementPayments.SingleAsync(x => x.Id == restored.Capture.Id)).AmountMinorUnits);
         }
+        var manager = new OfficeUser { UserName = "cash-reader-" + Guid.NewGuid().ToString("N"), TwoFactorEnabled = true }; Guid buildingId;
+        await using (var db = create())
+        {
+            buildingId = await db.Suites.Where(x => x.Id == fixture.Membership.SuiteId).Select(x => x.BuildingId).SingleAsync();
+            db.AddRange(manager, new BuildingManager { UserId = manager.Id, BuildingId = buildingId }); await db.SaveChangesAsync();
+        }
+        var readerActor = new Actor(manager.Id, new HashSet<Guid> { buildingId }, true, true);
+        await using (var db = create())
+        {
+            var rows = await new FinancialExceptionStore(db, new TestActor { Actor = readerActor }, clock, new(false)).ReadAsync(readerActor, false, CancellationToken.None);
+            var visible = rows.Single().CashFacts!.Single(); Assert.Equal(-200, visible.SignedMinorUnits); Assert.Equal(fact.TransactionId, visible.TransactionId); Assert.Null(visible.ReviewState);
+            for (var index = 0; index < 55; index++)
+            {
+                var movement = CashMovement.Record(fixture.Capture, fixture.Original, fact with { SourceId = "re_bound_" + index, TransactionId = "txn_bound_" + fixture.Original.Id.ToString("N") + "_" + index, SignedMinorUnits = -1 }, clock.Now);
+                db.AddRange(movement, CashMovementReview.Open(movement));
+            }
+            await db.SaveChangesAsync();
+        }
+        await using (var db = create())
+        {
+            var rows = await new FinancialExceptionStore(db, new TestActor { Actor = readerActor }, clock, new(false)).ReadAsync(readerActor, false, CancellationToken.None);
+            Assert.Equal(50, rows.Single().CashFacts!.Count); Assert.DoesNotContain(rows.Single().CashFacts!, x => x.SourceId == "du_restored");
+        }
+        await using (var db = create())
+        {
+            var revokedDuringRead = new CallbackActor(async () =>
+            {
+                await using var revoker = create(); revoker.BuildingManagers.Remove(await revoker.BuildingManagers.SingleAsync(x => x.UserId == manager.Id && x.BuildingId == buildingId)); await revoker.SaveChangesAsync(); return readerActor;
+            });
+            Assert.Empty(await new FinancialExceptionStore(db, revokedDuringRead, clock, new(false)).ReadAsync(readerActor, false, CancellationToken.None));
+        }
     }
+    private sealed class CallbackActor(Func<Task<Actor?>> callback) : ICurrentActor
+    { public Task<Actor?> GetAsync(CancellationToken cancellationToken = default) => callback(); }
     private sealed class Clock : TimeProvider
     { public DateTimeOffset Now { get; set; } = new(2003, 1, 1, 12, 0, 0, TimeSpan.Zero); public override DateTimeOffset GetUtcNow() => Now; }
     private sealed class Reader(Func<PaymentAttempt, Task<CashObservation>> read) : ICashMovementReader
