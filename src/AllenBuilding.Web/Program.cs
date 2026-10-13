@@ -95,9 +95,17 @@ if (migrate)
         using var scope = app.Services.CreateScope();
         await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().Database.MigrateAsync();
     }
-    catch (Exception)
+    catch (Exception exception)
     {
         Console.Error.WriteLine("Migration failed. Keep writers stopped and inspect the applied schema through the authorized operator; do not continue activation.");
+        Console.Error.WriteLine(SafeFailure.Describe(exception));
+        try
+        {
+            using var scope = app.Services.CreateScope();
+            var applied = await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().Database.GetAppliedMigrationsAsync();
+            Console.Error.WriteLine("Applied migrations: " + string.Join(", ", applied.Take(100)));
+        }
+        catch (Exception inspectionError) { Console.Error.WriteLine("Schema inspection failed: " + SafeFailure.Describe(inspectionError)); }
         Environment.ExitCode = 1;
     }
     finally { await app.DisposeAsync(); }

@@ -18,6 +18,9 @@ public static class OfficeSecurity
     public const string RecentManagerPolicy = "ManagerWithRecentMfa";
     public const string PasswordTime = "office.password_time";
     public const string FactorTime = "office.factor_time";
+    // Persistent encryption namespace, intentionally retained for existing MFA seeds,
+    // cookies and tokens. A display-name change must never change this identifier.
+    public const string ProtectionApplicationName = "AllenXeniaOffice.Build";
 
     public static void AddOfficeSecurity(this WebApplicationBuilder builder)
     {
@@ -81,7 +84,7 @@ public static class OfficeSecurity
         if (production) ProtectionFiles.ValidateDirectory(keyPath, builder.Environment.ContentRootPath);
         Directory.CreateDirectory(keyPath);
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(keyPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        var protection = services.AddDataProtection().SetApplicationName("AllenXeniaOffice.Build")
+        var protection = services.AddDataProtection().SetApplicationName(ProtectionApplicationName)
             .PersistKeysToFileSystem(new DirectoryInfo(keyPath));
         var certificate = builder.Configuration["Protection:CertificatePath"];
         if (production && string.IsNullOrWhiteSpace(certificate))

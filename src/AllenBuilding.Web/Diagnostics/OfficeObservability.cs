@@ -53,7 +53,17 @@ public static class OfficeObservability
         context.Response.Headers["X-Office-TraceId"] = operation.TraceId;
         try { await next(context); }
         catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested) { operation.Result = OfficeOutcome.Cancelled; failed = true; throw; }
-        catch (Exception) { operation.Result = OfficeOutcome.Failure; failed = true; throw; }
+        catch (Exception exception)
+        {
+            operation.Result = OfficeOutcome.Failure; failed = true;
+            try
+            {
+                context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("AllenBuilding.Http")
+                    .LogError("Request failure {Route} {TraceId} {Failure}", route, operation.TraceId, SafeFailure.Describe(exception));
+            }
+            catch (Exception) { OfficeTelemetry.ExportFailed("traces"); }
+            throw;
+        }
         finally
         {
             var status = failed ? operation.Result == OfficeOutcome.Cancelled ? 499 : 500 : context.Response.StatusCode;
