@@ -64,7 +64,7 @@ public sealed class StripeCollectionGateway : ICollectionGateway, IDisposable
             var session = await new SessionService(_client).CreateAsync(new SessionCreateOptions
             {
                 Mode = "payment",
-                UiMode = "hosted",
+                UiMode = "hosted_page",
                 Customer = original.CustomerId,
                 ClientReferenceId = original.Id.ToString("D"),
                 Metadata = metadata,

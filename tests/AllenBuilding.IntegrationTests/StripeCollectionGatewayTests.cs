@@ -23,7 +23,7 @@ public sealed class StripeCollectionGatewayTests
         Assert.Equal(posts[0].Key, posts[1].Key); Assert.Equal("2026-09-30.endive", posts[0].Version);
         Assert.All(fixture.Requests, x => Assert.Null(x.ConnectAccount));
         var fields = Form(posts[0].Body);
-        Assert.Equal("payment", fields["mode"]); Assert.Equal("hosted", fields["ui_mode"]);
+        Assert.Equal("payment", fields["mode"]); Assert.Equal("hosted_page", fields["ui_mode"]);
         Assert.Equal("cus_gateway", fields["customer"]); Assert.Equal("pmc_reviewed", fields["payment_method_configuration"]);
         Assert.Equal("false", fields["adaptive_pricing[enabled]"]); Assert.Equal("1000", fields["line_items[0][price_data][unit_amount]"]);
         Assert.DoesNotContain(fields.Keys, x => x.StartsWith("payment_method_types", StringComparison.Ordinal));
