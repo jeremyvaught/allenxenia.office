@@ -1,0 +1,22 @@
+@model AllenBuilding.Application.Reporting.CompletionReport
+@using AllenBuilding.Application.Reporting
+@{ ViewData["Title"] = "Maintenance completion times";
+    string Duration(double? seconds) => seconds is null ? "No completed samples" : seconds >= 86400 ? $"{seconds / 86400:0.0} days" : seconds >= 3600 ? $"{seconds / 3600:0.0} hours" : seconds >= 60 ? $"{seconds / 60:0.0} minutes" : $"{seconds:0.0} seconds";
+}
+<div class="page">
+    <p class="mb-2 text-sm text-muted">BUILDING MANAGEMENT · REPORTS</p><h1 class="mb-4 text-4xl font-semibold">Maintenance completion times</h1>
+    <p class="mb-4 max-w-3xl text-muted">Each submission or reopening starts a workflow cycle. Completion measures time to the first completed repair in that cycle; verification measures time from completion to the manager’s close. Open work and cancellations are counted separately.</p>
+    <p class="mb-6 text-sm text-muted">Snapshot @Model.ObservedAt.ToString("yyyy-MM-dd HH:mm:ss 'UTC'") · All recorded history in the selected building scope.</p>
+    <form method="get" class="mb-8 grid items-end gap-4 rounded-2xl border border-line bg-panel p-5 sm:grid-cols-2">
+        <div class="min-w-0 flex-1"><label for="completion-building" class="mb-2 block">Building</label><select id="completion-building" name="BuildingId" class="field"><option value="">All managed buildings</option>@foreach (var building in Model.Buildings) { <option value="@building.Id" selected="@(Model.Query.BuildingId == building.Id)">@building.Name</option> }</select></div><button class="button">View report</button>
+    </form>
+    <section aria-label="Workflow duration summaries" class="grid gap-5 sm:grid-cols-2">
+        @foreach (var pair in new[] { (Label: "Repair completion", Summary: Model.Completion), (Label: "Manager verification", Summary: Model.Verification) }) {
+            <div class="rounded-2xl border border-line bg-panel p-6"><h2 class="text-xl font-semibold">@pair.Label</h2><p class="mt-3 text-sm text-muted">@pair.Summary.Samples measured cycles</p><dl class="mt-5 space-y-4"><div><dt class="text-sm text-muted">Median</dt><dd class="text-2xl font-semibold">@Duration(pair.Summary.MedianSeconds)</dd></div><div><dt class="text-sm text-muted">95th percentile</dt><dd class="text-2xl font-semibold">@Duration(pair.Summary.P95Seconds)</dd></div></dl></div>
+        }
+    </section>
+    <p class="mt-6 text-muted">@Model.Cycles cycles · @Model.Unresolved without completion or cancellation · @Model.Cancelled cancelled. Missing completion or verification is excluded from duration samples.</p>
+    @if (Model.AmbiguousRequests > 0) { <p class="mt-4 rounded-xl border border-line bg-panel p-4">@Model.AmbiguousRequests requests are excluded because their recorded workflow timestamps do not establish event order. Their ordinary request histories remain available.</p> }
+    <p class="mt-4 text-sm text-muted">The median averages the two middle samples for an even population. The 95th percentile uses the nearest rank. Durations are elapsed time, including weekends.</p>
+    <div class="mt-8 flex flex-wrap gap-3"><a asp-action="Maintenance" class="quiet-button">Maintenance aging</a><a asp-controller="Maintenance" asp-action="Manage" class="quiet-button">Maintenance queue</a><a asp-controller="Portal" asp-action="Index" class="quiet-button">Your office</a></div>
+</div>

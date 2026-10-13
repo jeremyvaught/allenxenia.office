@@ -373,6 +373,19 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await expect(page).toHaveURL(/\/Account\/Denied/);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Access unavailable');
 
+    await manager.goto('/Portal');
+    await manager.getByRole('link', { name: 'Completion time report', exact: true }).click();
+    await expect(manager.getByRole('heading', { level: 1 })).toHaveText('Maintenance completion times');
+    await expect(manager.getByRole('heading', { name: 'Repair completion', exact: true })).toBeVisible();
+    await expect(manager.getByRole('heading', { name: 'Manager verification', exact: true })).toBeVisible();
+    expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    for (const control of await manager.locator('main button, main select, main .quiet-button').all()) {
+      expect((await control.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    }
+    await manager.screenshot({ path: `artifacts/browser/completion-report-${testInfo.project.name}.png`, fullPage: true });
+    await page.goto('/Reports/Completion');
+    await expect(page).toHaveURL(/\/Account\/Denied/);
+
     await manager.goto(`/Billing/ManageAccount/${account.paymentAccountId}`);
     await manager.getByLabel('Reason for ending tenancy', { exact: true }).fill('Tenant has left this suite. Reconcile existing provider instructions.');
     await manager.getByRole('button', { name: 'Review tenancy end', exact: true }).click();

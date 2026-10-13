@@ -7,8 +7,19 @@ using Microsoft.AspNetCore.Mvc;
 namespace AllenBuilding.Web.Controllers;
 
 [Authorize(Policy = OfficeSecurity.ManagerPolicy), ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-public sealed class ReportsController(ManagementReportQueries queries, ILogger<ReportsController> logger) : Controller
+public sealed class ReportsController(ManagementReportQueries queries, CompletionReportQueries completion, ILogger<ReportsController> logger) : Controller
 {
+    [HttpGet]
+    public async Task<IActionResult> Completion(CompletionQuery query, CancellationToken token)
+    {
+        if (!ModelState.IsValid || !query.IsValid) return BadRequest();
+        try { var report = await completion.ReadAsync(query, token); return report is null ? NotFound() : View(report); }
+        catch (Exception exception) when (exception is TimeoutException or DbException)
+        {
+            logger.LogWarning("Maintenance completion report unavailable ({FailureType})", exception.GetType().Name);
+            ViewData["RetryAction"] = "Completion"; Response.StatusCode = 503; return View("Unavailable");
+        }
+    }
     [HttpGet]
     public async Task<IActionResult> Rent(RentBalanceQuery query, CancellationToken cancellationToken)
     {
