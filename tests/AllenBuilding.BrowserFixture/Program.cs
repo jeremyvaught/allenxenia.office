@@ -66,7 +66,17 @@ foreach (var project in new[] { "chromium", "mobile", "webkit-mobile" })
     var autoBinding = BillingCustomerBinding.Create(autoAccount.Id, "acct_browser_payments", false, "cus_auto_" + project.Replace('-', '_'), DateTimeOffset.UtcNow);
     var autoTerms = RentAgreement.Create(autoAccount.Id, new Money(100000), 31, new DateOnly(2026, 1, 1), null, manager.Id, DateTimeOffset.UtcNow);
     db.AddRange(autoSuite, autoMember, autoAccount, autoBinding, autoTerms, new ActiveGrant { UserId = tenant.Id, SuiteId = autoSuite.Id, MembershipId = autoMember.Id }); await db.SaveChangesAsync();
-    fixtures[project] = new { membershipId = membership.Id, paymentAccountId = payAccount.Id, autopayAccountId = autoAccount.Id, tenantEmail = tenant.Email, managerEmail = manager.Email, password, key = await users.GetAuthenticatorKeyAsync(manager) };
+    var setupNow = DateTimeOffset.FromUnixTimeSeconds(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+    var setupSuite = new Suite { BuildingId = building.Id, Name = "Saved setup test office" };
+    var setupMember = Membership.Grant(setupSuite.Id, tenant.Id, setupNow.AddDays(-1)); var setupAccount = RentAccount.Open(Guid.NewGuid(), setupMember.Id);
+    var setupBinding = BillingCustomerBinding.Create(setupAccount.Id, "acct_browser_payments", false, "cus_setup_" + project.Replace('-', '_'), setupNow);
+    var setupTerms = RentAgreement.Create(setupAccount.Id, new Money(100000), 31, new DateOnly(2026, 1, 1), null, manager.Id, setupNow);
+    var setupAuth = AutopayAuthorization.Consent(Guid.NewGuid(), tenant.Id, setupAccount, setupBinding, AutopaySchedule.Select(setupTerms, setupNow, []), true, setupNow);
+    var setupWork = AutopayWork.Enqueue(setupAuth, AutopayWorkStage.Setup, setupNow, new("https://browser.example.test", "pmc_browser_payments")); setupWork.Claim(setupNow); setupWork.BeginDispatch(setupNow);
+    setupAuth.ObserveVerifiedSetup(new("acct_browser_payments", false, setupAccount.Id, setupBinding.CustomerId, setupAuth.ConsentHash, "cs_setup_" + project.Replace('-', '_'), setupNow.AddHours(24), AutopaySetupState.Waiting, null, true, false, setupNow), false);
+    setupWork.Complete(setupWork.LeaseToken, CollectionWorkOutcome.Waiting, setupNow);
+    db.AddRange(setupSuite, setupMember, setupAccount, setupBinding, setupTerms, setupAuth, setupWork, new AutopaySlot { AccountId = setupAccount.Id, AuthorizationId = setupAuth.Id }, new ActiveGrant { UserId = tenant.Id, SuiteId = setupSuite.Id, MembershipId = setupMember.Id }); await db.SaveChangesAsync();
+    fixtures[project] = new { membershipId = membership.Id, paymentAccountId = payAccount.Id, autopayAccountId = autoAccount.Id, autopaySetupAccountId = setupAccount.Id, tenantEmail = tenant.Email, managerEmail = manager.Email, password, key = await users.GetAuthenticatorKeyAsync(manager) };
 }
 var path = Path.Combine(directory, "accounts.json");
 await File.WriteAllTextAsync(path, JsonSerializer.Serialize(fixtures));

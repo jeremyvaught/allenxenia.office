@@ -9,8 +9,25 @@ using Microsoft.AspNetCore.RateLimiting;
 namespace AllenBuilding.Web.Controllers;
 
 [Authorize, ResponseCache(NoStore = true, Location = ResponseCacheLocation.None), EnableRateLimiting("PaymentActions")]
-public sealed class AutopayController(AutopayPlanning actions, BillingActions billing, AutopayPolicy policy, ICurrentActor current, AutopayReviewTickets tickets, TimeProvider time) : Controller
+public sealed class AutopayController(AutopayPlanning actions, BillingActions billing, AutopayPolicy policy, ICurrentActor current, AutopayReviewTickets tickets, TimeProvider time, AutopayMethodHandoffs handoffs) : Controller
 {
+    [HttpPost]
+    public async Task<IActionResult> Continue(Guid id)
+    {
+        var view = (await actions.ReadAsync()).SingleOrDefault(x => x.Id == id); if (view is null) return NotFound();
+        var destination = ModelState.IsValid ? await handoffs.ContinueAsync(id) : null;
+        if (destination is not null) return Redirect(destination.AbsoluteUri);
+        TempData["Notice"] = "Payment-method setup is unavailable right now. Check the current autopay status before trying again.";
+        return RedirectToAction(nameof(Index), new { accountId = view.AccountId });
+    }
+    [HttpGet]
+    public async Task<IActionResult> Return(Guid authorizationId)
+    {
+        // Both provider success and cancel URLs lead here. Neither changes consent/provider/payment state.
+        var view = (await actions.ReadAsync()).SingleOrDefault(x => x.Id == authorizationId); if (view is null) return NotFound();
+        TempData["Notice"] = "Provider verification is pending. Returning here does not confirm active autopay or a rent payment.";
+        return RedirectToAction(nameof(Index), new { accountId = view.AccountId });
+    }
     [HttpGet]
     public async Task<IActionResult> Index(Guid accountId)
     {

@@ -47,6 +47,15 @@ public sealed class AutopayHttpTests
             var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); var auth = await db.AutopayAuthorizations.SingleAsync(); id = auth.Id; Assert.Equal(100000, auth.MonthlyMinorUnits); Assert.Equal(31, auth.DueDay);
             Assert.Equal(AutopayState.AwaitingMethod, auth.State); Assert.Empty(await db.Obligations.ToListAsync()); Assert.Empty(await db.SettlementPayments.ToListAsync()); Assert.Equal(1, await db.AutopayWork.CountAsync());
         }
+        using var returned = await tenant.GetAsync("/Autopay/Return?authorizationId=" + id + "&paid=true&session_id=cs_fabricated"); Assert.Equal(HttpStatusCode.Redirect, returned.StatusCode);
+        using var foreignReturn = await tenant.GetAsync("/Autopay/Return?authorizationId=" + Guid.NewGuid()); Assert.Equal(HttpStatusCode.NotFound, foreignReturn.StatusCode);
+        using var continueGet = await tenant.GetAsync("/Autopay/Continue?id=" + id); Assert.Equal(HttpStatusCode.NotFound, continueGet.StatusCode); // Conventional MVC has no GET action for this name.
+        using var noHandoffCsrf = await tenant.PostAsync("/Autopay/Continue", new FormUrlEncodedContent(new Dictionary<string, string> { ["id"] = id.ToString() })); Assert.Equal(HttpStatusCode.BadRequest, noHandoffCsrf.StatusCode);
+        using var noGateway = await AccountTestHost.PostAsync(tenant, page, "/Autopay/Continue", ("id", id.ToString())); Assert.Equal(HttpStatusCode.Redirect, noGateway.StatusCode); Assert.Equal(returned.Headers.Location, noGateway.Headers.Location);
+        using (var unchanged = enabled.Services.CreateScope())
+        {
+            var db = unchanged.ServiceProvider.GetRequiredService<OfficeDbContext>(); Assert.Equal(AutopayState.AwaitingMethod, (await db.AutopayAuthorizations.SingleAsync()).State); Assert.Equal(1, await db.AutopayWork.CountAsync()); Assert.False(await db.SettlementPayments.AnyAsync());
+        }
         using var stopReview = await AccountTestHost.PostAsync(tenant, page, "/Autopay/PrepareStop", ("id", id.ToString()), ("timing", "Immediately")); Assert.Equal(HttpStatusCode.OK, stopReview.StatusCode); var stopHtml = await stopReview.Content.ReadAsStringAsync(); var stopTicket = Ticket(stopHtml);
         Assert.Contains("Existing unpaid rent remains owed", stopHtml);
         using var stopped = await Confirm(tenant, stopTicket); Assert.Equal(HttpStatusCode.Redirect, stopped.StatusCode);
@@ -59,6 +68,29 @@ public sealed class AutopayHttpTests
         }
         using var denied = await tenant.GetAsync(page); Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode);
         using var deniedReplay = await tenant.PostAsync("/Autopay/Confirm", Form(review, ticket)); Assert.Equal(HttpStatusCode.NotFound, deniedReplay.StatusCode);
+    }
+    [Fact]
+    public async Task A_known_method_handoff_is_post_only_and_provider_return_cannot_activate_consent()
+    {
+        await using var host = new AccountTestHost(); await host.InitializeAsync(); var fixture = await Seed(host); var probe = new MethodProbe();
+        await using var enabled = host.WithWebHostBuilder(b => b.ConfigureServices(s => { s.Replace(ServiceDescriptor.Singleton(Policy)); s.AddSingleton<IAutopayMethodGatewayFactory>(probe); }));
+        Guid id;
+        using (var scope = enabled.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); var now = DateTimeOffset.FromUnixTimeSeconds(host.Clock.GetUtcNow().ToUnixTimeSeconds());
+            var binding = await db.BillingCustomers.SingleAsync(); var account = await db.RentAccounts.SingleAsync(); var terms = await db.RentAgreements.SingleAsync();
+            var auth = AutopayAuthorization.Consent(Guid.NewGuid(), fixture.User.Id, account, binding, AutopaySchedule.Select(terms, now, []), true, now);
+            var work = AutopayWork.Enqueue(auth, AutopayWorkStage.Setup, now, new("https://office.example.test", "pmc_method")); work.Claim(now); work.BeginDispatch(now);
+            auth.ObserveVerifiedSetup(new(Policy.ProviderAccount, false, account.Id, binding.CustomerId, auth.ConsentHash, "cs_http_method", now.AddHours(24), AutopaySetupState.Waiting, null, true, false, now), false);
+            work.Complete(work.LeaseToken, CollectionWorkOutcome.Waiting, now);
+            db.AddRange(auth, work, new AutopaySlot { AccountId = account.Id, AuthorizationId = auth.Id }); await db.SaveChangesAsync(); id = auth.Id;
+        }
+        using var tenant = enabled.CreateClient(new() { AllowAutoRedirect = false }); await Login(tenant); var page = "/Autopay?accountId=" + fixture.Account.Id;
+        var html = await tenant.GetStringAsync(page); Assert.Contains("Continue payment-method setup", html); Assert.DoesNotContain("cs_http_method", html); Assert.DoesNotContain("cus_", html);
+        using var handoff = await AccountTestHost.PostAsync(tenant, page, "/Autopay/Continue", ("id", id.ToString())); Assert.Equal(HttpStatusCode.Redirect, handoff.StatusCode);
+        Assert.Equal("https://checkout.stripe.com/c/setup/synthetic", handoff.Headers.Location!.AbsoluteUri); Assert.Contains("no-store", handoff.Headers.CacheControl!.ToString()); Assert.Equal(1, probe.Reads); Assert.True(probe.Disposed);
+        using var returned = await tenant.GetAsync("/Autopay/Return?authorizationId=" + id + "&paid=true"); Assert.Equal(HttpStatusCode.Redirect, returned.StatusCode); Assert.Equal(1, probe.Reads);
+        using var verify = enabled.Services.CreateScope(); var check = verify.ServiceProvider.GetRequiredService<OfficeDbContext>(); Assert.Equal(AutopayState.AwaitingMethod, (await check.AutopayAuthorizations.SingleAsync()).State); Assert.False(await check.SettlementPayments.AnyAsync()); Assert.Equal(1, await check.AutopayWork.CountAsync());
     }
     [Fact]
     public async Task Changed_terms_and_expired_consent_cannot_be_enrolled_from_a_previous_review()
@@ -83,6 +115,14 @@ public sealed class AutopayHttpTests
     private static FormUrlEncodedContent Form(string html, string ticket) => new(new Dictionary<string, string> { ["ticket"] = ticket, ["accepted"] = "true", ["__RequestVerificationToken"] = WebUtility.HtmlDecode(Regex.Match(html, "name=\"__RequestVerificationToken\"[^>]*value=\"([^\"]+)\"").Groups[1].Value) });
     private static async Task Login(HttpClient client) { using var result = await AccountTestHost.PostAsync(client, "/Account/Login", "/Account/Login", ("Email", "autopay@example.test"), ("Password", AccountTestHost.Password)); Assert.Equal("/Portal", result.Headers.Location?.OriginalString); }
     private sealed record Fixture(OfficeUser User, RentAccount Account, RentAgreement Terms);
+    private sealed class MethodProbe : IAutopayMethodGatewayFactory, IAutopayMethodGateway, IDisposable
+    {
+        public int Reads { get; private set; }
+        public bool Disposed { get; private set; }
+        public IAutopayMethodGateway Open(AutopayMethodSnapshot original) => this;
+        public Task<AutopayMethodHandoff?> ReadAsync(AutopayMethodSnapshot original, CancellationToken cancellationToken) { Reads++; return Task.FromResult<AutopayMethodHandoff?>(new(original.Authorization.SetupSessionId!, original.Authorization.SetupExpiresAt!.Value, new("https://checkout.stripe.com/c/setup/synthetic"))); }
+        public void Dispose() => Disposed = true;
+    }
     private static async Task<Fixture> Seed(AccountTestHost host)
     {
         using var scope = host.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); var users = scope.ServiceProvider.GetRequiredService<UserManager<OfficeUser>>(); var now = host.Clock.GetUtcNow();

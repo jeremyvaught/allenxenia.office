@@ -11,7 +11,7 @@ public sealed record ConfirmAutopay(Guid OperationId, Guid AccountId, Guid Accou
 public sealed record StopAutopay(Guid OperationId, Guid AuthorizationId, Guid Version, AutopayStopTiming Timing);
 public sealed record AutopayResult(BillingCode Code, Guid? AuthorizationId = null);
 public sealed record AutopayView(Guid Id, Guid AccountId, Guid Version, string Suite, AutopayState State, long MonthlyMinorUnits,
-    int DueDay, DateOnly FirstPeriodStartsOn, DateOnly FirstDueOn, DateOnly? EndsBefore, DateTimeOffset? StopEffectiveAt);
+    int DueDay, DateOnly FirstPeriodStartsOn, DateOnly FirstDueOn, DateOnly? EndsBefore, DateTimeOffset? StopEffectiveAt, bool CanContinueSetup = false);
 public interface IAutopayStore
 {
     Task<AutopayConsentReview?> ReviewAsync(Actor actor, Guid accountId, Guid agreementId, CancellationToken cancellationToken);

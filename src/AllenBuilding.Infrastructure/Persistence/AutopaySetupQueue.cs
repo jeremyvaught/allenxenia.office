@@ -19,7 +19,7 @@ public sealed class AutopaySetupQueue(OfficeDbContext db, TimeProvider time) : I
         var original = await db.AutopayWork.SingleAsync(x => x.Id == candidate.Id, token); await db.Entry(original).ReloadAsync(token);
         var auth = await db.AutopayAuthorizations.SingleAsync(x => x.Id == original.AuthorizationId, token); await db.Entry(auth).ReloadAsync(token);
         now = time.GetUtcNow(); if (!original.Eligible(now)) return null;
-        var current = await CanActivate(auth, now, token);
+        var current = await AutopaySetupAdmission.AllowsAsync(db, auth, now, token);
         if (original.DispatchedAt is null && !current)
         {
             original.Suppress(now); ReviewAuthorization(auth); await db.SaveChangesAsync(token); await tx.CommitAsync(token); return null;
@@ -45,7 +45,7 @@ public sealed class AutopaySetupQueue(OfficeDbContext db, TimeProvider time) : I
         if (!Enum.IsDefined(observation.Outcome) || observation.Outcome == AutopaySetupOutcome.Invalid || observation.Outcome == AutopaySetupOutcome.Verified && observation.Setup is null) outcome = CollectionWorkOutcome.Review;
         else if (observation is { Outcome: AutopaySetupOutcome.Verified, Setup: { } fact })
         {
-            var canActivate = await CanActivate(auth, now, token);
+            var canActivate = await AutopaySetupAdmission.AllowsAsync(db, auth, now, token);
             try
             {
                 if (fact.CheckedAt > now) throw new InvalidOperationException("A future observation cannot establish current setup.");
@@ -78,31 +78,5 @@ public sealed class AutopaySetupQueue(OfficeDbContext db, TimeProvider time) : I
         await AuthorityLocks.MembershipAsync(db, membership, token); await CustomerProvisionQueue.LockAccount(db, auth.AccountId, token);
         if (db is MySqlOfficeDbContext)
             await db.Database.ExecuteSqlInterpolatedAsync($"SELECT id FROM autopay_work WHERE id = {workId.ToString("D")} FOR UPDATE", token);
-    }
-    private async Task<bool> CanActivate(AutopayAuthorization auth, DateTimeOffset now, CancellationToken token)
-    {
-        if (auth.State != AutopayState.AwaitingMethod || auth.StopOperationId is not null || now >= auth.FirstAnchorUtc) return false;
-        var current = await (from account in db.RentAccounts.AsNoTracking()
-                             join member in db.Memberships on account.MembershipId equals member.Id
-                             join user in db.Users on member.UserId equals user.Id
-                             where account.Id == auth.AccountId && account.EndedAt == null && member.UserId == auth.ActorId && member.RevokedAt == null &&
-                               member.StartsAt <= now && (member.EndsAt == null || member.EndsAt > now) && user.EmailConfirmed && (user.LockoutEnd == null || user.LockoutEnd <= now) &&
-                               db.ActiveGrants.Any(x => x.MembershipId == member.Id) && db.AutopaySlots.Any(x => x.AccountId == account.Id && x.AuthorizationId == auth.Id) &&
-                               db.RentAgreements.Any(x => x.Id == auth.AgreementId && x.AccountId == account.Id && x.Version == auth.AgreementVersion && x.SupersededBy == null)
-                             select account.Id).AnyAsync(token);
-        if (!current) return false;
-        if (await db.FinancialExceptions.AnyAsync(x => x.AccountId == auth.AccountId && x.State != FinancialExceptionState.Resolved, token) ||
-            await db.TenancyClosures.AnyAsync(x => x.AccountId == auth.AccountId && x.State != BillingClosureState.Verified, token) ||
-            await db.CashSourceWork.AnyAsync(x => x.AccountId == auth.AccountId && x.State != CollectionWorkState.Completed, token) ||
-            await db.CollectionWork.AnyAsync(x => x.ReadOnlyReconciliation && x.State != CollectionWorkState.Completed && db.PaymentAttempts.Any(a => a.Id == x.AttemptId && a.AccountId == auth.AccountId), token) ||
-            await db.PaymentAttempts.AnyAsync(x => x.AccountId == auth.AccountId && x.State == PaymentAttemptState.NeedsReview, token) ||
-            await db.CashMovements.AnyAsync(x => x.AccountId == auth.AccountId && !db.CashMovementReviews.Any(r => r.MovementId == x.Id && r.State == CashMovementReviewState.Classified && r.VerifiedAt != null && r.AgreementHash != null && r.AgreementHash.Length == 64), token)) return false;
-        return !await (from period in db.BillingPeriods.AsNoTracking()
-                       join debt in db.Obligations on period.Id equals debt.PeriodId
-                       where period.AccountId == auth.AccountId && period.StartsOn >= auth.FirstPeriodStartsOn && (auth.EndsBefore == null || period.StartsOn < auth.EndsBefore) &&
-                         (debt.AmountMinorUnits != auth.MonthlyMinorUnits || debt.Currency != auth.Currency || debt.AgreementId != auth.AgreementId ||
-                          db.ObligationCredits.Any(x => x.ObligationId == debt.Id) || db.PaymentAllocations.Any(x => x.ObligationId == debt.Id) || db.RefundAllocations.Any(x => x.ObligationId == debt.Id) ||
-                          db.PaymentAttemptItems.Any(x => x.ObligationId == debt.Id) || db.CollectionGuards.Any(x => x.ObligationId == debt.Id))
-                       select debt.Id).AnyAsync(token);
     }
 }

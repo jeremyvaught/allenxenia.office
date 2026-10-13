@@ -10,6 +10,33 @@ namespace AllenBuilding.IntegrationTests;
 
 public sealed class StripeAutopaySetupGatewayTests
 {
+    [Theory]
+    [InlineData("valid")]
+    [InlineData("host")]
+    [InlineData("port")]
+    [InlineData("userinfo")]
+    [InlineData("scheme")]
+    [InlineData("length")]
+    [InlineData("ready")]
+    [InlineData("stopping")]
+    public async Task Browser_handoff_only_reads_the_known_setup_and_releases_a_valid_hosted_url(string state)
+    {
+        using var f = new Fixture(); f.KnownLease(); f.Session["url"] = "https://checkout.stripe.com/c/setup/synthetic";
+        switch (state)
+        {
+            case "host": f.Session["url"] = "https://checkout.stripe.com.attacker.test/"; break;
+            case "port": f.Session["url"] = "https://checkout.stripe.com:444/"; break;
+            case "userinfo": f.Session["url"] = "https://private@checkout.stripe.com/"; break;
+            case "scheme": f.Session["url"] = "http://checkout.stripe.com/"; break;
+            case "length": f.Session["url"] = "https://checkout.stripe.com/" + new string('a', 4096); break;
+            case "ready": f.Ready(); break;
+            case "stopping": f.Auth.RequestStop(Guid.NewGuid(), "payer", AutopayStopTiming.Immediately, f.Time.Now); break;
+        }
+        var result = await f.Gateway.ReadAsync(new AutopayMethodSnapshot(f.Auth, f.Work, Guid.NewGuid()), default);
+        if (state == "valid") { Assert.NotNull(result); Assert.Equal("cs_setup", result.SessionId); Assert.Equal("checkout.stripe.com", result.Destination.Host); }
+        else Assert.Null(result);
+        Assert.All(f.Requests, x => Assert.Equal("GET", x.Method)); Assert.Null(f.Auth.PaymentMethodId); Assert.Null(f.Auth.SubscriptionId);
+    }
     [Fact]
     public async Task Setup_writes_only_a_stable_hosted_card_setup_then_reads_the_canonical_original()
     {

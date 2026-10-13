@@ -8,8 +8,21 @@ using Microsoft.EntityFrameworkCore.Storage;
 namespace AllenBuilding.Infrastructure.Persistence;
 
 // Pages and future assistant preparation share this coordinator. It never contacts a provider.
-public sealed class AutopayStore(OfficeDbContext db, ICurrentActor current, AutopayPolicy policy, AccountInvitations audit, TimeProvider time) : IAutopayStore
+public sealed class AutopayStore(OfficeDbContext db, ICurrentActor current, AutopayPolicy policy, AccountInvitations audit, TimeProvider time) : IAutopayStore, IAutopayMethodStore
 {
+    public async Task<AutopayMethodSnapshot?> ReadAsync(Actor actor, Guid authorizationId, CancellationToken token)
+    {
+        if (!policy.Enabled || authorizationId == Guid.Empty) return null;
+        var accountId = await db.AutopayAuthorizations.AsNoTracking().Where(x => x.Id == authorizationId && x.ActorId == actor.UserId).Select(x => (Guid?)x.AccountId).SingleOrDefaultAsync(token);
+        if (accountId is null) return null;
+        await using var tx = await AuthorityLocks.BeginAsync(db, token); var account = await Admit(actor, accountId.Value, token); if (account is null) return null;
+        var auth = await db.AutopayAuthorizations.AsNoTracking().SingleAsync(x => x.Id == authorizationId, token);
+        var work = await db.AutopayWork.AsNoTracking().SingleOrDefaultAsync(x => x.AuthorizationId == auth.Id && x.Stage == AutopayWorkStage.Setup, token);
+        if (auth.ActorId != actor.UserId || auth.ProviderAccount != policy.ProviderAccount || auth.LiveMode != policy.LiveMode || auth.SetupState != AutopaySetupState.Waiting ||
+            auth.SetupSessionId is null || auth.SetupExpiresAt is null || auth.SetupExpiresAt <= time.GetUtcNow() || work is null || work.DispatchedAt is null || work.Profile is null || work.State is CollectionWorkState.NeedsReview or CollectionWorkState.Suppressed or CollectionWorkState.Completed ||
+            !await AutopaySetupAdmission.AllowsAsync(db, auth, time.GetUtcNow(), token) || !await IsCurrent(actor, account, token)) return null;
+        return new(auth, work, account.Version);
+    }
     public async Task<AutopayConsentReview?> ReviewAsync(Actor actor, Guid accountId, Guid agreementId, CancellationToken token)
     {
         await using var tx = await AuthorityLocks.BeginAsync(db, token);
@@ -33,7 +46,8 @@ public sealed class AutopayStore(OfficeDbContext db, ICurrentActor current, Auto
                             db.ActiveGrants.Any(x => x.MembershipId == member.Id) && auth.ProviderAccount == policy.ProviderAccount && auth.LiveMode == policy.LiveMode
                           orderby auth.ConsentedAt descending, auth.Id
                           select new AutopayView(auth.Id, account.Id, auth.Version, suite.Name, auth.State, auth.MonthlyMinorUnits,
-                              auth.DueDay, auth.FirstPeriodStartsOn, auth.FirstDueOn, auth.EndsBefore, auth.StopEffectiveAt)).Take(50).ToListAsync(token);
+                              auth.DueDay, auth.FirstPeriodStartsOn, auth.FirstDueOn, auth.EndsBefore, auth.StopEffectiveAt,
+                              auth.State == AutopayState.AwaitingMethod && auth.StopOperationId == null && auth.SetupState == AutopaySetupState.Waiting && auth.SetupSessionId != null && auth.SetupExpiresAt > now)).Take(50).ToListAsync(token);
         var result = new List<AutopayView>();
         foreach (var row in rows)
         {

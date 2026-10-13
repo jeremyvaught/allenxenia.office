@@ -50,6 +50,8 @@ var isolatedAutopay = builder.Environment.IsEnvironment("Testing") && builder.Co
 builder.Services.AddSingleton(new AllenBuilding.Application.Billing.AutopayPolicy(isolatedAutopay, builder.Configuration["Stripe:ProviderAccount"] ?? "", false,
     isolatedAutopay ? new AllenBuilding.Domain.Billing.CheckoutProfile(builder.Configuration["Stripe:PublicOrigin"] ?? "", builder.Configuration["Stripe:PaymentMethodConfiguration"] ?? "") : null));
 builder.Services.AddScoped<AllenBuilding.Application.Billing.IAutopayStore, AutopayStore>();
+builder.Services.AddScoped<AllenBuilding.Application.Billing.IAutopayMethodStore>(s => (AutopayStore)s.GetRequiredService<AllenBuilding.Application.Billing.IAutopayStore>());
+builder.Services.AddScoped<AllenBuilding.Application.Billing.AutopayMethodHandoffs>();
 builder.Services.AddScoped<AllenBuilding.Application.Billing.AutopayPlanning>();
 builder.Services.AddScoped<AutopayReviewTickets>();
 builder.Services.AddSingleton(new AllenBuilding.Application.Billing.FinancialRecoveryPolicy(false));

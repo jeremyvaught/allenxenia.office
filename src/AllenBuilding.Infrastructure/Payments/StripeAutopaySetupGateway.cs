@@ -6,7 +6,7 @@ using Session = Stripe.Checkout.Session;
 
 namespace AllenBuilding.Infrastructure.Payments;
 
-public sealed class StripeAutopaySetupGatewayFactory(StripeCustomerCredentials credentials, TimeProvider time) : IAutopaySetupGatewayFactory
+public sealed class StripeAutopaySetupGatewayFactory(StripeCustomerCredentials credentials, TimeProvider time) : IAutopaySetupGatewayFactory, IAutopayMethodGatewayFactory
 {
     public IAutopaySetupGateway Open(AutopaySetupLease lease)
     {
@@ -15,11 +15,12 @@ public sealed class StripeAutopaySetupGatewayFactory(StripeCustomerCredentials c
             throw new InvalidOperationException("The original setup scope or request profile is unavailable.");
         return new StripeAutopaySetupGateway(credentials, time);
     }
+    public IAutopayMethodGateway Open(AutopayMethodSnapshot original) => (IAutopayMethodGateway)Open(new AutopaySetupLease(original.Original, original.Authorization, Guid.Empty, true));
 }
 
 // Prepared adapter. Registration requires sandbox proof and the activation/stop/reconciliation workers.
 // It saves a method only: no subscription, invoice, PaymentIntent or collection request exists here.
-public sealed class StripeAutopaySetupGateway : IAutopaySetupGateway, IDisposable
+public sealed class StripeAutopaySetupGateway : IAutopaySetupGateway, IAutopayMethodGateway, IDisposable
 {
     private readonly StripeCustomerCredentials _credentials;
     private readonly TimeProvider _time;
@@ -86,6 +87,25 @@ public sealed class StripeAutopaySetupGateway : IAutopaySetupGateway, IDisposabl
             return await Observe(lease, matches[0].Id, token);
         }, cancellationToken);
 
+    public async Task<AutopayMethodHandoff?> ReadAsync(AutopayMethodSnapshot original, CancellationToken cancellationToken)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); deadline.CancelAfter(TimeSpan.FromSeconds(20)); var token = deadline.Token;
+        try
+        {
+            token.ThrowIfCancellationRequested();
+            var lease = new AutopaySetupLease(original.Original, original.Authorization, Guid.Empty, true); var auth = original.Authorization;
+            if (!ValidOriginal(lease) || auth.State != AutopayState.AwaitingMethod || auth.StopOperationId is not null || auth.SetupState != AutopaySetupState.Waiting ||
+                auth.SetupSessionId is null || auth.SetupExpiresAt is null || auth.SetupExpiresAt <= _time.GetUtcNow() || !await Owner(auth, token)) return null;
+            var fact = await Observe(lease, auth.SetupSessionId, token);
+            if (fact is not { Outcome: AutopaySetupOutcome.Verified, Setup.State: AutopaySetupState.Waiting }) return null;
+            var final = await new SessionService(_client).GetAsync(auth.SetupSessionId, cancellationToken: token);
+            if (!Matches(lease, final) || final.Status != "open" || auth.SetupExpiresAt != ExpectedExpiry(original.Original) || auth.SetupExpiresAt <= _time.GetUtcNow() ||
+                !Uri.TryCreate(final.Url, UriKind.Absolute, out var uri) || uri.Scheme != "https" || uri.Host != "checkout.stripe.com" || !uri.IsDefaultPort || uri.UserInfo.Length != 0 || uri.AbsoluteUri.Length > 4096) return null;
+            return new(auth.SetupSessionId, auth.SetupExpiresAt!.Value, uri);
+        }
+        catch (Exception) { return null; } // Nothing private or credential-bearing is released on a failed read.
+    }
+
     private async Task<AutopaySetupObservation> Observe(AutopaySetupLease lease, string sessionId, CancellationToken token)
     {
         if (!PaymentReferences.Valid(sessionId, "cs_")) return Invalid();
@@ -126,7 +146,8 @@ public sealed class StripeAutopaySetupGateway : IAutopaySetupGateway, IDisposabl
     private bool CanCreate(AutopaySetupLease lease) => Valid(lease) && !lease.ReadOnly && lease.Authorization.SetupSessionId is null &&
         lease.Authorization.State == AutopayState.AwaitingMethod && lease.Authorization.StopOperationId is null && lease.Authorization.FirstAnchorUtc > _time.GetUtcNow() &&
         lease.Original.WithinOriginalWriteWindow(_time.GetUtcNow());
-    private bool Valid(AutopaySetupLease lease) => lease.Original.Owns(lease.Token, _time.GetUtcNow()) && lease.Original.Stage == AutopayWorkStage.Setup &&
+    private bool Valid(AutopaySetupLease lease) => lease.Original.Owns(lease.Token, _time.GetUtcNow()) && ValidOriginal(lease);
+    private bool ValidOriginal(AutopaySetupLease lease) => lease.Original.Stage == AutopayWorkStage.Setup &&
         lease.Original.AuthorizationId == lease.Authorization.Id && lease.Original.AccountId == lease.Authorization.AccountId && lease.Original.OriginalOperationId == lease.Authorization.OperationId &&
         lease.Original.ProviderOperationKey == lease.Authorization.SetupOperationKey && lease.Original.Profile?.ApiVersion == StripeConfiguration.ApiVersion &&
         lease.Original.DispatchedAt is { } start && start >= lease.Authorization.ConsentedAt && start <= _time.GetUtcNow() &&

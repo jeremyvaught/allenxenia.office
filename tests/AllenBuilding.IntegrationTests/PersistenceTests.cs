@@ -185,6 +185,7 @@ public sealed class PersistenceTests
         await TenancyClosureContract.VerifyAsync(create);
         await AutopaySetupContract.VerifyAsync(create);
         await AutopayContract.VerifyAsync(create);
+        await AutopayMethodContract.VerifyAsync(create);
         await AccessContract.VerifyAsync(create);
         await OperatorRecoveryContract.VerifyAsync(create);
         await MaintenanceQueueContract.VerifyAsync(create);

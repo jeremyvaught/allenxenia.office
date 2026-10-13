@@ -315,6 +315,17 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     }
     await page.screenshot({ path: `artifacts/browser/autopay-stop-${testInfo.project.name}.png`, fullPage: true });
 
+    await page.goto(`/Autopay?accountId=${account.autopaySetupAccountId}`);
+    await expect(page.getByRole('button', { name: 'Continue payment-method setup', exact: true })).toBeVisible();
+    await expect(page.getByText('Saving a card does not pay rent or confirm active autopay.', { exact: false })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const methodButton = await page.getByRole('button', { name: 'Continue payment-method setup', exact: true }).boundingBox();
+    expect(methodButton!.height).toBeGreaterThanOrEqual(44);
+    await page.screenshot({ path: `artifacts/browser/autopay-method-${testInfo.project.name}.png`, fullPage: true });
+    await page.getByRole('button', { name: 'Continue payment-method setup', exact: true }).click();
+    await expect(page.getByRole('status')).toContainText('Payment-method setup is unavailable right now');
+    await expect(page.getByText('Verified active', { exact: true })).toHaveCount(0);
+
     await page.goto(`/Payments?accountId=${account.paymentAccountId}`);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Choose what to pay');
     await page.getByRole('button', { name: 'Review selected payment', exact: true }).click();
