@@ -131,7 +131,7 @@ public sealed class AutopayStore(OfficeDbContext db, ICurrentActor current, Auto
                               where period.AccountId == account.Id && period.StartsOn >= next && (terms.EndsOn == null || period.StartsOn < terms.EndsOn) &&
                                 (db.ObligationCredits.Any(x => x.ObligationId == debt.Id) || db.PaymentAllocations.Any(x => x.ObligationId == debt.Id) ||
                                  db.RefundAllocations.Any(x => x.ObligationId == debt.Id) || db.CollectionGuards.Any(x => x.ObligationId == debt.Id) ||
-                                 db.PaymentAttemptItems.Any(x => x.ObligationId == debt.Id))
+                                 db.PaymentAttemptItems.Any(x => x.ObligationId == debt.Id) || db.ProviderRentInvoices.Any(x => x.ObligationId == debt.Id))
                               orderby period.StartsOn
                               select period.StartsOn).Distinct().Take(26).ToListAsync(token);
         if (excluded.Count > 25) return null;

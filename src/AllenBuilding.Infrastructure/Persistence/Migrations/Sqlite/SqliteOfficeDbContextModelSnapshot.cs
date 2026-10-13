@@ -1610,6 +1610,147 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                     b.ToTable("payment_events", (string)null);
                 });
 
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.ProviderRentInvoice", b =>
+                {
+                    b.Property<string>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("account_id");
+
+                    b.Property<string>("AuthorizationId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("authorization_id");
+
+                    b.Property<bool>("AutoAdvance")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("auto_advance");
+
+                    b.Property<DateTime>("CheckedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("checked_at");
+
+                    b.Property<string>("ConsentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("consent_hash");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("currency");
+
+                    b.Property<string>("CustomerId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("customer_id");
+
+                    b.Property<string>("InvoiceId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("invoice_id");
+
+                    b.Property<DateTime>("LineEndsAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("line_ends_at");
+
+                    b.Property<string>("LineId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("line_id");
+
+                    b.Property<DateTime>("LineStartsAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("line_starts_at");
+
+                    b.Property<bool>("LiveMode")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("live_mode");
+
+                    b.Property<string>("ObligationId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("obligation_id");
+
+                    b.Property<long>("OriginalMinorUnits")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("original_minor_units");
+
+                    b.Property<string>("PeriodId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("period_id");
+
+                    b.Property<string>("ProviderAccount")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("provider_account");
+
+                    b.Property<long>("RemainingMinorUnits")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("remaining_minor_units");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("state");
+
+                    b.Property<string>("SubscriptionId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("subscription_id");
+
+                    b.Property<string>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ObligationId")
+                        .IsUnique();
+
+                    b.HasIndex("PeriodId")
+                        .IsUnique();
+
+                    b.HasIndex("AuthorizationId", "AccountId");
+
+                    b.HasIndex("AuthorizationId", "CheckedAt");
+
+                    b.HasIndex("ObligationId", "AccountId");
+
+                    b.HasIndex("PeriodId", "AccountId");
+
+                    b.HasIndex("ProviderAccount", "LiveMode", "InvoiceId")
+                        .IsUnique();
+
+                    b.ToTable("provider_rent_invoices", (string)null);
+                });
+
             modelBuilder.Entity("AllenBuilding.Domain.Billing.RefundAllocation", b =>
                 {
                     b.Property<string>("MovementId")
@@ -3203,6 +3344,30 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                     b.HasOne("AllenBuilding.Domain.Billing.Obligation", null)
                         .WithMany()
                         .HasForeignKey("ObligationId", "AccountId")
+                        .HasPrincipalKey("Id", "AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.ProviderRentInvoice", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Billing.AutopayAuthorization", null)
+                        .WithMany()
+                        .HasForeignKey("AuthorizationId", "AccountId")
+                        .HasPrincipalKey("Id", "AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AllenBuilding.Domain.Billing.Obligation", null)
+                        .WithMany()
+                        .HasForeignKey("ObligationId", "AccountId")
+                        .HasPrincipalKey("Id", "AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AllenBuilding.Domain.Billing.BillingPeriod", null)
+                        .WithMany()
+                        .HasForeignKey("PeriodId", "AccountId")
                         .HasPrincipalKey("Id", "AccountId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();

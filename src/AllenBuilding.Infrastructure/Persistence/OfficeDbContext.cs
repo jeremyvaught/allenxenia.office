@@ -31,6 +31,7 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
     public DbSet<AutopayAuthorization> AutopayAuthorizations => Set<AutopayAuthorization>();
     public DbSet<AutopaySlot> AutopaySlots => Set<AutopaySlot>();
     public DbSet<AutopayWork> AutopayWork => Set<AutopayWork>();
+    public DbSet<ProviderRentInvoice> ProviderRentInvoices => Set<ProviderRentInvoice>();
     public DbSet<TenancyClosure> TenancyClosures => Set<TenancyClosure>();
     public DbSet<RentAccount> RentAccounts => Set<RentAccount>();
     public DbSet<RentAgreement> RentAgreements => Set<RentAgreement>();
@@ -177,6 +178,18 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
             e.ToTable("rent_accounts"); e.HasKey(x => x.Id); e.Property(x => x.Version).IsConcurrencyToken();
             e.HasIndex(x => x.MembershipId).IsUnique();
             e.HasOne<Membership>().WithMany().HasForeignKey(x => x.MembershipId).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<ProviderRentInvoice>(e =>
+        {
+            e.ToTable("provider_rent_invoices"); e.HasKey(x => x.Id); e.Property(x => x.Version).IsConcurrencyToken();
+            e.Property(x => x.ProviderAccount).HasMaxLength(255); e.Property(x => x.CustomerId).HasMaxLength(255); e.Property(x => x.SubscriptionId).HasMaxLength(255);
+            e.Property(x => x.InvoiceId).HasMaxLength(255); e.Property(x => x.LineId).HasMaxLength(255); e.Property(x => x.ConsentHash).HasMaxLength(64); e.Property(x => x.Currency).HasMaxLength(3);
+            e.Property(x => x.State).HasConversion<string>().HasMaxLength(32);
+            e.HasIndex(x => new { x.ProviderAccount, x.LiveMode, x.InvoiceId }).IsUnique(); e.HasIndex(x => x.PeriodId).IsUnique(); e.HasIndex(x => x.ObligationId).IsUnique();
+            e.HasIndex(x => new { x.AuthorizationId, x.CheckedAt });
+            e.HasOne<AutopayAuthorization>().WithMany().HasForeignKey(x => new { x.AuthorizationId, x.AccountId }).HasPrincipalKey(x => new { x.Id, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<BillingPeriod>().WithMany().HasForeignKey(x => new { x.PeriodId, x.AccountId }).HasPrincipalKey(x => new { x.Id, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Obligation>().WithMany().HasForeignKey(x => new { x.ObligationId, x.AccountId }).HasPrincipalKey(x => new { x.Id, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
         });
         model.Entity<AutopayAuthorization>(e =>
         {

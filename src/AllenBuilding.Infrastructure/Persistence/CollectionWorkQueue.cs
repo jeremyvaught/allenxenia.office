@@ -59,7 +59,8 @@ public sealed class CollectionWorkQueue(OfficeDbContext db, TimeProvider time) :
                 var paid = await db.PaymentAllocations.Where(x => x.ObligationId == item.ObligationId).SumAsync(x => (long?)x.AmountMinorUnits, token) ?? 0;
                 var returned = await db.RefundAllocations.Where(x => x.ObligationId == item.ObligationId).SumAsync(x => (long?)x.SignedMinorUnits, token) ?? 0;
                 var credited = await db.ObligationCredits.Where(x => x.ObligationId == item.ObligationId).SumAsync(x => (long?)x.AmountMinorUnits, token) ?? 0;
-                valid &= obligation.Version == item.ReviewedVersion && obligation.AmountMinorUnits - credited - paid - returned == item.AmountMinorUnits &&
+                valid &= !await db.ProviderRentInvoices.AnyAsync(x => x.ObligationId == item.ObligationId, token) &&
+                    obligation.Version == item.ReviewedVersion && obligation.AmountMinorUnits - credited - paid - returned == item.AmountMinorUnits &&
                     guards.Any(x => x.ObligationId == item.ObligationId && x.AccountId == original.AccountId);
             }
             if (!valid)

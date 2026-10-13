@@ -33,6 +33,7 @@ public sealed class LocalCreditStore(OfficeDbContext db, ICurrentActor current, 
             await db.CustomerProvisions.AnyAsync(x => x.AccountId == command.AccountId && x.DispatchedAt != null, token) ||
             await db.PaymentAttempts.AnyAsync(x => x.AccountId == command.AccountId, token) ||
             await db.CollectionGuards.AnyAsync(x => x.AccountId == command.AccountId, token) ||
+            await db.ProviderRentInvoices.AnyAsync(x => x.AccountId == command.AccountId, token) ||
             await db.FinancialExceptions.AnyAsync(x => x.AccountId == command.AccountId && x.State != FinancialExceptionState.Resolved, token)) return new(BillingCode.Conflict);
         var credited = await db.ObligationCredits.Where(x => x.ObligationId == debt.Id).SumAsync(x => (long?)x.AmountMinorUnits, token) ?? 0;
         var paid = await db.PaymentAllocations.Where(x => x.ObligationId == debt.Id).SumAsync(x => (long?)x.AmountMinorUnits, token) ?? 0;

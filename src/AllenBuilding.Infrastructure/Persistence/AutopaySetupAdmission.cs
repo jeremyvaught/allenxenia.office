@@ -30,7 +30,7 @@ internal static class AutopaySetupAdmission
                        where period.AccountId == auth.AccountId && period.StartsOn >= auth.FirstPeriodStartsOn && (auth.EndsBefore == null || period.StartsOn < auth.EndsBefore) &&
                          (debt.AmountMinorUnits != auth.MonthlyMinorUnits || debt.Currency != auth.Currency || debt.AgreementId != auth.AgreementId ||
                           db.ObligationCredits.Any(x => x.ObligationId == debt.Id) || db.PaymentAllocations.Any(x => x.ObligationId == debt.Id) || db.RefundAllocations.Any(x => x.ObligationId == debt.Id) ||
-                          db.PaymentAttemptItems.Any(x => x.ObligationId == debt.Id) || db.CollectionGuards.Any(x => x.ObligationId == debt.Id))
+                          db.PaymentAttemptItems.Any(x => x.ObligationId == debt.Id) || db.CollectionGuards.Any(x => x.ObligationId == debt.Id) || db.ProviderRentInvoices.Any(x => x.ObligationId == debt.Id))
                        select debt.Id).AnyAsync(token);
     }
 }
