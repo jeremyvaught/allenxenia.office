@@ -126,6 +126,26 @@ public sealed class AssistantController(AssistantHelp help, AssistantPolicy poli
         // Authentication transitions cannot transfer a guest/other-user conversation to this session.
         return token + ":" + (User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "guest");
     }
+    [Authorize, HttpPost, RequestSizeLimit(10000), EnableRateLimiting("Readiness")]
+    public async Task<IActionResult> Find(Guid membershipId, string? search)
+    {
+        // Read-only search shares portal authorization/SQL. It does not call the model or submit a draft.
+        ViewData["Enabled"] = policy.Enabled; ViewData["ActionsEnabled"] = policy.ActionsEnabled; ViewData["FollowUpsEnabled"] = policy.FollowUpsEnabled;
+        ViewData["ConversationId"] = Guid.NewGuid();
+        if (!ModelState.IsValid || !SameOrigin()) return BadRequest();
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(HttpContext.RequestAborted); deadline.CancelAfter(TimeSpan.FromSeconds(5));
+        try
+        {
+            var result = await help.FindRequestsAsync(membershipId, search, deadline.Token);
+            if (result.Code == AssistantModelCode.Invalid) ViewData["SearchInvalid"] = true;
+            if (result.Scope is null) return Answer(result);
+            ViewData["SelectedMembership"] = result.Scope.MembershipId;
+            ViewData["Memberships"] = new[] { new RequestMemberChoice(result.Scope.MembershipId, result.Scope.Suite) };
+            return await ProtectedView("Index", result, result.Scope, []);
+        }
+        catch (Exception exception) when (exception is System.Data.Common.DbException or OperationCanceledException)
+        { if (HttpContext.RequestAborted.IsCancellationRequested) throw; return Answer(new(AssistantModelCode.Unavailable)); }
+    }
     [Authorize, HttpGet, EnableRateLimiting("Readiness")]
     public async Task<IActionResult> Review(Guid id, Guid conversationId)
     {

@@ -15,6 +15,53 @@ namespace AllenBuilding.IntegrationTests;
 public sealed class AssistantTenantHttpTests
 {
     [Fact]
+    public async Task Direct_record_search_finds_old_original_membership_matches_without_a_model_call_or_wildcard_expansion()
+    {
+        var model = new Model(); await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true };
+        await host.InitializeAsync(); var fixture = await Seed(host); using var browser = host.Browser(); await Login(browser); Guid oldId;
+        Assert.Contains("Find a maintenance request", await browser.GetStringAsync("/Assistant"));
+        using (var scope = host.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); var now = DateTimeOffset.UtcNow;
+            var old = WorkOrder.Submit(fixture.First.SuiteId, fixture.First.Id, fixture.First.UserId, "Older 100%_! sink", "Synthetic details", "Kitchen", now.AddHours(-12)); oldId = old.Id; db.Add(old);
+            for (var index = 0; index < 121; index++) db.Add(WorkOrder.Submit(fixture.First.SuiteId, fixture.First.Id, fixture.First.UserId, "New ordinary work " + index, "Synthetic details", "Hall", now));
+            db.Add(WorkOrder.Submit(fixture.Second.SuiteId, fixture.Second.Id, fixture.Second.UserId, "Other-membership-canary 100%_! sink", "Synthetic details", "Kitchen", now)); await db.SaveChangesAsync();
+        }
+        using var found = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Find", ("membershipId", fixture.First.Id.ToString()), ("search", "100%_!"));
+        Assert.Equal(HttpStatusCode.OK, found.StatusCode); var html = await found.Content.ReadAsStringAsync();
+        Assert.Contains("Older 100%_! sink", html); Assert.Contains("/Maintenance/Details/" + oldId, html); Assert.Contains("Checked ", html);
+        Assert.DoesNotContain("Other-membership-canary", html); Assert.DoesNotContain("New ordinary work", html); Assert.Equal(0, model.Calls);
+        using var portal = await AccountTestHost.PostAsync(browser, "/Maintenance", "/Maintenance/Index", ("search", "SINK"));
+        Assert.Equal(HttpStatusCode.OK, portal.StatusCode); Assert.Contains("Older 100%_! sink", await portal.Content.ReadAsStringAsync());
+        using var invalid = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Find", ("membershipId", fixture.First.Id.ToString()), ("search", new string('x', 121)));
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        using var guessed = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Find", ("membershipId", fixture.Foreign.Id.ToString()), ("search", "sink")); Assert.Equal(HttpStatusCode.NotFound, guessed.StatusCode);
+        using var forged = await browser.PostAsync("/Assistant/Find", new FormUrlEncodedContent(new Dictionary<string, string> { ["membershipId"] = fixture.First.Id.ToString(), ["search"] = "sink" })); Assert.Equal(HttpStatusCode.BadRequest, forged.StatusCode);
+        Assert.Equal(0, model.Calls);
+    }
+    [Fact]
+    public async Task Revocation_after_search_rendering_suppresses_the_entire_record_result()
+    {
+        var model = new Model(); AccountTestHost host = null!; Fixture fixture = null!;
+        host = new AccountTestHost
+        {
+            AssistantModel = model,
+            AssistantTenantHelpEnabled = true,
+            BeforeAssistantRelease = async () =>
+        {
+            using var scope = host.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+            (await db.Memberships.SingleAsync(x => x.Id == fixture.First.Id)).Revoke(fixture.EditorId, "End access", DateTimeOffset.UtcNow);
+            db.ActiveGrants.Remove(await db.ActiveGrants.SingleAsync(x => x.MembershipId == fixture.First.Id)); await db.SaveChangesAsync();
+        }
+        };
+        await using (host)
+        {
+            await host.InitializeAsync(); fixture = await Seed(host); await SeedRecords(host, fixture); using var browser = host.Browser(); await Login(browser);
+            using var denied = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Find", ("membershipId", fixture.First.Id.ToString()), ("search", "dripping"));
+            Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode); Assert.DoesNotContain("Selected dripping tap", await denied.Content.ReadAsStringAsync()); Assert.Equal(0, model.Calls);
+        }
+    }
+    [Fact]
     public async Task Private_history_is_suppressed_if_access_changes_after_followup_generation_and_rendering()
     {
         var model = new Model(); AccountTestHost host = null!; Fixture fixture = null!; var releases = 0;

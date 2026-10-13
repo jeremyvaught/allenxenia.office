@@ -9,17 +9,18 @@ namespace AllenBuilding.Application.Maintenance;
 
 public sealed class MaintenanceActions(ICurrentActor current, IMaintenanceStore store, TimeProvider time)
 {
-    public async Task<IReadOnlyList<RequestSummary>> ListAsync(bool management, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<RequestSummary>> ListAsync(bool management, CancellationToken cancellationToken = default, string? search = null)
     {
         var actor = await current.GetAsync(cancellationToken);
-        return CanUse(actor, management) ? await store.ListAsync(actor!, management, cancellationToken) : [];
+        return ValidSearch(search) && CanUse(actor, management) ? await store.ListAsync(actor!, management, cancellationToken, search: search?.Trim()) : [];
     }
 
-    public async Task<IReadOnlyList<RequestSummary>> ListForMembershipAsync(Guid membershipId, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<RequestSummary>> ListForMembershipAsync(Guid membershipId, CancellationToken cancellationToken = default, string? search = null)
     {
         var actor = await current.GetAsync(cancellationToken);
-        return membershipId != Guid.Empty && CanUse(actor, false) ? await store.ListAsync(actor!, false, cancellationToken, membershipId) : [];
+        return ValidSearch(search) && membershipId != Guid.Empty && CanUse(actor, false) ? await store.ListAsync(actor!, false, cancellationToken, membershipId, search?.Trim()) : [];
     }
+    public static bool ValidSearch(string? search) => search is null || search.Length <= 120 && !search.Any(char.IsControl);
 
     public async Task<MaintenanceQueuePage?> QueueAsync(MaintenanceQueueQuery query, CancellationToken cancellationToken = default)
     {

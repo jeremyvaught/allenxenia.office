@@ -27,13 +27,25 @@ public sealed class MaintenanceStore(OfficeDbContext db, ICurrentActor current, 
                select order;
     }
 
-    public async Task<IReadOnlyList<RequestSummary>> ListAsync(Actor actor, bool management, CancellationToken cancellationToken, Guid? membershipId = null)
-        => await (from order in Scoped(actor, management).AsNoTracking()
-                  join suite in db.Suites on order.SuiteId equals suite.Id
-                  where membershipId == null || order.RequesterMembershipId == membershipId
-                  orderby order.CreatedAt descending, order.Id descending
-                  select new RequestSummary(order.Id, suite.Name, order.Title, order.Status, order.CreatedAt))
+    public async Task<IReadOnlyList<RequestSummary>> ListAsync(Actor actor, bool management, CancellationToken cancellationToken, Guid? membershipId = null, string? search = null)
+    {
+        if (!MaintenanceActions.ValidSearch(search)) return [];
+        var scoped = Scoped(actor, management).AsNoTracking().Where(x => membershipId == null || x.RequesterMembershipId == membershipId);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            // User text is a literal substring, never a wildcard/SQL fragment. Match only tenant-visible
+            // title/location, before projection/limits. Extended Unicode case folding is not normalized.
+            var pattern = "%" + search.Trim().ToLowerInvariant().Replace("!", "!!").Replace("%", "!%").Replace("_", "!_") + "%";
+            scoped = db is MySqlOfficeDbContext
+                ? scoped.Where(x => EF.Functions.Like(EF.Functions.Collate(x.Title.ToLower(), "utf8mb4_bin"), pattern, "!") || EF.Functions.Like(EF.Functions.Collate(x.Location.ToLower(), "utf8mb4_bin"), pattern, "!"))
+                : scoped.Where(x => EF.Functions.Like(x.Title.ToLower(), pattern, "!") || EF.Functions.Like(x.Location.ToLower(), pattern, "!"));
+        }
+        return await (from order in scoped
+                      join suite in db.Suites on order.SuiteId equals suite.Id
+                      orderby order.CreatedAt descending, order.Id descending
+                      select new RequestSummary(order.Id, suite.Name, order.Title, order.Status, order.CreatedAt))
             .Take(100).ToListAsync(cancellationToken);
+    }
 
     public async Task<MaintenanceQueuePage> QueueAsync(Actor actor, MaintenanceQueueQuery query, CancellationToken cancellationToken)
     {

@@ -9,13 +9,22 @@ public sealed record AssistantLink(string Label, string Path);
 public sealed record AssistantAnswer(AssistantModelCode Code, string Text = "", IReadOnlyList<HelpSource>? Sources = null,
     AssistantLink? Next = null, AssistantTenantScope? Scope = null, IReadOnlyList<AssistantSource>? ContextualSources = null,
     IReadOnlyList<RequestSummary>? Requests = null, IReadOnlyList<BillingAccount>? Billing = null, AssistantReviewView? Review = null, RequestDetails? Target = null,
-    IReadOnlyList<AssistantExchange>? History = null);
+    IReadOnlyList<AssistantExchange>? History = null, DateTimeOffset? RecordsCheckedAt = null, string? RequestSearch = null);
 
 // Only server-held prior exchanges enter context. Original membership and the union of source
 // revisions are checked before reuse and carried through output/confirmation admission.
 public sealed class AssistantHelp(KnowledgeActions knowledge, IAssistantModel model, AssistantPolicy policy, IAssistantTenantAccess access,
-    MaintenanceActions maintenance, BillingActions billing, AssistantMaintenance actions)
+    MaintenanceActions maintenance, BillingActions billing, AssistantMaintenance actions, TimeProvider time)
 {
+    public async Task<AssistantAnswer> FindRequestsAsync(Guid membershipId, string? search, CancellationToken cancellationToken)
+    {
+        if (!policy.Enabled || !policy.TenantHelpEnabled) return new(AssistantModelCode.Unavailable);
+        if (string.IsNullOrWhiteSpace(search) || !MaintenanceActions.ValidSearch(search)) return new(AssistantModelCode.Invalid);
+        var scope = await access.CaptureAsync(membershipId, cancellationToken); if (scope is null) return new(AssistantModelCode.Denied);
+        var records = (await maintenance.ListForMembershipAsync(scope.MembershipId, cancellationToken, search)).Take(5).ToArray();
+        return new(AssistantModelCode.Success, "Here are your matching maintenance requests.", [], new("Search all your requests", "/Maintenance"), scope, [],
+            Requests: records, RecordsCheckedAt: time.GetUtcNow(), RequestSearch: search.Trim());
+    }
     public async Task<AssistantAnswer> AskAsync(string? question, CancellationToken cancellationToken = default, Guid? membershipId = null, Guid? requestId = null, Guid conversationId = default,
         AssistantConversationContext? previous = null)
     {
@@ -98,6 +107,7 @@ public sealed class AssistantHelp(KnowledgeActions knowledge, IAssistantModel mo
             ? (await maintenance.ListForMembershipAsync(scope.MembershipId, cancellationToken)).Take(5).ToArray() : null;
         IReadOnlyList<BillingAccount>? accounts = scope is not null && policy.BillingEnabled && (reply.Route is "billing" or "autopay")
             ? await billing.ReadForMembershipAsync(scope.MembershipId, cancellationToken) : null;
+        var recordsCheckedAt = requests is not null || accounts is not null ? time.GetUtcNow() : (DateTimeOffset?)null;
         AssistantReviewView? review = null;
         if (reply.Draft is not null)
         {
@@ -106,6 +116,7 @@ public sealed class AssistantHelp(KnowledgeActions knowledge, IAssistantModel mo
             if (prepared.Code != MaintenanceCode.Success) return new(prepared.Code == MaintenanceCode.Unavailable ? AssistantModelCode.Denied : AssistantModelCode.Invalid);
             review = prepared.View;
         }
-        return new(AssistantModelCode.Success, reply.Answer, sources.Where(x => reply.Sources.Contains(x.ArticleId)).ToArray(), next, scope, contextual, requests, accounts, review, target, previous?.History);
+        return new(AssistantModelCode.Success, reply.Answer, sources.Where(x => reply.Sources.Contains(x.ArticleId)).ToArray(), next, scope, contextual, requests, accounts, review, target, previous?.History,
+            recordsCheckedAt);
     }
 }

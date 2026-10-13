@@ -166,6 +166,32 @@ public static class MaintenanceContract
             Assert.Equal(MaintenanceCode.Unavailable, (await As(manager, sp => sp.GetRequiredService<MaintenanceActions>().SubmitOnBehalfAsync(onBehalf with { OperationId = Guid.NewGuid(), MembershipId = foreignMembership.Id }))).Code);
             Assert.DoesNotContain(await As(manager, sp => sp.GetRequiredService<MaintenanceActions>().MembersAsync(true)), x => x.Id == foreignMembership.Id);
         }
+        Guid olderSearchId;
+        using (var scope = provider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); var now = DateTimeOffset.UtcNow;
+            var older = WorkOrder.Submit(suiteId, membershipId, tenantId, "Old 100%_! sink", "Search does not inspect description", "North kitchen", now.AddHours(-12));
+            olderSearchId = older.Id; db.Add(older);
+            for (var index = 0; index < 120; index++) db.Add(WorkOrder.Submit(suiteId, membershipId, tenantId, "Recent ordinary task " + index, "Synthetic detail", "Hall", now.AddMinutes(-index)));
+            var peerMember = await db.Memberships.SingleAsync(x => x.UserId == peerId && x.SuiteId == suiteId);
+            db.Add(WorkOrder.Submit(suiteId, peerMember.Id, peerId, "Old 100%_! sink", "Peer-only match", "North kitchen", now));
+            var other = await db.Memberships.SingleAsync(x => x.UserId == tenantId && x.Id != membershipId);
+            db.Add(WorkOrder.Submit(other.SuiteId, other.Id, tenantId, "Old 100%_! sink", "Other-membership match", "North kitchen", now));
+            await db.SaveChangesAsync();
+        }
+        Assert.DoesNotContain(await As(tenant, sp => sp.GetRequiredService<MaintenanceActions>().ListForMembershipAsync(membershipId)), x => x.Id == olderSearchId);
+        foreach (var term in new[] { "SINK", "100%_!", "NORTH KITCHEN" })
+            Assert.Equal(olderSearchId, Assert.Single(await As(tenant, sp => sp.GetRequiredService<MaintenanceActions>().ListForMembershipAsync(membershipId, search: term))).Id);
+        Assert.Empty(await As(manager, sp => sp.GetRequiredService<MaintenanceActions>().ListForMembershipAsync(membershipId, search: "100%_!")));
+        Assert.Empty(await As(peer, sp => sp.GetRequiredService<MaintenanceActions>().ListForMembershipAsync(membershipId, search: "100%_!")));
+        using (var scope = provider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); db.BuildingManagers.Add(new BuildingManager { UserId = tenantId, BuildingId = buildingId }); await db.SaveChangesAsync();
+        }
+        var mixedActor = tenant with { ManagedBuildings = new HashSet<Guid> { buildingId }, ChallengedMfa = true };
+        Assert.Equal(olderSearchId, Assert.Single(await As(mixedActor, sp => sp.GetRequiredService<MaintenanceActions>().ListForMembershipAsync(membershipId, search: "100%_!"))).Id);
+        Assert.Empty(await As(tenant, sp => sp.GetRequiredService<MaintenanceActions>().ListForMembershipAsync(membershipId, search: "Private management note")));
+        Assert.Empty(await As(tenant, sp => sp.GetRequiredService<MaintenanceActions>().ListForMembershipAsync(membershipId, search: new string('x', 121))));
         Guid version;
         using (var scope = provider.CreateScope()) version = (await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().Memberships.SingleAsync(x => x.Id == membershipId)).Version;
         Assert.Equal(MaintenanceCode.Success, await As(manager, sp => sp.GetRequiredService<AccessRevocation>().RevokeAsync(membershipId, version, "Access ended")));
@@ -183,6 +209,7 @@ public static class MaintenanceContract
         }
         Assert.Null(await As(tenant, sp => sp.GetRequiredService<MaintenanceActions>().ReadAsync(id, false)));
         Assert.NotNull(await As(manager, sp => sp.GetRequiredService<MaintenanceActions>().ReadAsync(id, true)));
+        Assert.Empty(await As(tenant, sp => sp.GetRequiredService<MaintenanceActions>().ListForMembershipAsync(membershipId, search: "100%_!")));
         using (var scope = provider.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();

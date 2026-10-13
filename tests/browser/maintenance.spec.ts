@@ -40,6 +40,13 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
   expect(await page.evaluate(() => getComputedStyle(document.body).fontFamily)).toContain('sans-serif');
   const path = new URL(page.url()).pathname;
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.goto('/Maintenance');
+  await page.getByLabel('Find a request by title or location', { exact: true }).fill('KITCHEN');
+  await page.getByRole('button', { name: 'Search requests', exact: true }).click();
+  await expect(page.getByRole('link', { name: new RegExp(`Leaking sink ${testInfo.project.name}`) })).toBeVisible();
+  expect(new URL(page.url()).search).toBe('');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.goto(path);
 
   const managerContext = await browser.newContext({ baseURL: 'http://127.0.0.1:5088', viewport: { width: 320, height: 800 },
     colorScheme: 'light', isMobile: Boolean(testInfo.project.use.isMobile), hasTouch: Boolean(testInfo.project.use.hasTouch) });

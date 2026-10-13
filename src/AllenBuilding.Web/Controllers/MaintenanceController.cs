@@ -10,7 +10,13 @@ namespace AllenBuilding.Web.Controllers;
 [Authorize, ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class MaintenanceController(MaintenanceActions actions) : Controller
 {
-    [HttpGet] public async Task<IActionResult> Index() => View(await actions.ListAsync(false));
+    [AcceptVerbs("GET", "POST"), RequestSizeLimit(10000)]
+    public async Task<IActionResult> Index(string? search)
+    {
+        if (!ModelState.IsValid || !MaintenanceActions.ValidSearch(search)) return BadRequest();
+        ViewData["Search"] = search?.Trim();
+        return View(await actions.ListAsync(false, HttpContext.RequestAborted, search));
+    }
 
     [Authorize(Policy = OfficeSecurity.ManagerPolicy), HttpGet]
     public async Task<IActionResult> Manage(MaintenanceQueueQuery query)

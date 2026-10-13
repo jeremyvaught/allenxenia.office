@@ -6,8 +6,13 @@
         @if (manager) { <a asp-action="CreateOnBehalf" class="button">Record a tenant request</a> }
         else { <a asp-action="Create" class="button">Report an issue</a> }
     </div>
-    @if (Model.Count == 0) { <p class="rounded-xl border border-line bg-panel p-6">No requests to show.</p> }
+    <form asp-action="Index" method="post" class="mb-6 max-w-xl space-y-3">
+        <label for="search" class="block font-semibold">Find a request by title or location</label>
+        <input id="search" name="search" type="search" maxlength="120" value="@ViewData["Search"]" class="field" />
+        <div class="flex flex-wrap gap-3"><button class="quiet-button">Search requests</button><a asp-action="Index" class="quiet-button">Clear search</a></div>
+    </form>
+    @if (Model.Count == 0) { <p class="rounded-xl border border-line bg-panel p-6">No matching requests to show.</p> }
     <partial name="_RequestList" model="Model" />
-    @if (Model.Count == 100) { <p class="mt-4 text-sm text-muted">Showing the 100 most recent requests.</p> }
+    @if (Model.Count == 100) { <p class="mt-4 text-sm text-muted">Showing the 100 most recent matching requests. Narrow your search to find older work.</p> }
     <a asp-controller="Portal" asp-action="Index" class="mt-6 flex min-h-11 items-center underline">Return to your office</a>
 </div>

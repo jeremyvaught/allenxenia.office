@@ -34,6 +34,7 @@ public sealed class RentReportingHttpTests
         using var guest = host.Browser(); using var tenantBrowser = host.Browser(); using var passwordOnly = host.Browser(); using var manager = host.Browser();
         using var anonymous = await guest.GetAsync("/Reports/Rent"); Assert.Contains("/Account/Login", anonymous.Headers.Location?.OriginalString);
         using var tenantLogin = await AccountTestHost.PostAsync(tenantBrowser, "/Account/Login", "/Account/Login", ("Email", "rent-http@example.test"), ("Password", AccountTestHost.Password));
+        Assert.Equal(HttpStatusCode.Redirect, tenantLogin.StatusCode); Assert.Contains("/Portal", tenantLogin.Headers.Location?.OriginalString);
         using var denied = await tenantBrowser.GetAsync("/Reports/Rent"); Assert.Contains("/Account/Denied", denied.Headers.Location?.OriginalString);
         using var password = await AccountTestHost.PostAsync(passwordOnly, "/Account/Login", "/Account/Login", ("Email", "manager@example.test"), ("Password", AccountTestHost.Password));
         using var noMfa = await passwordOnly.GetAsync("/Reports/Rent"); Assert.NotEqual(HttpStatusCode.OK, noMfa.StatusCode);

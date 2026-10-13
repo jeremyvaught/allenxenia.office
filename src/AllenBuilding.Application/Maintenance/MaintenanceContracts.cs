@@ -21,7 +21,7 @@ public sealed record AssigneeChoice(string Value, string Label);
 // domain mutation, history, durable notifications and replay receipts together.
 public interface IMaintenanceStore
 {
-    Task<IReadOnlyList<RequestSummary>> ListAsync(Actor actor, bool management, CancellationToken cancellationToken, Guid? membershipId = null);
+    Task<IReadOnlyList<RequestSummary>> ListAsync(Actor actor, bool management, CancellationToken cancellationToken, Guid? membershipId = null, string? search = null);
     Task<MaintenanceQueuePage> QueueAsync(Actor actor, MaintenanceQueueQuery query, CancellationToken cancellationToken);
     Task<RequestDetails?> ReadAsync(Actor actor, Guid id, bool management, CancellationToken cancellationToken, Guid? membershipId = null);
     Task<IReadOnlyList<RequestMemberChoice>> MembersAsync(Actor actor, bool management, CancellationToken cancellationToken);

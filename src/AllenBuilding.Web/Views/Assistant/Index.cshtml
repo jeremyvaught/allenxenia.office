@@ -33,17 +33,25 @@
         {
             <section aria-label="Your maintenance records" class="mt-6 border-t border-line pt-5">
                 <h3 class="mb-3 font-semibold">Your maintenance records</h3>
-                @if (Model.Requests.Count == 0) { <p>No requests are available for this membership.</p> }
+                @if (Model.RecordsCheckedAt is { } checkedAt) { <p class="mb-3 text-sm text-muted">Checked @checkedAt.ToString("MMM d, yyyy HH:mm:ss 'UTC'"). Open a request to view updates.</p> }
+                <form asp-action="Find" method="post" class="mb-5 space-y-3">
+                    <input type="hidden" name="membershipId" value="@Model.Scope!.MembershipId" />
+                    <label for="request-search" class="block font-semibold">Find a request by title or location</label>
+                    <input id="request-search" name="search" type="search" maxlength="120" value="@Model.RequestSearch" class="field" required />
+                    <button class="quiet-button">Search your requests</button>
+                </form>
+                @if (Model.Requests.Count == 0) { <p>@(Model.RequestSearch is null ? "No requests are available for this membership." : "No matching requests. Try another title or location.")</p> }
                 <ul class="space-y-4">@foreach (var request in Model.Requests) {
                     <li class="min-w-0 rounded-xl border border-line p-4"><h4 class="break-words font-semibold">@request.Title</h4><p class="mt-2">Status: @MaintenanceText.Status(request.Status)</p><p class="mt-2 text-sm text-muted">Submitted @request.CreatedAt.ToString("MMM d, yyyy HH:mm 'UTC'")</p><a href="/Maintenance/Details/@request.Id" class="quiet-button mt-3">View request</a>@if (ViewData["ActionsEnabled"] is true) { <a class="quiet-button mt-3" href="/Assistant?membershipId=@Model.Scope!.MembershipId&amp;requestId=@request.Id">Prepare a comment</a> }</li>
                 }</ul>
-                <p class="mt-3 text-sm text-muted">Showing up to five recent requests for this membership. Open a request for its history and current status.</p>
+                <p class="mt-3 text-sm text-muted">Showing up to five @(Model.RequestSearch is null ? "recent" : "matching") requests for this membership. Open a request for its history and current status.</p>
             </section>
         }
         @if (Model.Billing is not null)
         {
             <section aria-label="Your billing records" class="mt-6 border-t border-line pt-5">
                 <h3 class="mb-3 font-semibold">Your billing records</h3>
+                @if (Model.RecordsCheckedAt is { } checkedAt) { <p class="mb-3 text-sm text-muted">Checked @checkedAt.ToString("MMM d, yyyy HH:mm:ss 'UTC'"). Open your account to view updates.</p> }
                 <p class="mb-4 text-sm leading-relaxed text-muted">These are issued charges and recorded credits, not an outstanding balance. Payment status isn't included here. Open your account to review its records and available options.</p>
                 @if (Model.Billing.Count == 0) { <p>No billing account is available for this membership.</p> }
                 @foreach (var account in Model.Billing) {
@@ -65,6 +73,7 @@
         }
         @if (Model.Next is not null && Model.Review is null) { <a href="@Model.Next.Path" class="quiet-button mt-5">@Model.Next.Label</a> }
     }
+    else if (ViewData["SearchInvalid"] is true) { <p>Enter a title or location of up to 120 characters. <a href="/Maintenance" class="underline">Open your requests to search again</a>.</p> }
     else if (ViewData["ConversationUnavailable"] is true) { <p>This conversation is busy, expired or no longer available. Start fresh using the link below. No action was submitted.</p> }
     else if (ViewData["Limited"] is true) { <p>You've reached the assistant's current limit. Try again later, or open building help.</p> }
     else if (Model?.Code == AllenBuilding.Application.Assistant.AssistantModelCode.Invalid) { <p>Please ask a question of up to 4,000 characters. If an answer could not be verified, try rephrasing or open building help.</p> }
@@ -72,6 +81,19 @@
     else if (Model is not null || !enabled) { <p>The assistant is unavailable right now. You can still use <a href="/Knowledge" class="underline">building help</a> and <a href="/Portal" class="underline">your office</a>.</p> }
     else { <p>Try “How do I report a repair?” or ask about published building guidance.</p> }
     </div>
+    @if (enabled && Model?.Requests is null && ViewData["Memberships"] is IReadOnlyList<AllenBuilding.Application.Maintenance.RequestMemberChoice> searchMembers && searchMembers.Count > 0)
+    {
+        <details class="mb-6 rounded-2xl border border-line bg-panel p-5 sm:p-6">
+            <summary class="cursor-pointer py-3 font-semibold">Find a maintenance request</summary>
+            <form asp-action="Find" method="post" class="mt-4 space-y-3">
+                <label for="search-membership" class="block font-semibold">Search requests for</label>
+                <select id="search-membership" name="membershipId" class="field">@foreach (var member in searchMembers) { <option value="@member.Id">@member.Suite</option> }</select>
+                <label for="initial-search" class="block font-semibold">Request title or location</label>
+                <input id="initial-search" name="search" type="search" maxlength="120" class="field" required />
+                <button class="quiet-button">Search your requests</button>
+            </form>
+        </details>
+    }
     @if (enabled && ViewData["ConversationClosed"] is not true)
     {
         <form asp-action="Ask" method="post" data-assistant-form class="rounded-2xl border border-line bg-panel p-5 sm:p-6">
