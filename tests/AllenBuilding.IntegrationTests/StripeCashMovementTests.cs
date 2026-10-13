@@ -104,6 +104,82 @@ public sealed class StripeCashMovementTests
         using var fixture = new Fixture(); fixture.Dispute["balance_transactions"] = new JsonArray(); fixture.Dispute["status"] = "warning_needs_response";
         Assert.Equal(CashObservationState.Pending, (await fixture.Reader.ReadAsync(fixture.Original, "du_cash", CancellationToken.None)).State);
     }
+    [Fact]
+    public async Task Whole_inventory_reads_complete_catalogs_twice_and_returns_original_gross_evidence()
+    {
+        using var fixture = new Fixture(); var result = await fixture.Reader.ReadInventoryAsync(fixture.Original, CancellationToken.None);
+        Assert.Equal(CashObservationState.Verified, result.State); var inventory = Assert.IsType<VerifiedCashInventory>(result.Inventory);
+        Assert.Equal(fixture.Original.Id, inventory.AttemptId); Assert.Equal(1000, inventory.CapturedMinorUnits); Assert.Equal(200, inventory.RefundedMinorUnits);
+        Assert.Equal("ch_cash", inventory.ChargeId); Assert.Equal("re_cash", Assert.Single(inventory.SourceIds)); Assert.Equal(-200, Assert.Single(inventory.Movements).SignedMinorUnits);
+        Assert.Equal(2, fixture.Requests.Count(x => x.Path.StartsWith("/v1/refunds?", StringComparison.Ordinal)));
+        Assert.Equal(2, fixture.Requests.Count(x => x.Path.StartsWith("/v1/disputes?", StringComparison.Ordinal)));
+        Assert.All(fixture.Requests.Where(x => x.Path.Contains('?') && (x.Path.StartsWith("/v1/refunds?") || x.Path.StartsWith("/v1/disputes?"))), x => { Assert.Contains("charge=ch_cash", x.Path); Assert.Contains("limit=26", x.Path); });
+        Assert.All(fixture.Requests, x => Assert.Equal("GET", x.Method)); Assert.True(inventory.CheckedAt >= inventory.Movements[0].ProviderAt);
+    }
+    [Theory]
+    [InlineData("refund-truncated")]
+    [InlineData("dispute-truncated")]
+    [InlineData("too-many")]
+    [InlineData("duplicate")]
+    [InlineData("foreign-refund")]
+    [InlineData("refund-total")]
+    [InlineData("missing-dispute")]
+    [InlineData("failed-with-cash")]
+    [InlineData("invalid-status")]
+    public async Task Incomplete_or_inconsistent_inventory_cannot_verify_agreement(string mutation)
+    {
+        using var fixture = new Fixture();
+        switch (mutation)
+        {
+            case "refund-truncated": fixture.RefundsHaveMore = true; break;
+            case "dispute-truncated": fixture.DisputesHaveMore = true; break;
+            case "too-many": for (var i = 0; i < 25; i++) fixture.RefundCatalog.Add(fixture.Refund); break;
+            case "duplicate": fixture.RefundCatalog.Add(fixture.Refund); break;
+            case "foreign-refund": fixture.Refund["charge"] = "ch_foreign"; break;
+            case "refund-total": fixture.Charge["amount_refunded"] = 201; break;
+            case "missing-dispute": fixture.Charge["disputed"] = true; break;
+            case "failed-with-cash": fixture.Refund["status"] = "failed"; fixture.Refund["failure_balance_transaction"] = "txn_reversal"; break;
+            case "invalid-status": fixture.Refund["status"] = "invented"; break;
+        }
+        var result = await fixture.Reader.ReadInventoryAsync(fixture.Original, CancellationToken.None); Assert.Equal(CashObservationState.Invalid, result.State); Assert.Null(result.Inventory);
+    }
+    [Theory]
+    [InlineData("pending-refund")]
+    [InlineData("requires-action")]
+    [InlineData("open-dispute")]
+    [InlineData("won-without-restoration")]
+    [InlineData("changed-catalog")]
+    public async Task Ongoing_or_changed_provider_state_keeps_whole_inventory_pending(string mutation)
+    {
+        using var fixture = new Fixture();
+        switch (mutation)
+        {
+            case "pending-refund": fixture.Refund["status"] = "pending"; break;
+            case "requires-action": fixture.Refund["status"] = "requires_action"; break;
+            case "open-dispute": fixture.Charge["disputed"] = true; fixture.Dispute["status"] = "under_review"; fixture.DisputeCatalog.Add(fixture.Dispute); break;
+            case "won-without-restoration": fixture.Charge["disputed"] = true; fixture.Dispute["status"] = "won"; fixture.DisputeCatalog.Add(fixture.Dispute); break;
+            case "changed-catalog": fixture.ChangeRefundCatalog = true; break;
+        }
+        var result = await fixture.Reader.ReadInventoryAsync(fixture.Original, CancellationToken.None); Assert.Equal(CashObservationState.Pending, result.State); Assert.Null(result.Inventory);
+    }
+    [Fact]
+    public async Task Dispute_inventory_requires_real_withdrawal_and_reinstatement_and_keeps_failed_cash_out_of_scope()
+    {
+        using var fixture = new Fixture(); fixture.Charge["disputed"] = true; fixture.Dispute["status"] = "won";
+        ((JsonArray)fixture.Dispute["balance_transactions"]!).Add(fixture.Transactions["txn_restored"].DeepClone()); fixture.DisputeCatalog.Add(fixture.Dispute);
+        var result = await fixture.Reader.ReadInventoryAsync(fixture.Original, CancellationToken.None); Assert.Equal(CashObservationState.Verified, result.State);
+        Assert.Equal(3, result.Inventory!.Movements.Count); Assert.Equal(0, result.Inventory.Movements.Where(x => x.SourceId == "du_cash").Sum(x => x.SignedMinorUnits));
+        fixture.Fail = true; var unknown = await fixture.Reader.ReadInventoryAsync(fixture.Original, CancellationToken.None); Assert.Equal(CashObservationState.Unknown, unknown.State); Assert.Null(unknown.Inventory);
+    }
+    [Fact]
+    public async Task Closed_warning_with_verified_fee_only_transactions_does_not_create_tenant_money()
+    {
+        using var fixture = new Fixture(); fixture.Charge["disputed"] = true; fixture.Dispute["status"] = "warning_closed";
+        fixture.Transactions["txn_withdrawn"]["amount"] = 0; fixture.Transactions["txn_withdrawn"]["net"] = -30;
+        fixture.DisputeCatalog.Add(fixture.Dispute);
+        var result = await fixture.Reader.ReadInventoryAsync(fixture.Original, CancellationToken.None); Assert.Equal(CashObservationState.Verified, result.State);
+        Assert.Equal("re_cash", Assert.Single(result.Inventory!.Movements).SourceId); Assert.Contains("du_cash", result.Inventory.SourceIds);
+    }
     private sealed record Request(string Method, string Path);
     private sealed class Fixture : HttpMessageHandler
     {
@@ -118,6 +194,12 @@ public sealed class StripeCashMovementTests
         public List<Request> Requests { get; } = [];
         public string Merchant { get; set; } = "acct_cash";
         public bool Fail { get; set; }
+        public List<JsonObject> RefundCatalog { get; } = [];
+        public List<JsonObject> DisputeCatalog { get; } = [];
+        public bool RefundsHaveMore { get; set; }
+        public bool DisputesHaveMore { get; set; }
+        public bool ChangeRefundCatalog { get; set; }
+        private int _refundLists;
         private readonly HttpClient _http;
         public Fixture()
         {
@@ -140,6 +222,7 @@ public sealed class StripeCashMovementTests
                 ["metadata"] = new JsonObject { ["office_account_id"] = account.ToString("D"), ["office_attempt_id"] = Original.Id.ToString("D"), ["office_review_hash"] = Original.PayloadHash }
             };
             Refund = new() { ["id"] = "re_cash", ["object"] = "refund", ["payment_intent"] = "pi_cash", ["charge"] = "ch_cash", ["amount"] = 200, ["currency"] = "usd", ["status"] = "succeeded", ["balance_transaction"] = "txn_refund" };
+            RefundCatalog.Add(Refund);
             JsonObject Transaction(string id, string source, long amount, string type) => new() { ["id"] = id, ["object"] = "balance_transaction", ["source"] = source, ["amount"] = amount, ["net"] = amount - 30, ["fee"] = 30, ["currency"] = "usd", ["type"] = type, ["balance_type"] = "payments", ["status"] = "available", ["created"] = now.ToUnixTimeSeconds() };
             Transactions["txn_refund"] = Transaction("txn_refund", "re_cash", -200, "refund"); Transactions["txn_withdrawn"] = Transaction("txn_withdrawn", "du_cash", -1000, "adjustment"); Transactions["txn_restored"] = Transaction("txn_restored", "du_cash", 1000, "adjustment");
             Dispute = new() { ["id"] = "du_cash", ["object"] = "dispute", ["livemode"] = false, ["payment_intent"] = "pi_cash", ["charge"] = "ch_cash", ["amount"] = 1000, ["currency"] = "usd", ["status"] = "lost", ["balance_transactions"] = new JsonArray(Transactions["txn_withdrawn"].DeepClone()) };
@@ -149,11 +232,15 @@ public sealed class StripeCashMovementTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
             var path = request.RequestUri!.AbsolutePath; Requests.Add(new(request.Method.Method, request.RequestUri.PathAndQuery)); if (Fail) throw new HttpRequestException("Synthetic uncertainty");
+            JsonObject Catalog(List<JsonObject> items, bool more) => new() { ["object"] = "list", ["url"] = path, ["has_more"] = more, ["data"] = new JsonArray(items.Select(x => x.DeepClone()).ToArray()) };
+            if (path == "/v1/refunds" && ++_refundLists > 1 && ChangeRefundCatalog) RefundCatalog.Add(new JsonObject { ["id"] = "re_changed", ["object"] = "refund", ["status"] = "failed" });
             JsonObject value = path switch
             {
                 "/v1/account" => new() { ["id"] = Merchant, ["object"] = "account" },
                 "/v1/customers/cus_cash" => Customer,
                 "/v1/payment_intents/pi_cash" => Intent,
+                "/v1/refunds" => Catalog(RefundCatalog, RefundsHaveMore),
+                "/v1/disputes" => Catalog(DisputeCatalog, DisputesHaveMore),
                 "/v1/refunds/re_cash" => Refund,
                 "/v1/disputes/du_cash" => Dispute,
                 _ when path.StartsWith("/v1/balance_transactions/", StringComparison.Ordinal) => Transactions[path.Split('/').Last()],
