@@ -113,6 +113,9 @@ public sealed class Obligation
     public string IssuedBy { get; private set; } = "";
     public DateTimeOffset IssuedAt { get; private set; }
 
+    // Coordinators call this in the same transaction as an accepted allocation, adjustment or collection hold.
+    public void FinancialStateChanged() => Version = Guid.NewGuid();
+
     public static Obligation Issue(Guid accountId, Money amount, string description, DateOnly dueOn, string actor, DateTimeOffset now)
     {
         BillingRules.IssuedAmount(amount); description = description?.Trim() ?? "";

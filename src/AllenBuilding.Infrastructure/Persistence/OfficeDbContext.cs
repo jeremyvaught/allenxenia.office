@@ -12,6 +12,8 @@ namespace AllenBuilding.Infrastructure.Persistence;
 
 public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbContext<OfficeUser>(options)
 {
+    public DbSet<SettlementPayment> SettlementPayments => Set<SettlementPayment>();
+    public DbSet<PaymentAllocation> PaymentAllocations => Set<PaymentAllocation>();
     public DbSet<BillingCustomerBinding> BillingCustomers => Set<BillingCustomerBinding>();
     public DbSet<PaymentAttempt> PaymentAttempts => Set<PaymentAttempt>();
     public DbSet<PaymentAttemptItem> PaymentAttemptItems => Set<PaymentAttemptItem>();
@@ -204,6 +206,7 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
         model.Entity<PaymentAttempt>(e =>
         {
             e.ToTable("payment_attempts"); e.HasKey(x => x.Id); e.HasAlternateKey(x => new { x.Id, x.AccountId });
+            e.HasAlternateKey(x => new { x.Id, x.AccountId, x.ProviderAccount, x.LiveMode });
             e.Property(x => x.Version).IsConcurrencyToken(); e.Property(x => x.ActorId).HasMaxLength(450);
             e.Property(x => x.ProviderAccount).HasMaxLength(255); e.Property(x => x.CustomerId).HasMaxLength(255);
             e.Property(x => x.SessionId).HasMaxLength(255); e.Property(x => x.PaymentId).HasMaxLength(255);
@@ -227,6 +230,30 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
             e.HasAlternateKey(x => new { x.AttemptId, x.ObligationId, x.AccountId });
             e.HasOne<Obligation>().WithMany().HasForeignKey(x => new { x.ObligationId, x.AccountId })
                 .HasPrincipalKey(x => new { x.Id, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<SettlementPayment>(e =>
+        {
+            e.ToTable("settlement_payments", table => table.HasCheckConstraint("CK_settlement_amount", "amount_minor_units > 0"));
+            e.HasKey(x => x.Id); e.HasAlternateKey(x => new { x.Id, x.AccountId, x.AttemptId });
+            e.Property(x => x.ProviderAccount).HasMaxLength(255); e.Property(x => x.CollectionReference).HasMaxLength(255);
+            e.Property(x => x.Currency).HasMaxLength(3);
+            e.HasIndex(x => x.AttemptId).IsUnique();
+            e.HasIndex(x => new { x.ProviderAccount, x.LiveMode, x.CollectionReference }).IsUnique();
+            e.HasIndex(x => new { x.AccountId, x.RecordedAt, x.Id });
+            e.HasOne<PaymentAttempt>().WithMany().HasForeignKey(x => new { x.AttemptId, x.AccountId, x.ProviderAccount, x.LiveMode })
+                .HasPrincipalKey(x => new { x.Id, x.AccountId, x.ProviderAccount, x.LiveMode }).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(x => x.Allocations).WithOne().HasForeignKey(x => new { x.PaymentId, x.AccountId, x.AttemptId })
+                .HasPrincipalKey(x => new { x.Id, x.AccountId, x.AttemptId }).OnDelete(DeleteBehavior.Restrict);
+            e.Navigation(x => x.Allocations).HasField("_allocations").UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+        model.Entity<PaymentAllocation>(e =>
+        {
+            e.ToTable("payment_allocations", table => table.HasCheckConstraint("CK_allocation_amount", "amount_minor_units > 0"));
+            e.HasKey(x => new { x.PaymentId, x.ObligationId });
+            e.HasIndex(x => new { x.AttemptId, x.ObligationId }).IsUnique();
+            e.HasIndex(x => new { x.AccountId, x.ObligationId });
+            e.HasOne<PaymentAttemptItem>().WithMany().HasForeignKey(x => new { x.AttemptId, x.ObligationId, x.AccountId })
+                .HasPrincipalKey(x => new { x.AttemptId, x.ObligationId, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
         });
         model.Entity<CollectionGuard>(e =>
         {
@@ -320,7 +347,7 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
                 }
                 if (mysql && (property.ClrType == typeof(string) || property.GetValueConverter()?.ProviderClrType == typeof(string)))
                     property.SetCollation("utf8mb4_bin");
-                if (mysql && property.ClrType == typeof(string) && property.Name is "ProviderAccount" or "CustomerId" or "SessionId" or "PaymentId")
+                if (mysql && property.ClrType == typeof(string) && property.Name is "ProviderAccount" or "CustomerId" or "SessionId" or "PaymentId" or "CollectionReference")
                     MySql.EntityFrameworkCore.Extensions.MySQLPropertyBuilderExtensions.ForMySQLHasCollation(model.Entity(entity.ClrType).Property(property.Name), "utf8mb4_bin");
             }
         }

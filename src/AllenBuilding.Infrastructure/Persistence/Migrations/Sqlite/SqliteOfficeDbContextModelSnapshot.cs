@@ -254,6 +254,51 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                     b.ToTable("obligations", (string)null);
                 });
 
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.PaymentAllocation", b =>
+                {
+                    b.Property<string>("PaymentId")
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("payment_id");
+
+                    b.Property<string>("ObligationId")
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("obligation_id");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("account_id");
+
+                    b.Property<long>("AmountMinorUnits")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("amount_minor_units");
+
+                    b.Property<string>("AttemptId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("attempt_id");
+
+                    b.HasKey("PaymentId", "ObligationId");
+
+                    b.HasIndex("AccountId", "ObligationId");
+
+                    b.HasIndex("AttemptId", "ObligationId")
+                        .IsUnique();
+
+                    b.HasIndex("AttemptId", "ObligationId", "AccountId");
+
+                    b.HasIndex("PaymentId", "AccountId", "AttemptId");
+
+                    b.ToTable("payment_allocations", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_allocation_amount", "amount_minor_units > 0");
+                        });
+                });
+
             modelBuilder.Entity("AllenBuilding.Domain.Billing.PaymentAttempt", b =>
                 {
                     b.Property<string>("Id")
@@ -504,6 +549,74 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                     b.HasIndex("AccountId", "StartsOn", "EndsOn");
 
                     b.ToTable("rent_agreements", (string)null);
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.SettlementPayment", b =>
+                {
+                    b.Property<string>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("account_id");
+
+                    b.Property<long>("AmountMinorUnits")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("amount_minor_units");
+
+                    b.Property<string>("AttemptId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("attempt_id");
+
+                    b.Property<string>("CollectionReference")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("collection_reference");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("currency");
+
+                    b.Property<bool>("LiveMode")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("live_mode");
+
+                    b.Property<string>("ProviderAccount")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("provider_account");
+
+                    b.Property<DateTime>("RecordedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("recorded_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AttemptId")
+                        .IsUnique();
+
+                    b.HasIndex("AccountId", "RecordedAt", "Id");
+
+                    b.HasIndex("ProviderAccount", "LiveMode", "CollectionReference")
+                        .IsUnique();
+
+                    b.HasIndex("AttemptId", "AccountId", "ProviderAccount", "LiveMode");
+
+                    b.ToTable("settlement_payments", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_settlement_amount", "amount_minor_units > 0");
+                        });
                 });
 
             modelBuilder.Entity("AllenBuilding.Domain.Knowledge.HelpArticle", b =>
@@ -1570,6 +1683,23 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .OnDelete(DeleteBehavior.Restrict);
                 });
 
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.PaymentAllocation", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Billing.PaymentAttemptItem", null)
+                        .WithMany()
+                        .HasForeignKey("AttemptId", "ObligationId", "AccountId")
+                        .HasPrincipalKey("AttemptId", "ObligationId", "AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AllenBuilding.Domain.Billing.SettlementPayment", null)
+                        .WithMany("Allocations")
+                        .HasForeignKey("PaymentId", "AccountId", "AttemptId")
+                        .HasPrincipalKey("Id", "AccountId", "AttemptId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("AllenBuilding.Domain.Billing.PaymentAttempt", b =>
                 {
                     b.HasOne("AllenBuilding.Infrastructure.Identity.OfficeUser", null)
@@ -1631,6 +1761,16 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .HasForeignKey("SupersededBy", "AccountId")
                         .HasPrincipalKey("Id", "AccountId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.SettlementPayment", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Billing.PaymentAttempt", null)
+                        .WithMany()
+                        .HasForeignKey("AttemptId", "AccountId", "ProviderAccount", "LiveMode")
+                        .HasPrincipalKey("Id", "AccountId", "ProviderAccount", "LiveMode")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("AllenBuilding.Domain.Knowledge.HelpArticle", b =>
@@ -1869,6 +2009,11 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
             modelBuilder.Entity("AllenBuilding.Domain.Billing.PaymentAttempt", b =>
                 {
                     b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.SettlementPayment", b =>
+                {
+                    b.Navigation("Allocations");
                 });
 #pragma warning restore 612, 618
         }

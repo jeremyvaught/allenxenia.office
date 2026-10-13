@@ -281,6 +281,55 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                     b.ToTable("obligations", (string)null);
                 });
 
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.PaymentAllocation", b =>
+                {
+                    b.Property<string>("PaymentId")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("payment_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("ObligationId")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("obligation_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("account_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<long>("AmountMinorUnits")
+                        .HasColumnType("bigint")
+                        .HasColumnName("amount_minor_units");
+
+                    b.Property<string>("AttemptId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("attempt_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.HasKey("PaymentId", "ObligationId");
+
+                    b.HasIndex("AccountId", "ObligationId");
+
+                    b.HasIndex("AttemptId", "ObligationId")
+                        .IsUnique();
+
+                    b.HasIndex("AttemptId", "ObligationId", "AccountId");
+
+                    b.HasIndex("PaymentId", "AccountId", "AttemptId");
+
+                    b.ToTable("payment_allocations", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_allocation_amount", "amount_minor_units > 0");
+                        });
+                });
+
             modelBuilder.Entity("AllenBuilding.Domain.Billing.PaymentAttempt", b =>
                 {
                     b.Property<string>("Id")
@@ -560,6 +609,82 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                     b.HasIndex("AccountId", "StartsOn", "EndsOn");
 
                     b.ToTable("rent_agreements", (string)null);
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.SettlementPayment", b =>
+                {
+                    b.Property<string>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("account_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<long>("AmountMinorUnits")
+                        .HasColumnType("bigint")
+                        .HasColumnName("amount_minor_units");
+
+                    b.Property<string>("AttemptId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("attempt_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("CollectionReference")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("collection_reference")
+                        .UseCollation("utf8mb4_bin")
+                        .HasAnnotation("MySQL:Collation", "utf8mb4_bin");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("varchar(3)")
+                        .HasColumnName("currency")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<bool>("LiveMode")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("live_mode");
+
+                    b.Property<string>("ProviderAccount")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("provider_account")
+                        .UseCollation("utf8mb4_bin")
+                        .HasAnnotation("MySQL:Collation", "utf8mb4_bin");
+
+                    b.Property<DateTime>("RecordedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("recorded_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AttemptId")
+                        .IsUnique();
+
+                    b.HasIndex("AccountId", "RecordedAt", "Id");
+
+                    b.HasIndex("ProviderAccount", "LiveMode", "CollectionReference")
+                        .IsUnique();
+
+                    b.HasIndex("AttemptId", "AccountId", "ProviderAccount", "LiveMode");
+
+                    b.ToTable("settlement_payments", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_settlement_amount", "amount_minor_units > 0");
+                        });
                 });
 
             modelBuilder.Entity("AllenBuilding.Domain.Knowledge.HelpArticle", b =>
@@ -1736,6 +1861,23 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .OnDelete(DeleteBehavior.Restrict);
                 });
 
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.PaymentAllocation", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Billing.PaymentAttemptItem", null)
+                        .WithMany()
+                        .HasForeignKey("AttemptId", "ObligationId", "AccountId")
+                        .HasPrincipalKey("AttemptId", "ObligationId", "AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AllenBuilding.Domain.Billing.SettlementPayment", null)
+                        .WithMany("Allocations")
+                        .HasForeignKey("PaymentId", "AccountId", "AttemptId")
+                        .HasPrincipalKey("Id", "AccountId", "AttemptId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("AllenBuilding.Domain.Billing.PaymentAttempt", b =>
                 {
                     b.HasOne("AllenBuilding.Infrastructure.Identity.OfficeUser", null)
@@ -1797,6 +1939,16 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .HasForeignKey("SupersededBy", "AccountId")
                         .HasPrincipalKey("Id", "AccountId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.SettlementPayment", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Billing.PaymentAttempt", null)
+                        .WithMany()
+                        .HasForeignKey("AttemptId", "AccountId", "ProviderAccount", "LiveMode")
+                        .HasPrincipalKey("Id", "AccountId", "ProviderAccount", "LiveMode")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("AllenBuilding.Domain.Knowledge.HelpArticle", b =>
@@ -2035,6 +2187,11 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
             modelBuilder.Entity("AllenBuilding.Domain.Billing.PaymentAttempt", b =>
                 {
                     b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.SettlementPayment", b =>
+                {
+                    b.Navigation("Allocations");
                 });
 #pragma warning restore 612, 618
         }
