@@ -14,6 +14,7 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
 {
     public DbSet<CashMovement> CashMovements => Set<CashMovement>();
     public DbSet<CashMovementReview> CashMovementReviews => Set<CashMovementReview>();
+    public DbSet<CashSourceWork> CashSourceWork => Set<CashSourceWork>();
     public DbSet<ObligationCredit> ObligationCredits => Set<ObligationCredit>();
     public DbSet<SettlementPayment> SettlementPayments => Set<SettlementPayment>();
     public DbSet<PaymentAllocation> PaymentAllocations => Set<PaymentAllocation>();
@@ -292,6 +293,19 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
             e.HasAlternateKey(x => new { x.AttemptId, x.ObligationId, x.AccountId });
             e.HasOne<Obligation>().WithMany().HasForeignKey(x => new { x.ObligationId, x.AccountId })
                 .HasPrincipalKey(x => new { x.Id, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<CashSourceWork>(e =>
+        {
+            e.ToTable("cash_source_work"); e.HasKey(x => x.Id);
+            e.Property(x => x.SourceId).HasMaxLength(255); e.Property(x => x.ProviderAccount).HasMaxLength(255);
+            e.Property(x => x.ActorId).HasMaxLength(450); e.Property(x => x.ApiVersion).HasMaxLength(64);
+            e.Property(x => x.State).HasConversion<string>().HasMaxLength(32); e.Property(x => x.LeaseToken).IsConcurrencyToken();
+            e.Property(x => x.LastError).HasMaxLength(64); e.Property(x => x.OriginTraceId).HasMaxLength(32); e.Property(x => x.OriginSpanId).HasMaxLength(16);
+            e.HasIndex(x => new { x.AttemptId, x.SourceId }).IsUnique(); e.HasIndex(x => new { x.ActorId, x.OperationId }).IsUnique();
+            e.HasIndex(x => new { x.State, x.NextAttemptAt, x.CreatedAt, x.Id });
+            e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.ActorId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<PaymentAttempt>().WithMany().HasForeignKey(x => new { x.AttemptId, x.AccountId, x.ProviderAccount, x.LiveMode })
+                .HasPrincipalKey(x => new { x.Id, x.AccountId, x.ProviderAccount, x.LiveMode }).OnDelete(DeleteBehavior.Restrict);
         });
         model.Entity<CashMovement>(e =>
         {

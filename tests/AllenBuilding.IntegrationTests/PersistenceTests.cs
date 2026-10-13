@@ -174,6 +174,7 @@ public sealed class PersistenceTests
         await CustomerProvisionContract.VerifyAsync(create);
         await LocalCreditContract.VerifyAsync(create);
         await CashMovementContract.VerifyAsync(create);
+        await CashSourceRecoveryContract.VerifyAsync(create);
         await RefundDispositionContract.VerifyAsync(create);
     }
 

@@ -16,14 +16,21 @@ public sealed class CashMovementStore(OfficeDbContext db, TimeProvider time) : I
         await CustomerProvisionQueue.LockAccount(db, accountId.Value, token);
         if (db is MySqlOfficeDbContext) await db.Database.ExecuteSqlInterpolatedAsync($"SELECT id FROM payment_attempts WHERE id = {attemptId.ToString("D")} FOR UPDATE", token);
         var original = await db.PaymentAttempts.Include(x => x.Items).SingleAsync(x => x.Id == attemptId, token); await db.Entry(original).ReloadAsync(token);
+        var result = await ApplyLockedAsync(original, version, observation, token);
+        try { await db.SaveChangesAsync(token); await tx.CommitAsync(token); return result; }
+        catch (DbUpdateException) { await tx.RollbackAsync(token); db.ChangeTracker.Clear(); return new(ReconciliationCode.Conflict); }
+    }
+    internal async Task<ReconciliationResult> ApplyLockedAsync(PaymentAttempt original, Guid version, CashObservation observation, CancellationToken token)
+    {
+        if (db.Database.CurrentTransaction is null) throw new InvalidOperationException("Cash projection requires a caller-owned account/original transaction.");
         if (original.Version != version) return new(ReconciliationCode.Conflict);
-        var capture = await db.SettlementPayments.AsNoTracking().SingleOrDefaultAsync(x => x.AttemptId == attemptId, token);
+        var capture = await db.SettlementPayments.AsNoTracking().SingleOrDefaultAsync(x => x.AttemptId == original.Id, token);
         if (original.State != PaymentAttemptState.Settled || capture is null || observation.State != CashObservationState.Verified ||
             observation.Movements is not { Count: >= 1 and <= 25 } || observation.Movements.Any(x => x is null) ||
             observation.Movements.Select(x => x.TransactionId).Distinct(StringComparer.Ordinal).Count() != observation.Movements.Count)
         {
             await Review(original, observation.State == CashObservationState.Unknown ? FinancialFailure.ProviderUnknown : FinancialFailure.ProviderMismatch, token);
-            await db.SaveChangesAsync(token); await tx.CommitAsync(token); return new(ReconciliationCode.NeedsReview);
+            return new(ReconciliationCode.NeedsReview);
         }
         var additions = new List<CashMovement>();
         foreach (var fact in observation.Movements)
@@ -32,13 +39,13 @@ public sealed class CashMovementStore(OfficeDbContext db, TimeProvider time) : I
             try { movement = CashMovement.Record(capture, original, fact, time.GetUtcNow()); }
             catch (InvalidOperationException)
             {
-                await Review(original, FinancialFailure.ProviderMismatch, token); await db.SaveChangesAsync(token); await tx.CommitAsync(token); return new(ReconciliationCode.NeedsReview);
+                await Review(original, FinancialFailure.ProviderMismatch, token); return new(ReconciliationCode.NeedsReview);
             }
             var recorded = await db.CashMovements.AsNoTracking().SingleOrDefaultAsync(x => x.ProviderAccount == fact.ProviderAccount && x.LiveMode == fact.LiveMode && x.TransactionId == fact.TransactionId, token);
             if (recorded is not null)
             {
                 if (recorded.Matches(fact)) continue;
-                await Review(original, FinancialFailure.ProviderMismatch, token); await db.SaveChangesAsync(token); await tx.CommitAsync(token); return new(ReconciliationCode.NeedsReview);
+                await Review(original, FinancialFailure.ProviderMismatch, token); return new(ReconciliationCode.NeedsReview);
             }
             additions.Add(movement);
         }
@@ -50,8 +57,7 @@ public sealed class CashMovementStore(OfficeDbContext db, TimeProvider time) : I
         }
         foreach (var movement in additions) { db.CashMovements.Add(movement); db.CashMovementReviews.Add(CashMovementReview.Open(movement)); }
         await Review(original, FinancialFailure.ExternalCashMovement, token);
-        try { await db.SaveChangesAsync(token); await tx.CommitAsync(token); return new(ReconciliationCode.Applied, capture.Id); }
-        catch (DbUpdateException) { await tx.RollbackAsync(token); db.ChangeTracker.Clear(); return new(ReconciliationCode.Conflict); }
+        return new(ReconciliationCode.Applied, capture.Id);
     }
     private async Task Review(PaymentAttempt original, FinancialFailure failure, CancellationToken token)
     {

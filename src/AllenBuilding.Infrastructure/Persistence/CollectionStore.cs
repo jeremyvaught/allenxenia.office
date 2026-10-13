@@ -83,6 +83,7 @@ public sealed class CollectionStore(OfficeDbContext db, ICurrentActor current, C
             .OrderBy(x => x.Id).Select(x => new ReviewedCollectionBalance(x.Id, x.AccountId, x.Version,
                 x.AmountMinorUnits - (db.ObligationCredits.Where(c => c.ObligationId == x.Id).Sum(c => (long?)c.AmountMinorUnits) ?? 0) - (db.PaymentAllocations.Where(a => a.ObligationId == x.Id).Sum(a => (long?)a.AmountMinorUnits) ?? 0) - (db.RefundAllocations.Where(a => a.ObligationId == x.Id).Sum(a => (long?)a.SignedMinorUnits) ?? 0), x.Currency,
                 db.CollectionGuards.Any(g => g.ObligationId == x.Id),
+                db.CashSourceWork.Any(w => w.AccountId == x.AccountId && w.State != CollectionWorkState.Completed) ||
                 db.FinancialExceptions.Any(e => e.AccountId == x.AccountId && e.State != FinancialExceptionState.Resolved) ||
                 db.CashMovements.Any(m => m.AccountId == x.AccountId && !db.CashMovementReviews.Any(r => r.MovementId == m.Id && r.State == CashMovementReviewState.Classified)) ||
                 db.PaymentAttemptItems.Any(i => i.ObligationId == x.Id && db.PaymentAttempts.Any(a => a.Id == i.AttemptId &&

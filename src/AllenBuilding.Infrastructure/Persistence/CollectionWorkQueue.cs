@@ -47,7 +47,8 @@ public sealed class CollectionWorkQueue(OfficeDbContext db, TimeProvider time) :
                 work.Complete(work.LeaseToken, CollectionWorkOutcome.Suppressed, now);
                 await db.SaveChangesAsync(token); await transaction.CommitAsync(token); return null;
             }
-            var valid = !await db.FinancialExceptions.AnyAsync(x => x.AccountId == original.AccountId && x.State != FinancialExceptionState.Resolved, token) &&
+            var valid = !await db.CashSourceWork.AnyAsync(x => x.AccountId == original.AccountId && x.State != CollectionWorkState.Completed, token) &&
+                !await db.FinancialExceptions.AnyAsync(x => x.AccountId == original.AccountId && x.State != FinancialExceptionState.Resolved, token) &&
                 !await db.CashMovements.AnyAsync(m => m.AccountId == original.AccountId && !db.CashMovementReviews.Any(r => r.MovementId == m.Id && r.State == CashMovementReviewState.Classified), token);
             var guards = await db.CollectionGuards.AsNoTracking().Where(x => x.AttemptId == original.Id).ToListAsync(token);
             valid &= guards.Count == original.Items.Count;

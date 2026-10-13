@@ -67,7 +67,7 @@ public sealed class FinancialExceptionHistory
     public DateTimeOffset OccurredAt { get; private set; }
     public static FinancialExceptionHistory Record(Guid exceptionId, string action, string? actor, string? reason, DateTimeOffset now)
     {
-        if (exceptionId == Guid.Empty || action is not ("Opened" or "Observed" or "Reopened" or "Resolved" or "Assigned" or "Escalated" or "ReconcileRequested" or "RefundDispositionApplied") ||
+        if (exceptionId == Guid.Empty || action is not ("Opened" or "Observed" or "Reopened" or "Resolved" or "Assigned" or "Escalated" or "ReconcileRequested" or "RefundDispositionApplied" or "CashReconcileRequested") ||
             (actor is not null && (string.IsNullOrWhiteSpace(actor) || actor.Length > 450)) || reason?.Length > 2000)
             throw new ArgumentException("Invalid financial recovery history.");
         return new() { Id = Guid.NewGuid(), ExceptionId = exceptionId, Action = action, ActorUserId = actor, Reason = reason, OccurredAt = now.ToUniversalTime() };
