@@ -56,6 +56,18 @@ public static class RefundDispositionContract
             }
         }
         var fixture = await Seed(RefundDisposition.CreditDebt, true); var command = fixture.Command;
+        var snapshot = await As(actor, sp => sp.GetRequiredService<RefundDispositionActions>().ReadAsync(command.MovementId));
+        Assert.NotNull(snapshot); Assert.Equal(command.ReviewVersion, snapshot.ReviewVersion); Assert.Equal(200, snapshot.AmountMinorUnits);
+        Assert.Equal(1025, snapshot.Items.Sum(x => x.AvailableCapturedMinorUnits)); Assert.Equal(2, snapshot.Items.Count);
+        Assert.Null(await As(payer, sp => sp.GetRequiredService<RefundDispositionActions>().ReadAsync(command.MovementId)));
+        Assert.Null(await As(actor with { RecentMfa = false }, sp => sp.GetRequiredService<RefundDispositionActions>().ReadAsync(command.MovementId)));
+        foreach (var changed in new[] { actor with { UserId = second.Id }, actor with { RecentMfa = false }, actor with { ChallengedMfa = false } })
+        {
+            using var scope = provider.CreateScope(); var store = new RefundDispositionStore(scope.ServiceProvider.GetRequiredService<OfficeDbContext>(),
+                new RefreshActor(actor, changed), new(true), scope.ServiceProvider.GetRequiredService<AccountInvitations>(), clock);
+            Assert.Null(await store.ReadAsync(actor, command.MovementId, CancellationToken.None));
+        }
+
         Assert.Equal(BillingCode.Unavailable, (await Apply(payer, command)).Code);
         Assert.Equal(BillingCode.Unavailable, (await Apply(actor with { RecentMfa = false }, command)).Code);
         Assert.Equal(BillingCode.ValidationFailed, (await Apply(actor, command with { Items = [command.Items[0]] })).Code);
@@ -68,6 +80,7 @@ public static class RefundDispositionContract
         Assert.Single(race, x => x.Code == BillingCode.Success); Assert.Single(race, x => x.Code == BillingCode.Conflict);
         // The winning disposition is immutable, including replay and item order.
         var creditWon = race[0].Code == BillingCode.Success;
+        Assert.Null(await As(actor, sp => sp.GetRequiredService<RefundDispositionActions>().ReadAsync(command.MovementId)));
         await using (var db = create())
         {
             Assert.Equal(-200, await db.RefundAllocations.Where(x => x.AccountId == command.AccountId).SumAsync(x => x.SignedMinorUnits));
@@ -119,6 +132,11 @@ public static class RefundDispositionContract
         Assert.Equal(BillingCode.Conflict, (await Apply(actor, foreign.Command)).Code);
         await using (var db = create()) { db.BuildingManagers.Remove(await db.BuildingManagers.SingleAsync(x => x.UserId == manager.Id && x.BuildingId == building.Id)); await db.SaveChangesAsync(); }
         Assert.Equal(BillingCode.Unavailable, (await Apply(actor, command)).Code); // Current authority also governs replay.
+    }
+    private sealed class RefreshActor(Actor original, Actor changed) : ICurrentActor
+    {
+        private int _calls;
+        public Task<Actor?> GetAsync(CancellationToken cancellationToken = default) => Task.FromResult<Actor?>(++_calls == 1 ? original : changed);
     }
     private sealed class Clock : TimeProvider
     { public DateTimeOffset Now { get; set; } = new(2004, 1, 1, 12, 0, 0, TimeSpan.Zero); public override DateTimeOffset GetUtcNow() => Now; }

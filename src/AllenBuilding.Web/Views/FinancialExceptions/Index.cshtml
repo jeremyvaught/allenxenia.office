@@ -37,6 +37,7 @@
                         <p class="mt-1 text-muted">@(movement.ReviewState switch { CashMovementReviewState.Classified => "Disposition verified", CashMovementReviewState.AppliedPendingVerification => "Allocation / debt disposition recorded — provider agreement pending", CashMovementReviewState.Pending => "Allocation / debt disposition pending", _ => "Review record missing — investigation required" })</p>
                         <p class="mt-1 break-all text-muted">Source @movement.SourceId</p><p class="mt-1 break-all text-muted">Transaction @movement.TransactionId</p>
                         <p class="mt-1 text-muted">Provider transaction @movement.ProviderAt.ToString("yyyy-MM-dd HH:mm 'UTC'")</p>
+                        @if (ViewData["RefundsEnabled"] is true && movement.Kind == CashMovementKind.Refund && movement.ReviewState == CashMovementReviewState.Pending) { <a asp-action="Refund" asp-route-id="@movement.Id" class="quiet-button mt-3">Review debt disposition</a> }
                     </li> }</ul>
                     @if (facts.Count == 50) { <p class="mt-4 text-sm text-muted">Showing the 50 most recent movements; this list is not an account total.</p> }
                 </section>

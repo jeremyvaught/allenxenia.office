@@ -37,6 +37,10 @@ builder.Services.AddScoped<AllenBuilding.Application.Billing.CollectionActions>(
 builder.Services.AddSingleton(new AllenBuilding.Application.Billing.FinancialRecoveryPolicy(false));
 builder.Services.AddScoped<AllenBuilding.Application.Billing.IFinancialExceptionStore, FinancialExceptionStore>();
 builder.Services.AddScoped<AllenBuilding.Application.Billing.FinancialExceptionActions>();
+// Only isolated browser fixtures can opt in before whole-payment recovery is finished; ordinary runtime stays disabled.
+builder.Services.AddSingleton(new AllenBuilding.Application.Billing.RefundDispositionPolicy(builder.Environment.IsEnvironment("Testing") && builder.Configuration.GetValue<bool>("Billing:RefundReviewEnabled")));
+builder.Services.AddScoped<AllenBuilding.Application.Billing.IRefundDispositionStore, RefundDispositionStore>();
+builder.Services.AddScoped<AllenBuilding.Application.Billing.RefundDispositionActions>();
 builder.Services.AddScoped<AllenBuilding.Application.Billing.IPaymentWebhookReceiver, AllenBuilding.Application.Billing.DisabledPaymentWebhookReceiver>();
 builder.Services.AddScoped<BillingReviewTickets>();
 builder.Services.AddScoped<AllenBuilding.Application.Reporting.IManagementReportReader, ManagementReportReader>();

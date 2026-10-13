@@ -9,13 +9,24 @@ public sealed record RefundDispositionPolicy(bool Enabled);
 public sealed record ReviewedRefundItem(Guid ObligationId, Guid Version, long AmountMinorUnits);
 public sealed record ApplyRefundDisposition(Guid OperationId, Guid AccountId, Guid MovementId, Guid ReviewVersion,
     RefundDisposition Disposition, IReadOnlyList<ReviewedRefundItem> Items, string Reason);
+public sealed record RefundReviewItem(Guid ObligationId, Guid Version, string Description, long AvailableCapturedMinorUnits, long UncreditedChargeMinorUnits);
+public sealed record RefundDispositionReview(Guid AccountId, Guid MovementId, Guid ReviewVersion, Guid BuildingId, string Suite,
+    string SourceId, long AmountMinorUnits, string Currency, IReadOnlyList<RefundReviewItem> Items);
 public interface IRefundDispositionStore
 {
+    Task<RefundDispositionReview?> ReadAsync(Actor actor, Guid movementId, CancellationToken cancellationToken);
     Task<BillingResult> ApplyAsync(Actor actor, ApplyRefundDisposition command, string hash, CancellationToken cancellationToken);
 }
 // Only the separately confirmed server command calls this use case. It never dispatches a provider write or releases a collection hold.
 public sealed class RefundDispositionActions(ICurrentActor current, IRefundDispositionStore store, RefundDispositionPolicy policy)
 {
+    public async Task<RefundDispositionReview?> ReadAsync(Guid movementId, CancellationToken cancellationToken = default)
+    {
+        if (!policy.Enabled || movementId == Guid.Empty) return null;
+        var actor = await current.GetAsync(cancellationToken);
+        if (actor is not { ChallengedMfa: true, RecentMfa: true } || actor.ManagedBuildings.Count == 0) return null;
+        return await store.ReadAsync(actor, movementId, cancellationToken);
+    }
     public async Task<BillingResult> ApplyAsync(ApplyRefundDisposition command, CancellationToken cancellationToken = default)
     {
         if (!policy.Enabled) return new(BillingCode.Unavailable);

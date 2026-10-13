@@ -246,6 +246,26 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await expect(manager.getByText('Review original Stripe outcome.', { exact: true })).toBeVisible();
     expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await manager.screenshot({ path: `artifacts/browser/financial-cases-${testInfo.project.name}.png`, fullPage: true });
+    await manager.getByRole('link', { name: 'Review debt disposition', exact: true }).click();
+    const refundPath = new URL(manager.url()).pathname;
+    await expect(manager.getByRole('heading', { level: 1 })).toHaveText('Allocate this refund');
+    await manager.getByLabel('Returned amount for this charge (USD)', { exact: true }).fill('5.00');
+    await manager.getByLabel('Debt disposition', { exact: true }).selectOption('CreditDebt');
+    await manager.getByLabel('Reason for this disposition', { exact: true }).fill('Credit the verified returned portion of the original charge.');
+    expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await manager.screenshot({ path: `artifacts/browser/refund-prepare-${testInfo.project.name}.png`, fullPage: true });
+    await manager.getByRole('button', { name: 'Review refund disposition', exact: true }).click();
+    await expect(manager.getByRole('heading', { level: 1 })).toHaveText('Review refund disposition');
+    await expect(manager.getByText('Reduce debt by the returned amount', { exact: true })).toBeVisible();
+    expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await manager.screenshot({ path: `artifacts/browser/refund-review-${testInfo.project.name}.png`, fullPage: true });
+    await manager.getByRole('button', { name: 'Confirm refund disposition', exact: true }).click();
+    await expect(manager.getByText('Allocation / debt disposition recorded — provider agreement pending', { exact: true })).toBeVisible();
+    await expect(manager.getByRole('link', { name: 'Review debt disposition', exact: true })).toHaveCount(0);
+    expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.goto(refundPath);
+    await expect(page).toHaveURL(/\/Account\/Denied/);
+
     await page.goto('/FinancialExceptions');
     await expect(page).toHaveURL(/\/Account\/Denied/);
     await page.goto('/Reports/Maintenance');

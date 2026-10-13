@@ -43,9 +43,9 @@ public static class BillingDisplay
 {
     public static string Usd(long minorUnits) => (minorUnits / 100m).ToString("C2", CultureInfo.GetCultureInfo("en-US"));
     public static string Label(BillingAccount account) => $"{account.Suite} · {account.PayerEmail} · membership {account.MembershipId:D}";
-    public static long MinorUnits(decimal amount)
+    public static long MinorUnits(decimal amount, long minimumMinorUnits = 50)
     {
-        if (amount < 0.50m || amount > 999999.99m || decimal.Truncate(amount * 100m) != amount * 100m) throw new ArgumentException("Enter a USD amount with at most two decimal places.");
+        if (minimumMinorUnits is < 1 or > 50 || amount < minimumMinorUnits / 100m || amount > 999999.99m || decimal.Truncate(amount * 100m) != amount * 100m) throw new ArgumentException("Enter a USD amount with at most two decimal places.");
         return checked((long)(amount * 100m));
     }
 }

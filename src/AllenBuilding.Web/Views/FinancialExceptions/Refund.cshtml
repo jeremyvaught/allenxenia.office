@@ -1,0 +1,30 @@
+@model AllenBuilding.Application.Billing.RefundDispositionReview
+@{ ViewData["Title"] = "Allocate returned money"; }
+<div class="page"><section class="mx-auto max-w-3xl rounded-2xl border border-line bg-panel p-6 sm:p-8">
+    <p class="mb-2 text-sm text-muted">VERIFIED RETURNED MONEY</p><h1 class="mb-4 text-3xl font-semibold">Allocate this refund</h1>
+    <p class="break-words text-muted">@Model.Suite · account @Model.AccountId</p>
+    <p class="mt-5 text-2xl font-semibold">@BillingDisplay.Usd(Model.AmountMinorUnits) @Model.Currency returned</p>
+    <p class="mt-2 break-all text-sm text-muted">Provider source @Model.SourceId</p>
+    <p class="my-6 text-muted">This money has already been returned. Allocate it to the original charges and decide whether to reduce the debt. This records a local disposition; collection stays on hold until provider agreement is verified.</p>
+    <form asp-action="PrepareRefund" method="post" class="space-y-6">
+        <input name="MovementId" type="hidden" value="@Model.MovementId" /><input name="ReviewVersion" type="hidden" value="@Model.ReviewVersion" /><input name="OperationId" type="hidden" value="@Guid.NewGuid()" />
+        <fieldset class="space-y-4"><legend class="mb-3 text-lg font-semibold">Original charge allocations</legend>
+        @for (var index = 0; index < Model.Items.Count; index++) { var item = Model.Items[index];
+            <div class="min-w-0 rounded-xl border border-line p-4">
+                <h2 class="break-words font-semibold">@item.Description</h2><p class="mt-1 break-all text-xs text-muted">Obligation @item.ObligationId</p>
+                <p class="mt-3 text-sm">Original captured funds still available: @BillingDisplay.Usd(item.AvailableCapturedMinorUnits) USD</p>
+                <p class="mt-1 text-sm text-muted">Charge after earlier credits: @BillingDisplay.Usd(item.UncreditedChargeMinorUnits) USD</p>
+                <input name="Items[@index].ObligationId" type="hidden" value="@item.ObligationId" /><input name="Items[@index].Version" type="hidden" value="@item.Version" />
+                <label for="refund-amount-@index" class="mt-4 block">Returned amount for this charge (USD)</label>
+                <input id="refund-amount-@index" name="Items[@index].Amount" type="number" min="0" max="@((item.AvailableCapturedMinorUnits / 100m).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture))" step="0.01" inputmode="decimal" required class="field mt-2" value="@((Model.Items.Count == 1 ? Model.AmountMinorUnits / 100m : 0m).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture))" />
+            </div>
+        }</fieldset>
+        <p class="text-sm text-muted">Enter zero for any charge excluded from this refund. Positive allocations must total exactly @BillingDisplay.Usd(Model.AmountMinorUnits) USD.</p>
+        <div><label for="refund-disposition" class="block">Debt disposition</label><select name="Disposition" id="refund-disposition" class="field mt-2" required>
+            <option value="">Choose a disposition</option><option value="CreditDebt">Reduce debt by the returned amount</option><option value="RetainDebt">Retain the debt represented by returned money</option>
+        </select></div>
+        <div><label for="refund-reason" class="block">Reason for this disposition</label><textarea id="refund-reason" name="Reason" class="field mt-2" rows="3" maxlength="2000" required></textarea></div>
+        <button class="button w-full sm:w-auto">Review refund disposition</button>
+    </form>
+    <a asp-action="Index" class="mt-4 flex min-h-11 items-center underline">Return without saving</a>
+</section></div>

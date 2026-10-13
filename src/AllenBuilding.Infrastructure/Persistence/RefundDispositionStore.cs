@@ -8,6 +8,36 @@ namespace AllenBuilding.Infrastructure.Persistence;
 
 public sealed class RefundDispositionStore(OfficeDbContext db, ICurrentActor current, RefundDispositionPolicy policy, AccountInvitations audit, TimeProvider time) : IRefundDispositionStore
 {
+    public async Task<RefundDispositionReview?> ReadAsync(Actor actor, Guid movementId, CancellationToken token)
+    {
+        if (!policy.Enabled) return null;
+        await using var tx = await AuthorityLocks.BeginAsync(db, token); await AuthorityLocks.UserAsync(db, actor.UserId, token);
+        var row = await (from movement in db.CashMovements.AsNoTracking()
+                         join account in db.RentAccounts on movement.AccountId equals account.Id
+                         join member in db.Memberships on account.MembershipId equals member.Id
+                         join suite in db.Suites on member.SuiteId equals suite.Id
+                         where movement.Id == movementId && movement.Kind == CashMovementKind.Refund && movement.SignedMinorUnits < 0 &&
+                             actor.ManagedBuildings.Contains(suite.BuildingId) && db.BuildingManagers.Any(x => x.UserId == actor.UserId && x.BuildingId == suite.BuildingId)
+                         select new { Movement = movement, Suite = suite.Name, suite.BuildingId }).SingleOrDefaultAsync(token);
+        if (row is null) return null;
+        await AuthorityLocks.ManagerAsync(db, actor.UserId, row.BuildingId, token); await CustomerProvisionQueue.LockAccount(db, row.Movement.AccountId, token);
+        if (!await Authorized(actor, row.BuildingId, token)) return null;
+        var review = await db.CashMovementReviews.AsNoTracking().SingleOrDefaultAsync(x => x.MovementId == movementId, token);
+        if (review is null || review.State != CashMovementReviewState.Pending) return null;
+        var originals = await db.PaymentAllocations.AsNoTracking().Where(x => x.PaymentId == row.Movement.CaptureId && x.AccountId == row.Movement.AccountId).OrderBy(x => x.ObligationId).Take(26).ToListAsync(token);
+        if (originals.Count is < 1 or > 25) return null;
+        var items = new List<RefundReviewItem>();
+        foreach (var original in originals)
+        {
+            var debt = await db.Obligations.AsNoTracking().SingleAsync(x => x.Id == original.ObligationId && x.AccountId == row.Movement.AccountId, token);
+            var returned = await db.RefundAllocations.Where(x => x.CaptureId == row.Movement.CaptureId && x.ObligationId == original.ObligationId).SumAsync(x => (long?)x.SignedMinorUnits, token) ?? 0;
+            var credited = await db.ObligationCredits.Where(x => x.ObligationId == original.ObligationId).SumAsync(x => (long?)x.AmountMinorUnits, token) ?? 0;
+            var available = original.AmountMinorUnits + returned;
+            if (available > 0) items.Add(new(debt.Id, debt.Version, debt.Description, available, debt.AmountMinorUnits - credited));
+        }
+        if (items.Sum(x => x.AvailableCapturedMinorUnits) < -row.Movement.SignedMinorUnits || !await Authorized(actor, row.BuildingId, token)) return null;
+        return new(row.Movement.AccountId, movementId, review.Version, row.BuildingId, row.Suite, row.Movement.SourceId, -row.Movement.SignedMinorUnits, row.Movement.Currency, items);
+    }
     public async Task<BillingResult> ApplyAsync(Actor actor, ApplyRefundDisposition command, string hash, CancellationToken token)
     {
         if (!policy.Enabled) return new(BillingCode.Unavailable);
