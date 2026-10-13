@@ -5,6 +5,14 @@
         <p class="mb-2 text-sm text-muted">MAINTENANCE</p><h1 class="mb-3 text-3xl font-semibold">What needs attention?</h1>
         <p class="mb-6 text-muted">Give your building manager enough detail to locate and assess the issue. For immediate danger, call 911.</p>
         @if (manager) { <p class="mb-6 text-muted">Record this request for the selected active tenant. Their original membership owns it; history records that a manager submitted it.</p> }
+        @if (manager && memberships.Count == 0)
+        {
+            <h2 class="mb-3 text-xl font-semibold">No active tenants yet</h2>
+            <p class="mb-5 text-muted">Invite a tenant and have them activate their access before recording a request for their office.</p>
+            <a asp-controller="Management" asp-action="Index" class="quiet-button">Manage tenant access</a>
+        }
+        else
+        {
         <form asp-action="@(manager ? "CreateOnBehalf" : "Create")" method="post" class="space-y-5">
             <div asp-validation-summary="All" role="alert"></div><input asp-for="OperationId" type="hidden" />
             <div><label asp-for="MembershipId" class="mb-2 block">Office</label><select asp-for="MembershipId" class="field">@foreach (var membership in memberships) { <option value="@membership.Id">@membership.Suite@(manager ? " · " + membership.RequesterEmail : "")</option> }</select></div>
@@ -14,6 +22,7 @@
             <button class="button w-full sm:w-auto">Submit maintenance request</button>
         </form>
         <p class="mt-4 text-sm text-muted">Showing up to 100 eligible memberships.</p>
+        }
         <a asp-action="@(manager ? "Manage" : "Index")" class="mt-4 flex min-h-11 items-center underline">Return to your requests</a>
     </section>
 </div>

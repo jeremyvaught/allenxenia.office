@@ -111,6 +111,7 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await manager.getByRole('button', { name: 'Verify sign-in', exact: true }).click();
     await manager.getByRole('link', { name: 'Contractor contacts' }).click();
     await manager.getByRole('link', { name: 'Add a contractor' }).click();
+    await expect(manager.getByLabel('Trade', { exact: true }).locator('option', { hasText: 'Heating and cooling' })).toHaveCount(1);
     await manager.getByLabel('Contact name').fill('Reliable plumbing');
     await manager.getByLabel('Email (optional)').fill('plumber@example.test');
     await manager.getByRole('button', { name: 'Save contact' }).click();
@@ -118,6 +119,8 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     const contactPath = new URL(manager.url()).pathname;
     await manager.goto('/Maintenance/Manage');
     await manager.getByRole('link', { name: new RegExp(`Leaking sink ${testInfo.project.name}`) }).click();
+    await expect(manager.getByLabel('Priority', { exact: true })).toHaveValue('1');
+    await expect(manager.getByLabel('Trade', { exact: true }).locator('option', { hasText: 'Heating and cooling' })).toHaveCount(1);
     await manager.getByLabel('Priority', { exact: true }).selectOption('2');
     await manager.getByLabel('Trade', { exact: true }).selectOption('1');
     await manager.getByRole('button', { name: 'Triage', exact: true }).click();
@@ -189,6 +192,7 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     const addedSuite = `Additional suite ${testInfo.project.name}`;
     await manager.getByLabel('Suite name', { exact: true }).fill(addedSuite);
     await manager.getByRole('button', { name: 'Add suite', exact: true }).click();
+    await expect(manager.getByRole('status')).toContainText(`Suite ${addedSuite} added`);
     await manager.getByLabel('Suite for existing account').selectOption({ label: addedSuite });
     await manager.getByLabel('Existing account email').fill(account.tenantEmail);
     await manager.getByLabel('Reason for granting access').fill('Additional suite approved.');

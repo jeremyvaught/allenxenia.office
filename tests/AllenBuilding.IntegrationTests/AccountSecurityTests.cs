@@ -284,8 +284,12 @@ public sealed class AccountSecurityTests
         using var bad = await AccountTestHost.PostAsync(tenant, $"/Invitation/Accept/{invitationId}", "/Invitation/Accept",
             ("InvitationId", invitationId.ToString()), ("Token", "wrong"), ("Password", AccountTestHost.Password), ("ConfirmPassword", AccountTestHost.Password));
         Assert.Contains("Unable to activate", await bad.Content.ReadAsStringAsync());
+        using var shortPassword = await AccountTestHost.PostAsync(tenant, $"/Invitation/Accept/{invitationId}", "/Invitation/Accept",
+            ("InvitationId", invitationId.ToString()), ("Token", token), ("Password", "short"), ("ConfirmPassword", "short"));
+        Assert.Contains("Use a password between 12 and 128 characters", await shortPassword.Content.ReadAsStringAsync());
+        Assert.DoesNotContain("Unable to activate", await shortPassword.Content.ReadAsStringAsync());
         using var activated = await AccountTestHost.PostAsync(tenant, $"/Invitation/Accept/{invitationId}", "/Invitation/Accept",
-            ("InvitationId", invitationId.ToString()), ("Token", token), ("Password", AccountTestHost.Password), ("ConfirmPassword", AccountTestHost.Password), ("SuiteId", Guid.NewGuid().ToString()));
+            ("InvitationId", invitationId.ToString()), ("Token", token), ("Password", "long lowercase passphrase"), ("ConfirmPassword", "long lowercase passphrase"), ("SuiteId", Guid.NewGuid().ToString()));
         Assert.Contains("ready to sign in", await activated.Content.ReadAsStringAsync());
         using var replay = await AccountTestHost.PostAsync(tenant, $"/Invitation/Accept/{invitationId}", "/Invitation/Accept",
             ("InvitationId", invitationId.ToString()), ("Token", token), ("Password", AccountTestHost.Password), ("ConfirmPassword", AccountTestHost.Password));
@@ -295,6 +299,18 @@ public sealed class AccountSecurityTests
         Assert.Equal(suiteId, (await savedDb.Memberships.SingleAsync()).SuiteId);
         Assert.Single(await savedDb.ActiveGrants.ToListAsync());
         Assert.Equal(2, await savedDb.AccountAudits.CountAsync());
+        var userId = (await savedDb.Invitations.SingleAsync()).UserId;
+        var users = verification.ServiceProvider.GetRequiredService<UserManager<OfficeUser>>();
+        var resetToken = await users.GeneratePasswordResetTokenAsync((await users.FindByIdAsync(userId))!);
+        using var shortReset = await AccountTestHost.PostAsync(tenant, $"/Invitation/Reset/{userId}", "/Invitation/Reset",
+            ("UserId", userId), ("Token", resetToken), ("Password", "short"));
+        Assert.Contains("Use a password between 12 and 128 characters", await shortReset.Content.ReadAsStringAsync());
+        Assert.DoesNotContain("Unable to reset", await shortReset.Content.ReadAsStringAsync());
+        using var reset = await AccountTestHost.PostAsync(tenant, $"/Invitation/Reset/{userId}", "/Invitation/Reset",
+            ("UserId", userId), ("Token", resetToken), ("Password", "abcdefghijkl"));
+        Assert.Contains("ready to sign in", await reset.Content.ReadAsStringAsync());
+        using var login = await AccountTestHost.PostAsync(tenant, "/Account/Login", "/Account/Login", ("Email", "tenant@example.test"), ("Password", "abcdefghijkl"));
+        Assert.Equal("/Portal", login.Headers.Location?.OriginalString);
     }
 
     [Fact]

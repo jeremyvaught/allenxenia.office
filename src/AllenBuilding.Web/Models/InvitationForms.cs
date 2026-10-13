@@ -12,7 +12,7 @@ public sealed class ActivationForm
 {
     public Guid InvitationId { get; set; }
     [Required, StringLength(4096)] public string Token { get; set; } = "";
-    [Required, StringLength(128, MinimumLength = 12), DataType(DataType.Password)] public string Password { get; set; } = "";
+    [Required, StringLength(128, MinimumLength = 12, ErrorMessage = "Use a password between 12 and 128 characters."), DataType(DataType.Password)] public string Password { get; set; } = "";
     [Compare(nameof(Password)), DataType(DataType.Password)] public string ConfirmPassword { get; set; } = "";
 }
 
@@ -25,7 +25,7 @@ public sealed class ResetForm
 {
     [Required, StringLength(450)] public string UserId { get; set; } = "";
     [Required, StringLength(4096)] public string Token { get; set; } = "";
-    [Required, StringLength(128, MinimumLength = 12), DataType(DataType.Password)] public string Password { get; set; } = "";
+    [Required, StringLength(128, MinimumLength = 12, ErrorMessage = "Use a password between 12 and 128 characters."), DataType(DataType.Password)] public string Password { get; set; } = "";
 }
 
 public sealed class SuiteForm

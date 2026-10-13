@@ -48,7 +48,9 @@ public sealed class ManagementController(ICurrentActor current, OfficeDbContext 
         if (await db.Suites.AnyAsync(x => x.BuildingId == form.BuildingId && x.Name == form.Name.Trim())) return Conflict();
         var suite = new Suite { BuildingId = form.BuildingId, Name = form.Name.Trim() };
         db.Suites.Add(suite); invitations.Audit(actor.UserId, "SuiteCreated", suite.Id.ToString());
-        await db.SaveChangesAsync(); await transaction.CommitAsync(); return RedirectToAction(nameof(Index));
+        await db.SaveChangesAsync(); await transaction.CommitAsync();
+        TempData["Notice"] = $"Suite {suite.Name} added. You can now invite a tenant or grant access to this suite.";
+        return RedirectToAction(nameof(Index));
     }
 
     [Authorize(Policy = OfficeSecurity.RecentManagerPolicy), HttpPost]

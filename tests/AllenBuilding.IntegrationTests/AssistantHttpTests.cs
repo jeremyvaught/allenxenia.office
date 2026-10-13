@@ -10,6 +10,17 @@ namespace AllenBuilding.IntegrationTests;
 public sealed class AssistantHttpTests
 {
     [Fact]
+    public async Task Signed_in_public_help_links_to_the_office_without_claiming_private_scope()
+    {
+        var model = new Model { Route = "requests" };
+        await using var host = new AccountTestHost { AssistantModel = model }; await host.InitializeAsync();
+        var (id, _) = await host.SeedManagerAsync(); using var browser = host.Browser(); await host.LoginManagerAsync(browser, id);
+        using var reply = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", ("question", "Where are my requests?"));
+        Assert.Equal(HttpStatusCode.OK, reply.StatusCode); Assert.False(model.Input!.Tenant);
+        var html = await reply.Content.ReadAsStringAsync(); Assert.Contains("Open your office", html); Assert.DoesNotContain("Sign in to your office", html);
+        Assert.Contains("href=\"/Portal\"", html);
+    }
+    [Fact]
     public async Task Guest_followups_use_only_server_history_and_browser_cookie_ownership_with_no_disk_transcript()
     {
         var model = new Model { Answer = "<script>answer-canary</script>" };

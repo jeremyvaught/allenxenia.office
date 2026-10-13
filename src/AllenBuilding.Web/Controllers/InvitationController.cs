@@ -12,7 +12,8 @@ public sealed class InvitationController(AccountInvitations invitations) : Contr
     [HttpPost]
     public async Task<IActionResult> Accept(ActivationForm form)
     {
-        if (ModelState.IsValid && await invitations.AcceptAsync(form.InvitationId, form.Token, form.Password))
+        if (!ModelState.IsValid) return View(form);
+        if (await invitations.AcceptAsync(form.InvitationId, form.Token, form.Password))
             return View("Accepted");
         ModelState.AddModelError("", "Unable to activate this invitation. Check the link and password, or ask your manager for help.");
         return View(form);
@@ -29,7 +30,8 @@ public sealed class InvitationController(AccountInvitations invitations) : Contr
     [HttpPost]
     public async Task<IActionResult> Reset(ResetForm form)
     {
-        if (ModelState.IsValid && await invitations.ResetAsync(form.UserId, form.Token, form.Password)) return View("Accepted");
+        if (!ModelState.IsValid) return View(form);
+        if (await invitations.ResetAsync(form.UserId, form.Token, form.Password)) return View("Accepted");
         ModelState.AddModelError("", "Unable to reset the password. Check the link and password, or request a new link.");
         return View(form);
     }

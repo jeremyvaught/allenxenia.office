@@ -1,3 +1,4 @@
+using AllenBuilding.Application.Access;
 using AllenBuilding.Application.Billing;
 using AllenBuilding.Application.Knowledge;
 using AllenBuilding.Application.Maintenance;
@@ -14,7 +15,7 @@ public sealed record AssistantAnswer(AssistantModelCode Code, string Text = "", 
 // Only server-held prior exchanges enter context. Original membership and the union of source
 // revisions are checked before reuse and carried through output/confirmation admission.
 public sealed class AssistantHelp(KnowledgeActions knowledge, IAssistantModel model, AssistantPolicy policy, IAssistantTenantAccess access,
-    MaintenanceActions maintenance, BillingActions billing, AssistantMaintenance actions, TimeProvider time)
+    MaintenanceActions maintenance, BillingActions billing, AssistantMaintenance actions, TimeProvider time, ICurrentActor current)
 {
     public async Task<bool> PublicSourcesCurrentAsync(IReadOnlyList<AssistantSource> sources, CancellationToken cancellationToken)
     {
@@ -100,6 +101,7 @@ public sealed class AssistantHelp(KnowledgeActions knowledge, IAssistantModel mo
                 : await knowledge.FindForMembershipAsync(scope.MembershipId, source.ArticleId, cancellationToken);
             if (fresh.Count != 1 || fresh[0].RevisionId != source.RevisionId) return new(AssistantModelCode.Unavailable);
         }
+        var signedIn = scope is not null || await current.GetAsync(cancellationToken) is not null;
         var next = reply.Route switch
         {
             "help" => new AssistantLink("Read building help", scope is null ? "/Knowledge" : "/Knowledge/Tenant"),
@@ -107,7 +109,8 @@ public sealed class AssistantHelp(KnowledgeActions knowledge, IAssistantModel mo
             "new_request" when scope is not null => new("Report a maintenance issue", "/Maintenance/Create"),
             "billing" or "autopay" when scope is not null && policy.BillingEnabled => new("Your billing records and account options", "/Billing"),
             "billing" or "autopay" when scope is not null => new("Open your office", "/Portal"),
-            "login" or "requests" or "new_request" or "billing" or "autopay" => new("Sign in to your office", "/Account/Login"),
+            "login" or "requests" or "new_request" or "billing" or "autopay" => signedIn
+                ? new("Open your office", "/Portal") : new("Sign in to your office", "/Account/Login"),
             _ => null
         };
         if (next is null) return new(AssistantModelCode.Invalid);

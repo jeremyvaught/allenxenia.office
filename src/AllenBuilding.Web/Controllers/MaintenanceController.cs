@@ -55,7 +55,7 @@ public sealed class MaintenanceController(MaintenanceActions actions) : Controll
     [Authorize(Policy = OfficeSecurity.ManagerPolicy), HttpGet]
     public async Task<IActionResult> CreateOnBehalf()
     {
-        if (!await Choices(true)) return NotFound();
+        await Choices(true);
         ViewData["Manager"] = true;
         return View("Create", new NewRequestForm());
     }
@@ -64,7 +64,7 @@ public sealed class MaintenanceController(MaintenanceActions actions) : Controll
     {
         if (!ModelState.IsValid)
         {
-            if (!await Choices(true)) return NotFound();
+            await Choices(true);
             ViewData["Manager"] = true; Response.StatusCode = 400; return View("Create", form);
         }
         return Outcome(await actions.SubmitOnBehalfAsync(new(form.OperationId, form.MembershipId, form.Title, form.Description, form.Location)), true);

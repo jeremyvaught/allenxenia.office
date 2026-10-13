@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using AllenBuilding.Application.Access;
 using AllenBuilding.Infrastructure.Identity;
 using AllenBuilding.Web.Models;
 using AllenBuilding.Web.Security;
@@ -13,7 +14,7 @@ namespace AllenBuilding.Web.Controllers;
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("Accounts")]
 public sealed class AccountController(UserManager<OfficeUser> users, SignInManager<OfficeUser> signIn,
-    TimeProvider time, AllenBuilding.Infrastructure.Persistence.OfficeDbContext db, AccountInvitations invitations, OperatorEnrollment operatorEnrollment) : Controller
+    TimeProvider time, AllenBuilding.Infrastructure.Persistence.OfficeDbContext db, AccountInvitations invitations, OperatorEnrollment operatorEnrollment, ICurrentActor current) : Controller
 {
     [HttpGet]
     public IActionResult Login(string? returnUrl)
@@ -240,7 +241,13 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
         Response.Cookies.Delete("office.assistant", new CookieOptions { Path = "/Assistant" });
         return RedirectToAction("Index", "Home");
     }
-    [HttpGet] public IActionResult Denied() => View();
+    [HttpGet]
+    public async Task<IActionResult> Denied()
+    {
+        var actor = await current.GetAsync(HttpContext.RequestAborted);
+        ViewData["CanReauthenticate"] = actor is { ChallengedMfa: true, RecentMfa: false } && actor.ManagedBuildings.Count > 0;
+        return View();
+    }
 
     // Navigation is not authorization or confirmation. The destination's GET handler checks
     // current access; no POST is replayed after sign-in, and recovery always retains its gate.

@@ -68,8 +68,8 @@
                         }
                         @if (action == MaintenanceAction.Triage)
                         {
-                            <label for="priority" class="block">Priority</label><select id="priority" name="Priority" class="field" asp-items="Html.GetEnumSelectList<Priority>()"></select>
-                            <label for="trade" class="block">Trade</label><select id="trade" name="Trade" class="field" asp-items="Html.GetEnumSelectList<Trade>()"></select>
+                            <label for="priority" class="block">Priority</label><select id="priority" name="Priority" class="field">@foreach (var priority in Enum.GetValues<Priority>()) { <option value="@((int)priority)" selected="@(priority == (draft?.Action == action ? draft.Priority ?? Priority.Normal : Priority.Normal))">@priority</option> }</select>
+                            <label for="trade" class="block">Trade</label><select id="trade" name="Trade" class="field">@foreach (var trade in Enum.GetValues<Trade>()) { <option value="@((int)trade)" selected="@(trade == (draft?.Action == action ? draft.Trade ?? Trade.General : Trade.General))">@MaintenanceText.Trade(trade)</option> }</select>
                         }
                         @if (action is MaintenanceAction.Complete or MaintenanceAction.Cancel or MaintenanceAction.Reopen)
                         {

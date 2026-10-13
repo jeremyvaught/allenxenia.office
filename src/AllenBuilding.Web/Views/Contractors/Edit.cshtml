@@ -9,7 +9,7 @@
             @if (Model.Version is null) { <select asp-for="BuildingId" asp-items="@((IEnumerable<Microsoft.AspNetCore.Mvc.Rendering.SelectListItem>)ViewData["Buildings"]!)" class="field"></select> }
             else { <input asp-for="BuildingId" type="hidden" /><p class="text-muted">The building cannot be changed.</p> }
             <label asp-for="Name" class="block">Contact name</label><input asp-for="Name" maxlength="160" required class="field" />
-            <label asp-for="Trade" class="block"></label><select asp-for="Trade" asp-items="Html.GetEnumSelectList<Trade>()" class="field"></select>
+            <label asp-for="Trade" class="block"></label><select asp-for="Trade" asp-items="Enum.GetValues<Trade>().Select(trade => new Microsoft.AspNetCore.Mvc.Rendering.SelectListItem(MaintenanceText.Trade(trade), ((int)trade).ToString(System.Globalization.CultureInfo.InvariantCulture)))" class="field"></select>
             <label asp-for="Email" class="block">Email (optional)</label><input asp-for="Email" type="email" maxlength="254" autocomplete="email" class="field" />
             <label asp-for="Phone" class="block">Phone (optional)</label><input asp-for="Phone" type="tel" maxlength="80" autocomplete="tel" class="field" />
             @if (Model.Version is not null) { <label class="flex min-h-11 items-center gap-3"><input asp-for="Active" /> Active — available for new assignments</label> }

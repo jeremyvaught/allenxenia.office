@@ -11,6 +11,20 @@ namespace AllenBuilding.IntegrationTests;
 public sealed class MaintenanceHttpTests
 {
     [Fact]
+    public async Task Manager_without_tenants_gets_an_empty_state_and_cannot_submit_a_forged_membership()
+    {
+        await using var host = new AccountTestHost(); await host.InitializeAsync(); var (id, _) = await host.SeedManagerAsync();
+        using var manager = host.Browser(); await host.LoginManagerAsync(manager, id);
+        using var page = await manager.GetAsync("/Maintenance/CreateOnBehalf"); Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+        var html = await page.Content.ReadAsStringAsync(); Assert.Contains("No active tenants yet", html);
+        Assert.Contains("Manage tenant access", html); Assert.DoesNotContain("Submit maintenance request", html);
+        using var attempt = await AccountTestHost.PostAsync(manager, "/Maintenance/CreateOnBehalf", "/Maintenance/CreateOnBehalf",
+            ("MembershipId", Guid.NewGuid().ToString()), ("OperationId", Guid.NewGuid().ToString()),
+            ("Title", "Forged request"), ("Description", "No active tenant"), ("Location", "Office"));
+        Assert.Equal(HttpStatusCode.NotFound, attempt.StatusCode);
+        using var scope = host.Services.CreateScope(); Assert.Empty(await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().WorkOrders.ToArrayAsync());
+    }
+    [Fact]
     public async Task A_tenant_comment_survives_invisible_manager_activity_and_replays_once_without_email_fan_out()
     {
         await using var host = new AccountTestHost(); await host.InitializeAsync(); var (managerId, building) = await host.SeedManagerAsync();
@@ -150,6 +164,8 @@ public sealed class MaintenanceHttpTests
         var html = await tenant.GetStringAsync(tenantPath); Assert.Contains("Request recorded by manager for tenant", html);
         using var deniedRead = await peer.GetAsync(tenantPath); Assert.Equal(HttpStatusCode.NotFound, deniedRead.StatusCode);
         using var deniedCreate = await tenant.GetAsync("/Maintenance/CreateOnBehalf"); Assert.StartsWith("http://localhost/Account/Denied", deniedCreate.Headers.Location?.OriginalString);
+        var deniedPage = await tenant.GetStringAsync(deniedCreate.Headers.Location!);
+        Assert.Contains("Return to your office", deniedPage); Assert.DoesNotContain("Verify your sign-in", deniedPage);
         using var wrongRoute = await AccountTestHost.PostAsync(manager, managerPath, "/Maintenance/Create", values);
         Assert.Equal(HttpStatusCode.NotFound, wrongRoute.StatusCode);
         using var scope = host.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();

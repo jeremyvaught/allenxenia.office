@@ -21,7 +21,7 @@ Open http://localhost:5081. Migrations create an empty database; there are no de
 dotnet run --project src/AllenBuilding.Web -- --bootstrap-manager
 ```
 
-First sign-in uses email/password and opens the portal. Set up account security separately when ready; manager tools still require MFA. Initial setup verifies the authenticator once and displays recovery codes directly, without another sign-in. Bootstrap refuses an existing account database. Keep `.data`, credentials and real tenant records out of Git.
+Passwords accept 12–128 characters in activation/reset forms; numbers, capitals and symbols are optional. First sign-in uses email/password and opens the portal. Set up account security separately when ready; manager tools still require MFA. Initial setup verifies the authenticator once and displays recovery codes directly, without another sign-in. Bootstrap refuses an existing account database. Keep `.data`, credentials and real tenant records out of Git.
 
 Managers invite tenants from the portal. Development mail stays in the private local inbox; process pending invitations with:
 
@@ -64,7 +64,7 @@ python3 -m unittest discover -s tests/scripts -v
 
 The MySQL script requires Docker and creates a disposable loopback database. Its shared contract is skipped by ordinary tests and runs separately. Browser fixtures use isolated synthetic accounts/data. Coverage: `./scripts/coverage.sh`; run it alone with the preview stopped because it instruments shared assemblies. Reports and screenshots remain under ignored `artifacts/`. Percentages are improvement goals; behavioral checks gate releases.
 
-First-sign-in revision: 134 domain and 491 ordinary integration checks and twenty-four browser journeys pass, including native 320px first login and optional setup. Release has zero warnings/errors. Nine Python helper checks passed at the preceding checkpoint. The shared actual MySQL contract was verified in the earlier remediation; no SQL/schema changes occurred in this follow-up. The preceding revision `a5a21b1` supplies a verified 393-file self-contained Linux x64 package; styled missing-page/article responses, isolated Production/MySQL restore and wrapped-key continuity pass on an image without .NET installed. Browser emulation does not establish real-device acceptance. Coverage remains from the earlier assistant checkpoint.
+Tenant-walkthrough fixes: 134 domain and 493 ordinary integration checks and twenty-four browser journeys pass, including native 320px first login, optional setup and the maintenance loop. Release has zero warnings/errors. Nine Python helper checks passed at the preceding checkpoint. The shared actual MySQL contract was verified in the earlier remediation; no SQL/schema changes occurred in this follow-up. The preceding revision `a5a21b1` supplies a verified 393-file self-contained Linux x64 package; styled missing-page/article responses, isolated Production/MySQL restore and wrapped-key continuity pass on an image without .NET installed. Browser emulation does not establish real-device acceptance. Coverage remains from the earlier assistant checkpoint.
 
 ## Scope and launch limits
 
