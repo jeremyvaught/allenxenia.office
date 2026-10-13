@@ -1,0 +1,50 @@
+@model IReadOnlyList<AllenBuilding.Application.Billing.FinancialCaseView>
+@using AllenBuilding.Domain.Billing
+@{ ViewData["Title"] = "Financial exceptions"; var includeResolved = ViewData["IncludeResolved"] is true; }
+<div class="page">
+    <p class="mb-2 text-sm text-muted">BUILDING MANAGEMENT · PAYMENTS</p>
+    <h1 class="mb-4 text-4xl font-semibold">Financial exceptions</h1>
+    <p class="mb-4 max-w-3xl text-muted">Review the original payment and affected obligations. Open cases hold further collection for that rent account while the discrepancy is investigated.</p>
+    <p class="mb-6 max-w-3xl text-sm text-muted">Provider verification and automatic alerts are not connected yet. Assign an owner or record an escalation, then follow up with that person. Recording a case does not send a payment, refund or cancellation.</p>
+    <div class="mb-6 flex flex-wrap gap-3"><a asp-action="Index" class="quiet-button" aria-current="@(!includeResolved ? "page" : null)">Open cases</a><a asp-action="Index" asp-route-includeResolved="true" class="quiet-button" aria-current="@(includeResolved ? "page" : null)">Include resolved cases</a><a asp-controller="Account" asp-action="Reauthenticate" class="quiet-button">Verify sign-in for recovery actions</a></div>
+    @if (Model.Count == 0) { <p class="rounded-xl border border-line bg-panel p-6">No financial exceptions in this view.</p> }
+    <ul class="space-y-6">
+    @foreach (var item in Model) {
+        <li class="rounded-2xl border border-line bg-panel p-5 sm:p-6">
+            <div class="flex flex-wrap justify-between gap-3"><h2 class="text-xl font-semibold">@item.Suite</h2><span class="text-sm font-semibold">@item.State</span></div>
+            <p class="mt-2 text-muted">@(item.Failure switch { FinancialFailure.ProviderUnknown => "The provider result could not be confirmed.", FinancialFailure.ProviderMismatch => "Provider evidence does not match the original payment.", FinancialFailure.LedgerChanged => "The obligation changed after payment review.", FinancialFailure.ClaimsIncomplete => "Collection protection needs investigation.", _ => "The provider outcome and recorded history need reconciliation." })</p>
+            <p class="mt-3 text-sm">Original collection: @item.AttemptState · Case opened @item.FirstSeenAt.ToString("yyyy-MM-dd HH:mm 'UTC'")</p>
+            <p class="mt-2 text-sm text-muted">Last verified provider state: @(item.LastVerifiedState ?? "No verified state recorded") @if (item.LastVerifiedAt is { } at) { <span>· @at.ToString("yyyy-MM-dd HH:mm 'UTC'")</span> }</p>
+            <p class="mt-2 text-sm text-muted">This is last-known evidence; opening this page does not contact Stripe.</p>
+            <dl class="mt-5 grid gap-3 text-sm sm:grid-cols-2">
+                <div><dt class="text-muted">Provider account / mode</dt><dd class="break-all">@item.ProviderAccount · @(item.LiveMode ? "Live" : "Sandbox")</dd></div>
+                <div><dt class="text-muted">Customer</dt><dd class="break-all">@item.CustomerId</dd></div>
+                <div><dt class="text-muted">Checkout session</dt><dd class="break-all">@(item.SessionId ?? "Not confirmed")</dd></div>
+                <div><dt class="text-muted">Payment reference</dt><dd class="break-all">@(item.PaymentId ?? "Not confirmed")</dd></div>
+                <div><dt class="text-muted">Original operation</dt><dd class="break-all">@item.OriginalOperationId</dd></div>
+                <div><dt class="text-muted">Case owner</dt><dd class="break-words">@(item.Owners.FirstOrDefault(x => x.UserId == item.OwnerUserId)?.Label ?? (item.OwnerUserId is null ? "Unassigned" : "Previous manager — reassignment needed"))</dd></div>
+            </dl>
+            <h3 class="mt-5 font-semibold">Reviewed obligation items</h3>
+            <ul class="mt-2 space-y-2 text-sm">@foreach (var charge in item.Items) { <li class="break-all">@charge.ObligationId · @((charge.AmountMinorUnits / 100m).ToString("C", System.Globalization.CultureInfo.GetCultureInfo("en-US"))) @charge.Currency <span class="block text-muted">Reviewed version @charge.ReviewedVersion</span></li> }</ul>
+            @if (item.State != FinancialExceptionState.Resolved) {
+                <div class="mt-6 grid gap-5 sm:grid-cols-2">
+                    <form asp-action="Assign" method="post" class="space-y-3">
+                        <input name="Id" value="@item.Id" type="hidden" /><input name="Version" value="@item.Version" type="hidden" /><input name="OperationId" value="@Guid.NewGuid()" type="hidden" />
+                        <label for="owner-@item.Id" class="block">Assign case owner</label><select id="owner-@item.Id" name="OwnerUserId" required class="field"><option value="">Choose a manager</option>@foreach (var owner in item.Owners) { <option value="@owner.UserId">@owner.Label</option> }</select>
+                        <label for="assign-reason-@item.Id" class="block">Assignment reason</label><input id="assign-reason-@item.Id" name="Reason" required maxlength="2000" class="field" />
+                        <button class="quiet-button">Assign owner</button>
+                    </form>
+                    <form asp-action="Escalate" method="post" class="space-y-3">
+                        <input name="Id" value="@item.Id" type="hidden" /><input name="Version" value="@item.Version" type="hidden" /><input name="OperationId" value="@Guid.NewGuid()" type="hidden" />
+                        <label for="escalate-reason-@item.Id" class="block">Escalation reason</label><textarea id="escalate-reason-@item.Id" name="Reason" required maxlength="2000" class="field" rows="3"></textarea>
+                        <button class="quiet-button">Record escalation</button>
+                    </form>
+                </div>
+            }
+            <details class="mt-6 rounded-xl border border-line p-4"><summary class="min-h-11 cursor-pointer font-semibold">Recent recovery history</summary><ol class="mt-3 space-y-3 text-sm">@foreach (var entry in item.History) { <li><span>@entry.Action · @entry.OccurredAt.ToString("yyyy-MM-dd HH:mm 'UTC'")</span>@if (entry.Reason is { } reason) { <p class="mt-1 break-words text-muted">@reason</p> }</li> }</ol>@if (item.History.Count == 20) { <p class="mt-3 text-sm text-muted">Showing the 20 most recent history entries.</p> }</details>
+        </li>
+    }
+    </ul>
+    @if (Model.Count == 50) { <p class="mt-6 text-sm text-muted">Showing the 50 oldest cases in this view. Resolved cases leave the open queue.</p> }
+    <a asp-controller="Portal" asp-action="Index" class="mt-6 flex min-h-11 items-center underline">Your office</a>
+</div>

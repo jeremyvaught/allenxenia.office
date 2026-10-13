@@ -34,14 +34,14 @@ public sealed class CollectionReconciliationStore(OfficeDbContext db, TimeProvid
                 fact.AmountMinorUnits == attempt.TotalMinorUnits && fact.AmountMinorUnits == payment.AmountMinorUnits && fact.Currency == payment.Currency &&
                 payment.Allocations.Count == attempt.Items.Count && payment.Allocations.All(x => attempt.Items.Any(i =>
                     i.ObligationId == x.ObligationId && i.AccountId == x.AccountId && i.AmountMinorUnits == x.AmountMinorUnits));
-            if (agrees) await ResolveIssue(attempt.Id, cancellationToken);
+            if (agrees) await ResolveIssue(attempt.Id, observation, cancellationToken);
             else await ObserveIssue(attempt, FinancialFailure.TerminalDisagreement, observation, cancellationToken);
             return await Commit(agrees ? new(ReconciliationCode.AlreadyApplied, payment!.Id) : new(ReconciliationCode.NeedsReview), transaction, cancellationToken);
         }
         if (attempt.State == PaymentAttemptState.Uncollected && observation.State == ProviderCollectionState.Uncollected &&
             observation.SessionId is { } finalSession && finalSession == attempt.SessionId && payment is null)
         {
-            await ResolveIssue(attempt.Id, cancellationToken);
+            await ResolveIssue(attempt.Id, observation, cancellationToken);
             return await Commit(new(ReconciliationCode.AlreadyApplied), transaction, cancellationToken);
         }
         if (attempt.State is PaymentAttemptState.Admitted or PaymentAttemptState.Uncollected || payment is not null)
@@ -99,7 +99,7 @@ public sealed class CollectionReconciliationStore(OfficeDbContext db, TimeProvid
                 observation.State == ProviderCollectionState.Unknown ? FinancialFailure.ProviderUnknown : FinancialFailure.ProviderMismatch;
             await ObserveIssue(attempt, failure, observation, cancellationToken);
         }
-        else await ResolveIssue(attempt.Id, cancellationToken);
+        else await ResolveIssue(attempt.Id, observation, cancellationToken);
         return await Commit(new(review ? ReconciliationCode.NeedsReview : ReconciliationCode.Applied, recorded?.Id), transaction, cancellationToken);
     }
     private async Task ObserveIssue(PaymentAttempt attempt, FinancialFailure failure, ProviderCollectionObservation observation, CancellationToken token)
@@ -120,12 +120,14 @@ public sealed class CollectionReconciliationStore(OfficeDbContext db, TimeProvid
         }
         db.FinancialExceptionHistory.Add(FinancialExceptionHistory.Record(issue.Id, action, null, failure.ToString(), time.GetUtcNow()));
     }
-    private async Task ResolveIssue(Guid attemptId, CancellationToken token)
+    private async Task ResolveIssue(Guid attemptId, ProviderCollectionObservation observation, CancellationToken token)
     {
         var issue = await db.FinancialExceptions.SingleOrDefaultAsync(x => x.AttemptId == attemptId, token);
         if (issue is null) return;
         await db.Entry(issue).ReloadAsync(token);
         if (issue.State == FinancialExceptionState.Resolved) return;
+        if (observation.State is ProviderCollectionState.Open or ProviderCollectionState.Processing or ProviderCollectionState.Paid or ProviderCollectionState.Uncollected)
+            issue.Observe(issue.Failure, observation.State.ToString(), time.GetUtcNow());
         issue.ResolveVerified(time.GetUtcNow());
         db.FinancialExceptionHistory.Add(FinancialExceptionHistory.Record(issue.Id, "Resolved", null, "Original canonical outcome verified", time.GetUtcNow()));
     }

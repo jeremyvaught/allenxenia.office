@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AllenBuilding.Domain.Billing;
 using AllenBuilding.Domain.Tenancy;
 using AllenBuilding.Infrastructure.Identity;
 using AllenBuilding.Infrastructure.Persistence;
@@ -39,6 +40,17 @@ foreach (var project in new[] { "chromium", "mobile", "webkit-mobile" })
     var membership = Membership.Grant(suite.Id, tenant.Id, DateTimeOffset.UtcNow.AddDays(-1));
     db.AddRange(membership, new ActiveGrant { UserId = tenant.Id, SuiteId = suite.Id, MembershipId = membership.Id },
         new BuildingManager { UserId = manager.Id, BuildingId = building.Id }); await db.SaveChangesAsync();
+    var oldMembership = Membership.Grant(suite.Id, tenant.Id, DateTimeOffset.UtcNow.AddYears(-1));
+    oldMembership.Revoke(manager.Id, "Previous tenancy ended", DateTimeOffset.UtcNow.AddDays(-2));
+    var account = RentAccount.Open(Guid.NewGuid(), oldMembership.Id);
+    var binding = BillingCustomerBinding.Create(account.Id, "acct_browser_" + project.Replace('-', '_'), false, "cus_browser_" + project.Replace('-', '_'), DateTimeOffset.UtcNow);
+    var debt = Obligation.Issue(account.Id, new Money(2500), "Previous tenancy charge", new DateOnly(2026, 10, 1), manager.Id, DateTimeOffset.UtcNow);
+    var attempt = PaymentAttempt.Admit(Guid.NewGuid(), tenant.Id, binding, [new(debt.Id, account.Id, debt.Version, 2500)], DateTimeOffset.UtcNow);
+    attempt.BeginDispatch(DateTimeOffset.UtcNow);
+    db.AddRange(oldMembership, account, binding, debt, attempt,
+        new CollectionGuard { AccountId = account.Id, AttemptId = attempt.Id, ObligationId = debt.Id },
+        FinancialException.Open(attempt, FinancialFailure.ProviderUnknown, null, DateTimeOffset.UtcNow));
+    await db.SaveChangesAsync();
     fixtures[project] = new { membershipId = membership.Id, tenantEmail = tenant.Email, managerEmail = manager.Email, password, key = await users.GetAuthenticatorKeyAsync(manager) };
 }
 var path = Path.Combine(directory, "accounts.json");

@@ -229,6 +229,22 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
       expect(bounds!.width).toBeGreaterThanOrEqual(44);
     }
     await manager.screenshot({ path: `artifacts/browser/report-${testInfo.project.name}.png`, fullPage: true });
+    await manager.goto('/Portal');
+    await manager.getByRole('link', { name: 'Financial exceptions', exact: true }).click();
+    await expect(manager.getByRole('heading', { level: 1 })).toHaveText('Financial exceptions');
+    await expect(manager.getByText(`acct_browser_${testInfo.project.name.replaceAll('-', '_')}`, { exact: false })).toBeVisible();
+    await manager.getByLabel('Assign case owner', { exact: true }).selectOption({ label: account.managerEmail });
+    await manager.getByLabel('Assignment reason', { exact: true }).fill('Review original Stripe outcome.');
+    await manager.getByRole('button', { name: 'Assign owner', exact: true }).click();
+    await manager.getByLabel('Escalation reason', { exact: true }).fill('Awaiting provider investigation.');
+    await manager.getByRole('button', { name: 'Record escalation', exact: true }).click();
+    await expect(manager.getByText('Escalated', { exact: true }).first()).toBeVisible();
+    await manager.getByText('Recent recovery history', { exact: true }).click();
+    await expect(manager.getByText('Review original Stripe outcome.', { exact: true })).toBeVisible();
+    expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await manager.screenshot({ path: `artifacts/browser/financial-cases-${testInfo.project.name}.png`, fullPage: true });
+    await page.goto('/FinancialExceptions');
+    await expect(page).toHaveURL(/\/Account\/Denied/);
     await page.goto('/Reports/Maintenance');
     await expect(page).toHaveURL(/\/Account\/Denied/);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Access unavailable');
