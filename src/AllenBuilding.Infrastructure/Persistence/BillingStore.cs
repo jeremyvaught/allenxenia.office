@@ -1,6 +1,7 @@
 using AllenBuilding.Application.Access;
 using AllenBuilding.Application.Billing;
 using AllenBuilding.Domain.Billing;
+using AllenBuilding.Domain.Tenancy;
 using AllenBuilding.Infrastructure.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -35,7 +36,13 @@ public sealed class BillingStore(OfficeDbContext db, ICurrentActor current, Acco
                 .Take(100).ToListAsync(cancellationToken);
             result.Add(new(row.Account.Id, row.Account.Version, row.Suite, terms, charges, false, row.Account.MembershipId, management ? row.Email : null));
         }
-        return result;
+        if (result.Count == 0) return [];
+        var fresh = await FreshReader(actor, management, cancellationToken); if (fresh is null) return [];
+        // A bounded scalar recheck also avoids the MySQL provider's unmapped Guid-array parameter path.
+        var released = new List<BillingAccount>();
+        foreach (var row in result)
+            if (await Accounts(fresh, management).AnyAsync(x => x.Id == row.Id, cancellationToken)) released.Add(row);
+        return released;
     }
 
     private IQueryable<RentAccount> Accounts(Actor actor, bool management)
@@ -54,16 +61,38 @@ public sealed class BillingStore(OfficeDbContext db, ICurrentActor current, Acco
 
     public async Task<IReadOnlyList<RentCandidate>> CandidatesAsync(Actor actor, CancellationToken cancellationToken)
     {
+        var rows = await (from membership in CandidateMemberships(actor)
+                          join suite in db.Suites on membership.SuiteId equals suite.Id
+                          join user in db.Users on membership.UserId equals user.Id
+                          orderby suite.Name, membership.Id
+                          select new RentCandidate(membership.Id, suite.Name, user.Email!)).Take(100).ToListAsync(cancellationToken);
+        if (rows.Count == 0) return [];
+        var fresh = await FreshReader(actor, true, cancellationToken); if (fresh is null) return [];
+        var released = new List<RentCandidate>();
+        foreach (var row in rows)
+            if (await CandidateMemberships(fresh).AnyAsync(x => x.Id == row.MembershipId, cancellationToken)) released.Add(row);
+        return released;
+    }
+    private IQueryable<Membership> CandidateMemberships(Actor actor)
+    {
         var now = time.GetUtcNow();
-        return await (from membership in db.Memberships.AsNoTracking()
-                      join grant in db.ActiveGrants on membership.Id equals grant.MembershipId
-                      join suite in db.Suites on membership.SuiteId equals suite.Id
-                      join user in db.Users on membership.UserId equals user.Id
-                      where actor.ManagedBuildings.Contains(suite.BuildingId) && db.BuildingManagers.Any(x => x.BuildingId == suite.BuildingId && x.UserId == actor.UserId) &&
-                        membership.RevokedAt == null && membership.StartsAt <= now && (membership.EndsAt == null || membership.EndsAt > now) &&
-                        !db.RentAccounts.Any(x => x.MembershipId == membership.Id)
-                      orderby suite.Name, membership.Id
-                      select new RentCandidate(membership.Id, suite.Name, user.Email!)).Take(100).ToListAsync(cancellationToken);
+        return from membership in db.Memberships.AsNoTracking()
+               join grant in db.ActiveGrants on membership.Id equals grant.MembershipId
+               join suite in db.Suites on membership.SuiteId equals suite.Id
+               where actor.ManagedBuildings.Contains(suite.BuildingId) && db.BuildingManagers.Any(x => x.BuildingId == suite.BuildingId && x.UserId == actor.UserId) &&
+                   membership.RevokedAt == null && membership.StartsAt <= now && (membership.EndsAt == null || membership.EndsAt > now) &&
+                   !db.RentAccounts.Any(x => x.MembershipId == membership.Id)
+               select membership;
+    }
+    private async Task<Actor?> FreshReader(Actor actor, bool management, CancellationToken token)
+    {
+        var fresh = await current.GetAsync(token);
+        return fresh is null || fresh.UserId != actor.UserId || ((management || fresh.ManagedBuildings.Count > 0) && !fresh.ChallengedMfa) ? null : fresh;
+    }
+    private async Task<RentPreview?> ReleasePreview(Actor actor, RentPreview preview, CancellationToken token)
+    {
+        var fresh = await FreshReader(actor, true, token);
+        return fresh is not null && await Accounts(fresh, true).AnyAsync(x => x.Id == preview.AccountId, token) ? preview : null;
     }
 
     public async Task<RentPreview?> PreviewRentAsync(Actor actor, Guid accountId, int year, int month, CancellationToken cancellationToken)
@@ -75,11 +104,11 @@ public sealed class BillingStore(OfficeDbContext db, ICurrentActor current, Acco
                               join charge in db.Obligations on period.Id equals charge.PeriodId
                               where period.AccountId == account.Id && period.StartsOn == monthPeriod.StartsOn && period.EndsOn == monthPeriod.EndsOn && period.Kind == ChargeKind.BaseRent
                               select charge).SingleOrDefaultAsync(cancellationToken);
-        if (existing is not null) return new(account.Id, account.Version, existing.AmountMinorUnits, existing.DueOn, monthPeriod.StartsOn, monthPeriod.EndsOn, true);
+        if (existing is not null) return await ReleasePreview(actor, new(account.Id, account.Version, existing.AmountMinorUnits, existing.DueOn, monthPeriod.StartsOn, monthPeriod.EndsOn, true), cancellationToken);
         var terms = await db.RentAgreements.AsNoTracking().SingleOrDefaultAsync(x => x.AccountId == account.Id && x.StartsOn <= monthPeriod.StartsOn && (x.EndsOn == null || x.EndsOn >= monthPeriod.EndsOn), cancellationToken);
         if (terms is null) return null;
         var calendar = RentCalendar.ForMonth(account.Id, year, month, terms.DueDay);
-        return new(account.Id, account.Version, terms.AmountMinorUnits, calendar.DueOn, calendar.StartsOn, calendar.EndsOn, false);
+        return await ReleasePreview(actor, new(account.Id, account.Version, terms.AmountMinorUnits, calendar.DueOn, calendar.StartsOn, calendar.EndsOn, false), cancellationToken);
     }
 
     public async Task<BillingResult> OpenAsync(Actor actor, OpenRentAccount command, string hash, CancellationToken cancellationToken)
@@ -180,7 +209,7 @@ public sealed class BillingStore(OfficeDbContext db, ICurrentActor current, Acco
     private async Task<bool> FreshManager(Actor actor, Guid building, CancellationToken cancellationToken)
     {
         var fresh = await current.GetAsync(cancellationToken);
-        return fresh is { ChallengedMfa: true, RecentMfa: true } && fresh.ManagedBuildings.Contains(building) &&
+        return fresh is { ChallengedMfa: true, RecentMfa: true } && fresh.UserId == actor.UserId && fresh.ManagedBuildings.Contains(building) &&
             await db.BuildingManagers.AnyAsync(x => x.UserId == actor.UserId && x.BuildingId == building, cancellationToken);
     }
     private async Task<BillingResult?> Replay(string actor, Guid operation, string hash, CancellationToken cancellationToken)

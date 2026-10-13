@@ -183,5 +183,41 @@ public static class BillingContract
         var oldReview = await As(manager, a => a.PreviewRentAsync(open.AccountId, 2026, 3));
         Assert.NotNull(oldReview); Assert.True(oldReview.AlreadyIssued); Assert.Equal(100_000, oldReview.AmountMinorUnits);
 
+        // Authorization changes after materialization must suppress already-retrieved private output.
+        async Task<T> ReadWith<T>(Func<Task<Actor?>> refresh, Func<BillingStore, Task<T>> read)
+        {
+            using var scope = provider.CreateScope();
+            var store = new BillingStore(scope.ServiceProvider.GetRequiredService<OfficeDbContext>(), new CallbackActor(refresh),
+                scope.ServiceProvider.GetRequiredService<AccountInvitations>(), TimeProvider.System);
+            return await read(store);
+        }
+        Assert.Empty(await ReadWith(() => Task.FromResult<Actor?>(null), s => s.ReadAsync(tenant, false, CancellationToken.None, null)));
+        Assert.Empty(await ReadWith(() => Task.FromResult<Actor?>(manager with { ChallengedMfa = false }), s => s.ReadAsync(manager, true, CancellationToken.None, null)));
+        Assert.Empty(await ReadWith(() => Task.FromResult<Actor?>(second), s => s.ReadAsync(manager, true, CancellationToken.None, null)));
+        Assert.Equal(BillingCode.Unavailable, (await ReadWith(() => Task.FromResult<Actor?>(second),
+            s => s.ChargeAsync(manager, opening with { OperationId = Guid.NewGuid(), Version = view.Version }, "identity-switched", CancellationToken.None))).Code);
+        async Task<Actor?> RemoveManager()
+        {
+            await using var revoker = create();
+            revoker.BuildingManagers.Remove(await revoker.BuildingManagers.SingleAsync(x => x.UserId == managerUser.Id && x.BuildingId == building.Id));
+            await revoker.SaveChangesAsync(); return manager;
+        }
+        async Task RestoreManager()
+        {
+            await using var restore = create(); restore.BuildingManagers.Add(new BuildingManager { UserId = managerUser.Id, BuildingId = building.Id }); await restore.SaveChangesAsync();
+        }
+        Assert.Empty(await ReadWith(RemoveManager, s => s.ReadAsync(manager, true, CancellationToken.None, null))); await RestoreManager();
+        Assert.Empty(await ReadWith(RemoveManager, s => s.CandidatesAsync(manager, CancellationToken.None))); await RestoreManager();
+        Assert.Null(await ReadWith(RemoveManager, s => s.PreviewRentAsync(manager, open.AccountId, 2026, 3, CancellationToken.None))); await RestoreManager();
+        Assert.Null(await ReadWith(RemoveManager, s => s.PreviewRentAsync(manager, open.AccountId, 2026, 11, CancellationToken.None))); await RestoreManager();
+        Assert.Empty(await ReadWith(async () =>
+        {
+            await using var revoker = create();
+            (await revoker.Memberships.SingleAsync(x => x.Id == returningId)).Revoke(managerUser.Id, "Ended during billing read", DateTimeOffset.UtcNow);
+            revoker.ActiveGrants.Remove(await revoker.ActiveGrants.SingleAsync(x => x.MembershipId == returningId)); await revoker.SaveChangesAsync(); return tenant;
+        }, s => s.ReadAsync(tenant, false, CancellationToken.None, null)));
+
     }
+    private sealed class CallbackActor(Func<Task<Actor?>> callback) : ICurrentActor
+    { public Task<Actor?> GetAsync(CancellationToken cancellationToken = default) => callback(); }
 }
