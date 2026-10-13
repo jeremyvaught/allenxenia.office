@@ -43,6 +43,23 @@ public sealed class PaymentWebhookTests
         Assert.Equal(System.Data.ConnectionState.Closed, db.Database.GetDbConnection().State);
     }
 
+    [Theory]
+    [InlineData("charge.dispute.created", "du_example")]
+    [InlineData("charge.dispute.updated", "du_example")]
+    [InlineData("charge.dispute.closed", "du_example")]
+    [InlineData("charge.dispute.funds_withdrawn", "du_example")]
+    [InlineData("charge.dispute.funds_reinstated", "du_example")]
+    [InlineData("charge.dispute.created", "dp_existing")]
+    public async Task Documented_dispute_resource_shapes_are_durably_received(string eventType, string resourceId)
+    {
+        await using var db = EmptyDatabase(); await db.Database.OpenConnectionAsync(); await db.Database.MigrateAsync();
+        var body = Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(PaymentWebhookContract.Body("evt_dispute"))
+            .Replace("checkout.session.completed", eventType).Replace("cs_webhook", resourceId).Replace("\"object\":\"checkout.session\"", "\"object\":\"dispute\""));
+        var receiver = new StripeWebhookReceiver(db, PaymentWebhookContract.Options(), TimeProvider.System);
+        Assert.Equal(WebhookCode.Accepted, await receiver.ReceiveAsync(body, PaymentWebhookContract.Sign(body, DateTimeOffset.UtcNow.ToUnixTimeSeconds())));
+        var receipt = await db.PaymentEvents.SingleAsync(); Assert.Equal(resourceId, receipt.ResourceId); Assert.Equal(eventType, receipt.EventType);
+    }
+
     [Fact]
     public async Task Missing_schema_or_canceled_persistence_never_acknowledges_a_financial_event()
     {

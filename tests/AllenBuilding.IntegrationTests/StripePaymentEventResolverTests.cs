@@ -18,6 +18,7 @@ public sealed class StripePaymentEventResolverTests
     [InlineData("charge.refunded", "ch_event")]
     [InlineData("refund.updated", "re_event")]
     [InlineData("charge.dispute.created", "dp_event")]
+    [InlineData("charge.dispute.created", "du_event")]
     public async Task Event_lookup_retrieves_current_objects_and_preserves_exact_original_lineage(string type, string id)
     {
         using var fixture = new Fixture(); var result = await fixture.Resolver.ResolveAsync(fixture.Event(type, id), CancellationToken.None);
@@ -102,7 +103,7 @@ public sealed class StripePaymentEventResolverTests
                 else value = session;
             }
             else if (path.StartsWith("/v1/refunds/", StringComparison.Ordinal)) value = new() { ["id"] = "re_event", ["object"] = "refund", ["payment_intent"] = "pi_event" };
-            else if (path.StartsWith("/v1/disputes/", StringComparison.Ordinal)) value = new() { ["id"] = "dp_event", ["object"] = "dispute", ["livemode"] = false, ["payment_intent"] = "pi_event" };
+            else if (path.StartsWith("/v1/disputes/", StringComparison.Ordinal)) value = new() { ["id"] = path.Split('/').Last(), ["object"] = "dispute", ["livemode"] = false, ["payment_intent"] = "pi_event" };
             else if (path.StartsWith("/v1/charges/", StringComparison.Ordinal)) value = new() { ["id"] = "ch_event", ["object"] = "charge", ["livemode"] = false, ["payment_intent"] = "pi_event" };
             else throw new InvalidOperationException("Unexpected synthetic API path.");
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(value.ToJsonString(), Encoding.UTF8, "application/json") });

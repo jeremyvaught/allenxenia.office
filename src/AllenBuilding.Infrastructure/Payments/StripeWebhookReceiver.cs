@@ -91,9 +91,11 @@ public sealed class StripeWebhookReceiver : IPaymentWebhookReceiver
             if (!Types.TryGetValue(type, out var shape)) return WebhookCode.Ignored;
             if (!root.TryGetProperty("data", out var data) || !data.TryGetProperty("object", out var resource)) return WebhookCode.Rejected;
             var id = Text(resource, "id");
-            if (id is null || !PaymentReferences.Valid(id, shape.Prefix) || Text(resource, "object") != shape.Object ||
+            // Stripe publishes du_ dispute examples as well as the existing dp_ resource shape.
+            var validId = id is not null && (PaymentReferences.Valid(id, shape.Prefix) || (shape.Object == "dispute" && PaymentReferences.Valid(id, "du_")));
+            if (!validId || Text(resource, "object") != shape.Object ||
                 (resource.TryGetProperty("livemode", out _) && Flag(resource, "livemode") != _liveMode)) return WebhookCode.Rejected;
-            receipt = PaymentEventInbox.Receive(_account, _liveMode, eventId, type, id, version, Convert.ToHexString(SHA256.HashData(body.Span)), version == StripeConfiguration.ApiVersion, now);
+            receipt = PaymentEventInbox.Receive(_account, _liveMode, eventId, type, id!, version, Convert.ToHexString(SHA256.HashData(body.Span)), version == StripeConfiguration.ApiVersion, now);
         }
         catch (DecoderFallbackException) { return WebhookCode.Rejected; }
         catch (JsonException) { return WebhookCode.Rejected; }
