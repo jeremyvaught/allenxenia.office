@@ -23,13 +23,18 @@ public sealed class CollectionWorkQueue(OfficeDbContext db, TimeProvider time) :
         var original = await db.PaymentAttempts.Include(x => x.Items).SingleAsync(x => x.Id == candidate, token); await db.Entry(original).ReloadAsync(token);
         var work = await db.CollectionWork.SingleAsync(x => x.AttemptId == candidate, token); await db.Entry(work).ReloadAsync(token);
         if (!work.Eligible(now)) return null;
-        if (original.State is PaymentAttemptState.Settled or PaymentAttemptState.Uncollected)
+        if (!work.ReadOnlyReconciliation && original.State is (PaymentAttemptState.Settled or PaymentAttemptState.Uncollected))
         {
             work.FinishRecorded(now); await db.SaveChangesAsync(token); await transaction.CommitAsync(token); return null;
         }
         if (!work.Claim(now))
         {
             await Review(original, "RetryLimit", token); await db.SaveChangesAsync(token); await transaction.CommitAsync(token); return null;
+        }
+        if (work.ReadOnlyReconciliation && original.SessionId is null)
+        {
+            work.Review("CanonicalReviewRequired"); await Review(original, "OriginalWindowEnded", token);
+            await db.SaveChangesAsync(token); await transaction.CommitAsync(token); return null;
         }
         if (original.State == PaymentAttemptState.Admitted)
         {
@@ -66,7 +71,7 @@ public sealed class CollectionWorkQueue(OfficeDbContext db, TimeProvider time) :
             await db.SaveChangesAsync(token); await transaction.CommitAsync(token); return null;
         }
         await db.SaveChangesAsync(token); await transaction.CommitAsync(token);
-        return new(original, work.LeaseToken, work.Profile, work.OriginTraceId, work.OriginSpanId);
+        return new(original, work.LeaseToken, work.Profile, work.OriginTraceId, work.OriginSpanId, work.ReadOnlyReconciliation);
     }
 
     public async Task<bool> CompleteAsync(CollectionLease lease, ProviderCollectionObservation observation, CancellationToken token)

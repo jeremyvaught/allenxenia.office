@@ -43,6 +43,14 @@
                     </form>
                 </div>
             }
+            @if (item.CanReconcile) {
+                <form asp-action="Reconcile" method="post" class="mt-6 space-y-3">
+                    <input name="Id" value="@item.Id" type="hidden" /><input name="Version" value="@item.Version" type="hidden" /><input name="OperationId" value="@Guid.NewGuid()" type="hidden" />
+                    <p class="text-sm text-muted">Check the known original provider session. This requests a current read; it cannot create another payment, refund or cancellation. The case stays open until the result agrees.</p>
+                    <label for="reconcile-reason-@item.Id" class="block">Reconciliation reason</label><input id="reconcile-reason-@item.Id" name="Reason" required maxlength="2000" class="field" />
+                    <button class="quiet-button">Request provider reconciliation</button>
+                </form>
+            }
             <details class="mt-6 rounded-xl border border-line p-4"><summary class="min-h-11 cursor-pointer font-semibold">Recent recovery history</summary><ol class="mt-3 space-y-3 text-sm">@foreach (var entry in item.History) { <li><span>@entry.Action · @entry.OccurredAt.ToString("yyyy-MM-dd HH:mm 'UTC'")</span>@if (entry.Reason is { } reason) { <p class="mt-1 break-words text-muted">@reason</p> }</li> }</ol>@if (item.History.Count == 20) { <p class="mt-3 text-sm text-muted">Showing the 20 most recent history entries.</p> }</details>
         </li>
     }

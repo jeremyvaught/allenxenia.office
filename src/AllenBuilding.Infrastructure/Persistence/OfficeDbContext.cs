@@ -227,6 +227,7 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
         model.Entity<CollectionWork>(e =>
         {
             e.ToTable("collection_work"); e.HasKey(x => x.AttemptId); e.Ignore(x => x.Profile);
+            e.Property(x => x.CycleStartedAt).HasDefaultValue(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.Zero));
             e.Property(x => x.LeaseToken).IsConcurrencyToken(); e.Property(x => x.State).HasConversion<string>().HasMaxLength(32);
             e.Property(x => x.ApiVersion).HasMaxLength(64); e.Property(x => x.PublicOrigin).HasMaxLength(512);
             e.Property(x => x.PaymentMethodConfiguration).HasMaxLength(255); e.Property(x => x.LastError).HasMaxLength(64);

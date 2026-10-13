@@ -34,6 +34,7 @@ builder.Services.AddScoped<AllenBuilding.Application.Billing.BillingActions>();
 builder.Services.AddSingleton(new AllenBuilding.Application.Billing.CollectionPolicy(false, "", false));
 builder.Services.AddScoped<AllenBuilding.Application.Billing.ICollectionStore, CollectionStore>();
 builder.Services.AddScoped<AllenBuilding.Application.Billing.CollectionActions>();
+builder.Services.AddSingleton(new AllenBuilding.Application.Billing.FinancialRecoveryPolicy(false));
 builder.Services.AddScoped<AllenBuilding.Application.Billing.IFinancialExceptionStore, FinancialExceptionStore>();
 builder.Services.AddScoped<AllenBuilding.Application.Billing.FinancialExceptionActions>();
 builder.Services.AddScoped<AllenBuilding.Application.Billing.IPaymentWebhookReceiver, AllenBuilding.Application.Billing.DisabledPaymentWebhookReceiver>();

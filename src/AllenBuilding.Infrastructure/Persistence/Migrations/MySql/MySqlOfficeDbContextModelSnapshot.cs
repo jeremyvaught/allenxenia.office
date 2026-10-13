@@ -213,6 +213,12 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .HasColumnType("datetime(6)")
                         .HasColumnName("created_at");
 
+                    b.Property<DateTime>("CycleStartedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime(6)")
+                        .HasDefaultValue(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc))
+                        .HasColumnName("cycle_started_at");
+
                     b.Property<int>("Failures")
                         .HasColumnType("int")
                         .HasColumnName("failures");
@@ -268,6 +274,10 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .HasColumnType("varchar(512)")
                         .HasColumnName("public_origin")
                         .UseCollation("utf8mb4_bin");
+
+                    b.Property<bool>("ReadOnlyReconciliation")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("read_only_reconciliation");
 
                     b.Property<string>("State")
                         .IsRequired()

@@ -30,6 +30,18 @@ public sealed class CollectionWorkTests
         Assert.Equal("pmc_work", work.Profile.PaymentMethodConfiguration);
     }
     [Fact]
+    public void Known_old_sessions_can_be_retrieved_but_unidentified_creation_cannot_be_reopened()
+    {
+        var account = Guid.NewGuid(); var binding = BillingCustomerBinding.Create(account, "acct_work", false, "cus_work", Now);
+        var original = PaymentAttempt.Admit(Guid.NewGuid(), "payer", binding, [new(Guid.NewGuid(), account, Guid.NewGuid(), 1000)], Now);
+        var work = CollectionWork.Enqueue(original, new("https://office.example.test", "pmc_original")); original.BeginDispatch(Now);
+        Assert.Throws<InvalidOperationException>(() => work.RequestReconciliation(original, Now.AddDays(30)));
+        original.AttachHandoff("cs_known", Now.AddHours(24), Now); var key = original.ProviderIdempotencyKey;
+        work.RequestReconciliation(original, Now.AddDays(30)); Assert.True(work.ReadOnlyReconciliation); Assert.Equal(Now.AddDays(30), work.CycleStartedAt);
+        Assert.True(work.Claim(Now.AddDays(30))); Assert.Equal(key, original.ProviderIdempotencyKey);
+        Assert.Throws<InvalidOperationException>(() => work.RequestReconciliation(original, Now.AddDays(30).AddSeconds(1)));
+    }
+    [Fact]
     public void Five_failures_or_an_aged_unfinished_operation_stop_automatic_work()
     {
         var work = Work(); var now = Now;

@@ -1,3 +1,4 @@
+using AllenBuilding.Domain.Billing;
 using AllenBuilding.Domain.Maintenance;
 using AllenBuilding.Domain.Tenancy;
 using AllenBuilding.Infrastructure.Identity;
@@ -59,7 +60,17 @@ public sealed class PersistenceTests
             await db.GetService<IMigrator>().MigrateAsync("PaymentEventInbox");
             var oldEventId = Guid.NewGuid(); var oldEventVersion = Guid.NewGuid();
             await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO payment_events (id, provider_account, live_mode, event_id, event_type, resource_id, api_version, payload_hash, state, received_at, version) VALUES ({oldEventId.ToString("D")}, {"acct_upgrade"}, {false}, {"evt_upgrade"}, {"checkout.session.completed"}, {"cs_upgrade"}, {"2026-09-30.endive"}, {new string('A', 64)}, {"Pending"}, {now.UtcDateTime}, {oldEventVersion.ToString("D")})");
+            await db.GetService<IMigrator>().MigrateAsync("DurableCollectionWork");
+            var oldBuilding = new Building { Name = "Legacy dispatch upgrade" }; var oldSuite = new Suite { BuildingId = oldBuilding.Id, Name = "Legacy office" };
+            var oldMembership = Membership.Grant(oldSuite.Id, legacyUser.Id, now.AddDays(-1)); var oldAccount = RentAccount.Open(Guid.NewGuid(), oldMembership.Id);
+            var oldBinding = BillingCustomerBinding.Create(oldAccount.Id, "acct_upgrade", false, "cus_upgrade", now);
+            var oldDebt = Obligation.Issue(oldAccount.Id, new Money(1000), "Legacy dispatch debt", new DateOnly(2026, 10, 1), legacyUser.Id, now);
+            var oldAttempt = PaymentAttempt.Admit(Guid.NewGuid(), legacyUser.Id, oldBinding, [new(oldDebt.Id, oldAccount.Id, oldDebt.Version, 1000)], now);
+            db.AddRange(oldBuilding, oldSuite, oldMembership, oldAccount, oldBinding, oldDebt, oldAttempt); await db.SaveChangesAsync();
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO collection_work (attempt_id, api_version, public_origin, payment_method_configuration, state, lease_token, next_attempt_at, created_at, attempts, failures) VALUES ({oldAttempt.Id.ToString("D")}, {CheckoutProfile.ApiContract}, {"https://upgrade.example.test"}, {"pmc_upgrade"}, {"Queued"}, {Guid.Empty.ToString("D")}, {now.UtcDateTime}, {now.UtcDateTime}, {0}, {0})");
             await db.Database.MigrateAsync();
+            var oldWork = await db.CollectionWork.AsNoTracking().SingleAsync(x => x.AttemptId == oldAttempt.Id);
+            Assert.Equal(now, oldWork.CycleStartedAt); Assert.False(oldWork.ReadOnlyReconciliation); Assert.Equal("pmc_upgrade", oldWork.PaymentMethodConfiguration);
             var oldEvent = await db.PaymentEvents.AsNoTracking().SingleAsync(x => x.Id == oldEventId);
             Assert.Equal(now, oldEvent.NextAttemptAt); Assert.Equal(Guid.Empty, oldEvent.LeaseToken); Assert.Null(oldEvent.LeaseUntil); Assert.Equal(0, oldEvent.Failures);
             var upgraded = await db.AccountMessages.AsNoTracking().SingleAsync(x => x.Id == messageId);

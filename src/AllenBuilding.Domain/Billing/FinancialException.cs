@@ -43,6 +43,11 @@ public sealed class FinancialException
         if (State == FinancialExceptionState.Resolved) throw new InvalidOperationException("Resolved history cannot be escalated.");
         State = FinancialExceptionState.Escalated; Version = Guid.NewGuid();
     }
+    public void ReconciliationRequested(DateTimeOffset now)
+    {
+        if (State == FinancialExceptionState.Resolved) throw new InvalidOperationException("Only an unresolved case can request recovery.");
+        LastSeenAt = now.ToUniversalTime(); Version = Guid.NewGuid();
+    }
     // Only canonical reconciliation can resolve a case; there is no arbitrary manager Paid/Resolve setter.
     public void ResolveVerified(DateTimeOffset now)
     {

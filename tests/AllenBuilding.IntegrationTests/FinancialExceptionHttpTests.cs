@@ -28,8 +28,10 @@ public sealed class FinancialExceptionHttpTests
             var binding = BillingCustomerBinding.Create(account.Id, "acct_http", false, "cus_http", host.Clock.GetUtcNow());
             var debt = Obligation.Issue(account.Id, new Money(1000), "Debt", new DateOnly(2026, 10, 1), managerId, host.Clock.GetUtcNow());
             var attempt = PaymentAttempt.Admit(Guid.NewGuid(), managerId, binding, [new(debt.Id, account.Id, debt.Version, 1000)], host.Clock.GetUtcNow());
+            var work = CollectionWork.Enqueue(attempt, new("https://http.example.test", "pmc_http"));
+            attempt.BeginDispatch(host.Clock.GetUtcNow()); attempt.AttachHandoff("cs_http", host.Clock.GetUtcNow().AddHours(1), host.Clock.GetUtcNow());
             issue = FinancialException.Open(attempt, FinancialFailure.ProviderUnknown, null, host.Clock.GetUtcNow());
-            db.AddRange(suite, membership, account, binding, debt, attempt, issue); await db.SaveChangesAsync();
+            db.AddRange(suite, membership, account, binding, debt, attempt, issue, work); await db.SaveChangesAsync();
         }
         using var guest = host.Browser(); using var manager = host.Browser();
         using var guestDenied = await guest.GetAsync("/FinancialExceptions"); Assert.Contains("/Account/Login", guestDenied.Headers.Location?.OriginalString);
@@ -48,6 +50,24 @@ public sealed class FinancialExceptionHttpTests
         using var assigned = await AccountTestHost.PostAsync(manager, "/FinancialExceptions", "/FinancialExceptions/Assign", values);
         Assert.Equal("/FinancialExceptions", assigned.Headers.Location?.OriginalString);
         html = await manager.GetStringAsync("/FinancialExceptions"); Assert.Contains("&lt;script&gt;review()&lt;/script&gt;", html); Assert.DoesNotContain("<script>review", html);
+        Assert.DoesNotContain("Request provider reconciliation", html);
+        Guid currentVersion;
+        using (var scope = host.Services.CreateScope()) currentVersion = (await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().FinancialExceptions.SingleAsync(x => x.Id == issue.Id)).Version;
+        var reconcile = new[] { ("Id", issue.Id.ToString()), ("Version", currentVersion.ToString()), ("OperationId", Guid.NewGuid().ToString()), ("Reason", "Verify known session"), ("SessionId", "cs_attacker") };
+        using var disabled = await AccountTestHost.PostAsync(manager, "/FinancialExceptions", "/FinancialExceptions/Reconcile", reconcile); Assert.Equal(HttpStatusCode.NotFound, disabled.StatusCode);
+        await using (var enabled = host.WithWebHostBuilder(builder => builder.ConfigureServices(services => services.Replace(ServiceDescriptor.Singleton(new FinancialRecoveryPolicy(true))))))
+        {
+            using var recovering = enabled.CreateClient(new() { AllowAutoRedirect = false }); await host.LoginManagerAsync(recovering, managerId);
+            Assert.Contains("Request provider reconciliation", await recovering.GetStringAsync("/FinancialExceptions"));
+            using var requested = await AccountTestHost.PostAsync(recovering, "/FinancialExceptions", "/FinancialExceptions/Reconcile", reconcile);
+            Assert.Equal("/FinancialExceptions", requested.Headers.Location?.OriginalString);
+        }
+        using (var scope = host.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); var original = await db.PaymentAttempts.SingleAsync();
+            Assert.Equal("cs_http", original.SessionId); Assert.True((await db.CollectionWork.SingleAsync()).ReadOnlyReconciliation);
+            Assert.False(await db.SettlementPayments.AnyAsync()); Assert.Equal("ReconcileRequested", (await db.FinancialExceptionHistory.OrderByDescending(x => x.OccurredAt).FirstAsync()).Action);
+        }
         using var nonexistentMoneySetter = await manager.PostAsync("/FinancialExceptions/Resolve", new FormUrlEncodedContent([]));
         Assert.Contains(nonexistentMoneySetter.StatusCode, new[] { HttpStatusCode.NotFound, HttpStatusCode.MethodNotAllowed });
         using (var scope = host.Services.CreateScope())

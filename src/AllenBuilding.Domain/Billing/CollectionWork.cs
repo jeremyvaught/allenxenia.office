@@ -33,6 +33,8 @@ public sealed class CollectionWork
     public DateTimeOffset? LeaseUntil { get; private set; }
     public DateTimeOffset NextAttemptAt { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
+    public DateTimeOffset CycleStartedAt { get; private set; }
+    public bool ReadOnlyReconciliation { get; private set; }
     public int Attempts { get; private set; }
     public int Failures { get; private set; }
     public DateTimeOffset? FirstFailureAt { get; private set; }
@@ -54,6 +56,7 @@ public sealed class CollectionWork
             PaymentMethodConfiguration = profile.PaymentMethodConfiguration,
             State = CollectionWorkState.Queued,
             CreatedAt = original.CreatedAt,
+            CycleStartedAt = original.CreatedAt,
             NextAttemptAt = original.CreatedAt,
             OriginTraceId = traceId,
             OriginSpanId = spanId
@@ -65,7 +68,7 @@ public sealed class CollectionWork
     {
         if (!Eligible(now)) return false;
         if (State == CollectionWorkState.Leased) Fail(now, "LeaseExpired");
-        if (Failures >= 5 || (Attempts > 0 && now >= CreatedAt.AddHours(24)) || (FirstFailureAt is { } first && now >= first.AddHours(24))) { Review("RetryLimit"); return false; }
+        if (Failures >= 5 || (Attempts > 0 && now >= CycleStartedAt.AddHours(24)) || (FirstFailureAt is { } first && now >= first.AddHours(24))) { Review("RetryLimit"); return false; }
         State = CollectionWorkState.Leased; LeaseToken = Guid.NewGuid(); LeaseUntil = now.AddMinutes(2); Attempts = checked(Attempts + 1); return true;
     }
     public bool Complete(Guid token, CollectionWorkOutcome outcome, DateTimeOffset now)
@@ -85,6 +88,13 @@ public sealed class CollectionWork
             default: State = CollectionWorkState.Queued; LastError = null; NextAttemptAt = now.AddMinutes(1); break;
         }
         return true;
+    }
+    public void RequestReconciliation(PaymentAttempt original, DateTimeOffset now)
+    {
+        if (original.Id != AttemptId || original.SessionId is null || !PaymentReferences.Valid(original.SessionId, "cs_") || original.State == PaymentAttemptState.Admitted ||
+            (State == CollectionWorkState.Leased && LeaseUntil > now)) throw new InvalidOperationException("Reconciliation requires the known original session and no active worker lease.");
+        ReadOnlyReconciliation = true; CycleStartedAt = now.ToUniversalTime(); State = CollectionWorkState.Queued; NextAttemptAt = now.ToUniversalTime();
+        LeaseToken = Guid.NewGuid(); LeaseUntil = null; Failures = 0; FirstFailureAt = null; LastError = null;
     }
     public bool FinishRecorded(DateTimeOffset now)
     {

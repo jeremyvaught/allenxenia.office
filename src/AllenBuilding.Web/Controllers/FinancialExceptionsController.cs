@@ -21,6 +21,8 @@ public sealed class FinancialExceptionsController(FinancialExceptionActions acti
     public Task<IActionResult> Assign(FinancialCaseForm form) => Change(form, FinancialCaseAction.Assign);
     [Authorize(Policy = OfficeSecurity.RecentManagerPolicy), HttpPost]
     public Task<IActionResult> Escalate(FinancialCaseForm form) => Change(form, FinancialCaseAction.Escalate);
+    [Authorize(Policy = OfficeSecurity.RecentManagerPolicy), HttpPost]
+    public Task<IActionResult> Reconcile(FinancialCaseForm form) => Change(form, FinancialCaseAction.Reconcile);
     private async Task<IActionResult> Change(FinancialCaseForm form, FinancialCaseAction action)
     {
         if (!ModelState.IsValid) return BadRequest();

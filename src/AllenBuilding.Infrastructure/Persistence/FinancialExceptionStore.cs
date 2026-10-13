@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AllenBuilding.Infrastructure.Persistence;
 
-public sealed class FinancialExceptionStore(OfficeDbContext db, ICurrentActor current, TimeProvider time) : IFinancialExceptionStore
+public sealed class FinancialExceptionStore(OfficeDbContext db, ICurrentActor current, TimeProvider time, FinancialRecoveryPolicy recovery) : IFinancialExceptionStore
 {
     public async Task<IReadOnlyList<FinancialCaseView>> ReadAsync(Actor actor, bool includeResolved, CancellationToken cancellationToken)
     {
@@ -62,6 +62,7 @@ public sealed class FinancialExceptionStore(OfficeDbContext db, ICurrentActor cu
 
     public async Task<BillingResult> ChangeAsync(Actor actor, FinancialCaseCommand command, string hash, CancellationToken cancellationToken)
     {
+        if (command.Action == FinancialCaseAction.Reconcile && !recovery.Enabled) return new(BillingCode.Unavailable);
         await using var transaction = await AuthorityLocks.BeginAsync(db, cancellationToken);
         await AuthorityLocks.UserAsync(db, actor.UserId, cancellationToken);
         var scope = await (from issue in db.FinancialExceptions.AsNoTracking()
@@ -93,9 +94,20 @@ public sealed class FinancialExceptionStore(OfficeDbContext db, ICurrentActor cu
                         select manager).AnyAsync(cancellationToken)) return new(BillingCode.Unavailable);
             issueToChange.Assign(command.OwnerUserId!);
         }
-        else issueToChange.Escalate();
+        else if (command.Action == FinancialCaseAction.Escalate) issueToChange.Escalate();
+        else
+        {
+            if (db is MySqlOfficeDbContext) await db.Database.ExecuteSqlInterpolatedAsync($"SELECT attempt_id FROM collection_work WHERE attempt_id = {scope.AttemptId.ToString("D")} FOR UPDATE", cancellationToken);
+            var original = await db.PaymentAttempts.SingleAsync(x => x.Id == scope.AttemptId, cancellationToken); await db.Entry(original).ReloadAsync(cancellationToken);
+            var work = await db.CollectionWork.SingleOrDefaultAsync(x => x.AttemptId == original.Id, cancellationToken);
+            if (work is null || original.SessionId is null) return new(BillingCode.Unavailable);
+            await db.Entry(work).ReloadAsync(cancellationToken);
+            try { work.RequestReconciliation(original, time.GetUtcNow()); }
+            catch (InvalidOperationException) { return new(BillingCode.Conflict); }
+            issueToChange.ReconciliationRequested(time.GetUtcNow());
+        }
         var now = time.GetUtcNow();
-        db.FinancialExceptionHistory.Add(FinancialExceptionHistory.Record(issueToChange.Id, command.Action == FinancialCaseAction.Assign ? "Assigned" : "Escalated", actor.UserId, command.Reason, now));
+        db.FinancialExceptionHistory.Add(FinancialExceptionHistory.Record(issueToChange.Id, command.Action switch { FinancialCaseAction.Assign => "Assigned", FinancialCaseAction.Escalate => "Escalated", _ => "ReconcileRequested" }, actor.UserId, command.Reason, now));
         db.BillingReceipts.Add(new BillingReceipt
         {
             ActorId = actor.UserId,

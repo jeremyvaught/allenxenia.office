@@ -25,7 +25,7 @@ public static class FinancialExceptionContract
         var hiddenBinding = BillingCustomerBinding.Create(hiddenAccount.Id, "acct_cases", false, "cus_" + Guid.NewGuid().ToString("N"), now);
         var debt = Obligation.Issue(account.Id, new Money(1000), "Reviewed case debt", new DateOnly(2026, 10, 1), payer.Id, now);
         var attempt = PaymentAttempt.Admit(Guid.NewGuid(), payer.Id, binding, [new(debt.Id, account.Id, debt.Version, 1000)], now);
-        var work = CollectionWork.Enqueue(attempt, new("https://cases.example.test", "pmc_cases")); attempt.BeginDispatch(now);
+        var work = CollectionWork.Enqueue(attempt, new("https://cases.example.test", "pmc_cases")); attempt.BeginDispatch(now); attempt.AttachHandoff("cs_" + attempt.Id.ToString("N"), now.AddHours(1), now);
         var issue = FinancialException.Open(attempt, FinancialFailure.ProviderUnknown, null, now);
         await using (var db = create())
         {
@@ -44,6 +44,7 @@ public static class FinancialExceptionContract
         }
         var services = new ServiceCollection(); services.AddSingleton(TimeProvider.System); services.AddScoped<OfficeDbContext>(_ => create());
         services.AddScoped<TestActor>(); services.AddScoped<ICurrentActor>(sp => sp.GetRequiredService<TestActor>());
+        services.AddSingleton(new FinancialRecoveryPolicy(true));
         services.AddScoped<IFinancialExceptionStore, FinancialExceptionStore>(); services.AddScoped<FinancialExceptionActions>();
         await using var provider = services.BuildServiceProvider();
         var actor = new Actor(manager.Id, new HashSet<Guid> { building.Id }, true, true);
@@ -55,7 +56,7 @@ public static class FinancialExceptionContract
             return await action(scope.ServiceProvider.GetRequiredService<FinancialExceptionActions>());
         }
         var rows = await As(actor, x => x.ReadAsync()); Assert.Single(rows); Assert.Equal(issue.Id, rows.Single().Id);
-        Assert.Equal(CollectionWorkState.Queued, rows.Single().WorkState); Assert.Equal(0, rows.Single().AutomaticAttempts);
+        Assert.True(rows.Single().CanReconcile); Assert.Equal(CollectionWorkState.Queued, rows.Single().WorkState); Assert.Equal(0, rows.Single().AutomaticAttempts);
         Assert.Equal(2, rows.Single().Owners.Count); Assert.Equal(debt.Id, rows.Single().Items.Single().ObligationId);
         Assert.Empty(await As(tenant, x => x.ReadAsync())); Assert.Empty(await As(actor with { ChallengedMfa = false }, x => x.ReadAsync()));
         Assert.Single(await As(actor with { ManagedBuildings = new HashSet<Guid> { building.Id, foreign.Id } }, x => x.ReadAsync()));
@@ -72,6 +73,24 @@ public static class FinancialExceptionContract
         var contenders = await Task.WhenAll(Task.Run(() => As(actor, x => x.ChangeAsync(escalate))), Task.Run(() => As(second, x => x.ChangeAsync(escalate with { OperationId = Guid.NewGuid() }))));
         Assert.Single(contenders, x => x.Code == BillingCode.Success); Assert.Single(contenders, x => x.Code == BillingCode.Conflict);
         rows = await As(actor, x => x.ReadAsync()); Assert.Equal(FinancialExceptionState.Escalated, rows.Single().State);
+        var reconcile = new FinancialCaseCommand(Guid.NewGuid(), issue.Id, rows.Single().Version, FinancialCaseAction.Reconcile, "Verify original provider outcome");
+        Assert.Equal(BillingCode.Unavailable, (await As(actor with { RecentMfa = false }, x => x.ChangeAsync(reconcile))).Code);
+        var requested = await As(actor, x => x.ChangeAsync(reconcile)); Assert.Equal(BillingCode.Success, requested.Code);
+        Assert.Equal(requested, await As(actor, x => x.ChangeAsync(reconcile)));
+        Assert.Equal(BillingCode.Conflict, (await As(actor, x => x.ChangeAsync(reconcile with { Reason = "Changed recovery intent" }))).Code);
+        await using (var db = create())
+        {
+            var queued = await db.CollectionWork.SingleAsync(x => x.AttemptId == attempt.Id); Assert.True(queued.ReadOnlyReconciliation);
+            Assert.Equal("pmc_cases", queued.PaymentMethodConfiguration); Assert.Equal(CollectionWorkState.Queued, queued.State);
+            Assert.Equal(0, queued.Failures); Assert.True(queued.CycleStartedAt >= now);
+            Assert.True(queued.Claim(DateTimeOffset.UtcNow)); await db.SaveChangesAsync();
+        }
+        Assert.Equal(BillingCode.Conflict, (await As(actor, x => x.ChangeAsync(reconcile with { OperationId = Guid.NewGuid(), Version = requested.AccountVersion!.Value }))).Code);
+        await using (var db = create())
+        {
+            var queued = await db.CollectionWork.SingleAsync(x => x.AttemptId == attempt.Id);
+            Assert.True(queued.Complete(queued.LeaseToken, CollectionWorkOutcome.Review, DateTimeOffset.UtcNow)); await db.SaveChangesAsync();
+        }
         await using (var db = create())
         {
             var original = await db.PaymentAttempts.AsNoTracking().SingleAsync(x => x.Id == attempt.Id);
@@ -90,13 +109,13 @@ public static class FinancialExceptionContract
                 await using var revoker = create(); revoker.BuildingManagers.Remove(await revoker.BuildingManagers.SingleAsync(x => x.UserId == manager.Id && x.BuildingId == building.Id));
                 await revoker.SaveChangesAsync(); return actor;
             });
-            Assert.Empty(await new FinancialExceptionStore(db, changedActor, TimeProvider.System).ReadAsync(actor, true, CancellationToken.None));
+            Assert.Empty(await new FinancialExceptionStore(db, changedActor, TimeProvider.System, new(true)).ReadAsync(actor, true, CancellationToken.None));
         }
         Assert.Equal(BillingCode.Unavailable, (await As(actor, x => x.ChangeAsync(assign))).Code);
         await using (var db = create())
         {
-            Assert.Equal(3, await db.FinancialExceptionHistory.CountAsync(x => x.ExceptionId == issue.Id));
-            Assert.Equal(2, await db.BillingReceipts.CountAsync(x => x.EntityId == issue.Id));
+            Assert.Equal(4, await db.FinancialExceptionHistory.CountAsync(x => x.ExceptionId == issue.Id));
+            Assert.Equal(3, await db.BillingReceipts.CountAsync(x => x.EntityId == issue.Id));
         }
     }
     private sealed class CallbackActor(Func<Task<Actor?>> callback) : ICurrentActor

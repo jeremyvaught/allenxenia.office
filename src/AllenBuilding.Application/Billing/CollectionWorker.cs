@@ -3,7 +3,7 @@ using AllenBuilding.Domain.Billing;
 
 namespace AllenBuilding.Application.Billing;
 
-public sealed record CollectionLease(PaymentAttempt Original, Guid Token, CheckoutProfile Profile, string? OriginTraceId = null, string? OriginSpanId = null);
+public sealed record CollectionLease(PaymentAttempt Original, Guid Token, CheckoutProfile Profile, string? OriginTraceId = null, string? OriginSpanId = null, bool ReadOnly = false);
 public interface ICollectionWorkQueue
 {
     Task<CollectionLease?> ClaimAsync(CancellationToken cancellationToken);
@@ -27,7 +27,8 @@ public sealed class CollectionWorker(ICollectionWorkQueue queue, ICollectionGate
         {
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); deadline.CancelAfter(TimeSpan.FromSeconds(30));
             gateway = gateways.Open(lease.Original, lease.Profile);
-            observation = lease.Original.SessionId is { } session
+            if (lease.ReadOnly && lease.Original.SessionId is null) observation = new(ProviderCollectionState.Invalid);
+            else observation = lease.Original.SessionId is { } session
                 ? await gateway.ReadAsync(lease.Original, session, deadline.Token).WaitAsync(deadline.Token)
                 : await gateway.CreateAsync(lease.Original, deadline.Token).WaitAsync(deadline.Token);
         }

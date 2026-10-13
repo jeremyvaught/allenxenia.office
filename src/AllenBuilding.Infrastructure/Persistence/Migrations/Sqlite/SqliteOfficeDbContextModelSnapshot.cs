@@ -192,6 +192,12 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
+                    b.Property<DateTime>("CycleStartedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc))
+                        .HasColumnName("cycle_started_at");
+
                     b.Property<int>("Failures")
                         .HasColumnType("INTEGER")
                         .HasColumnName("failures");
@@ -241,6 +247,10 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .HasMaxLength(512)
                         .HasColumnType("TEXT")
                         .HasColumnName("public_origin");
+
+                    b.Property<bool>("ReadOnlyReconciliation")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("read_only_reconciliation");
 
                     b.Property<string>("State")
                         .IsRequired()
