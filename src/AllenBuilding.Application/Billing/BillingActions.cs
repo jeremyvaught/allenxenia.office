@@ -13,7 +13,8 @@ public sealed record IssueCharge(Guid OperationId, Guid AccountId, Guid Version,
 public sealed record IssueRent(Guid OperationId, Guid AccountId, Guid Version, int Year, int Month);
 public sealed record BillingAccount(Guid Id, Guid Version, string Suite, IReadOnlyList<RentTermsView> Terms, IReadOnlyList<ObligationView> Obligations, bool CollectionAvailable = false, Guid MembershipId = default, string? PayerEmail = null);
 public sealed record RentTermsView(Guid Id, Guid Version, long AmountMinorUnits, string Currency, int DueDay, DateOnly StartsOn, DateOnly? EndsOn, Guid? SupersededBy);
-public sealed record ObligationView(Guid Id, Guid Version, ChargeKind Kind, string Description, long IssuedMinorUnits, string Currency, DateOnly DueOn, DateOnly? PeriodStartsOn, DateOnly? PeriodEndsOn);
+public sealed record ObligationView(Guid Id, Guid Version, ChargeKind Kind, string Description, long IssuedMinorUnits, string Currency, DateOnly DueOn, DateOnly? PeriodStartsOn, DateOnly? PeriodEndsOn, long CreditedMinorUnits = 0)
+{ public long NetChargeMinorUnits => checked(IssuedMinorUnits - CreditedMinorUnits); }
 
 public sealed record RentCandidate(Guid MembershipId, string Suite, string Email);
 public sealed record RentPreview(Guid AccountId, Guid AccountVersion, long AmountMinorUnits, DateOnly DueOn, DateOnly StartsOn, DateOnly EndsOn, bool AlreadyIssued);

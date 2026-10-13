@@ -32,7 +32,8 @@ public sealed class BillingStore(OfficeDbContext db, ICurrentActor current, Acco
                                  where charge.AccountId == row.Account.Id
                                  orderby charge.DueOn descending, charge.Id descending
                                  select new ObligationView(charge.Id, charge.Version, charge.Kind, charge.Description, charge.AmountMinorUnits,
-                                     charge.Currency, charge.DueOn, period == null ? null : (DateOnly?)period.StartsOn, period == null ? null : (DateOnly?)period.EndsOn))
+                                     charge.Currency, charge.DueOn, period == null ? null : (DateOnly?)period.StartsOn, period == null ? null : (DateOnly?)period.EndsOn,
+                                     db.ObligationCredits.Where(c => c.ObligationId == charge.Id).Sum(c => (long?)c.AmountMinorUnits) ?? 0))
                 .Take(100).ToListAsync(cancellationToken);
             result.Add(new(row.Account.Id, row.Account.Version, row.Suite, terms, charges, false, row.Account.MembershipId, management ? row.Email : null));
         }

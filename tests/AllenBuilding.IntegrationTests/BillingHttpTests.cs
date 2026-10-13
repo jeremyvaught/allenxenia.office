@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.RegularExpressions;
 using AllenBuilding.Application.Billing;
+using AllenBuilding.Domain.Billing;
 using AllenBuilding.Domain.Tenancy;
 using AllenBuilding.Infrastructure.Identity;
 using AllenBuilding.Infrastructure.Persistence;
@@ -56,6 +57,15 @@ public sealed class BillingHttpTests
         using var read = await tenant.GetAsync("/Billing/Account/" + accountId);
         Assert.Equal(HttpStatusCode.OK, read.StatusCode); var html = await read.Content.ReadAsStringAsync();
         Assert.Contains("$19.75", html); Assert.Contains("Payment status unavailable", html); Assert.DoesNotContain("Confirm reviewed change", html);
+        using (var scope = host.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); var debt = await db.Obligations.SingleAsync(x => x.AmountMinorUnits == 1975);
+            db.ObligationCredits.Add(ObligationCredit.RecordLocal(Guid.NewGuid(), managerId, new(debt.Id, debt.AccountId, debt.Version, 1975), 1950, ObligationCreditKind.Credit, "Approved local credit", host.Clock.GetUtcNow()));
+            debt.FinancialStateChanged(); await db.SaveChangesAsync();
+        }
+        using var afterCredit = await tenant.GetAsync("/Billing/Account/" + accountId); var creditHtml = await afterCredit.Content.ReadAsStringAsync();
+        Assert.Contains("Recorded credits: $19.50 USD", creditHtml); Assert.Contains("Charge after credits: $0.25 USD", creditHtml);
+        Assert.Contains("This small balance remains owed", creditHtml); Assert.Contains("Payment status unavailable", creditHtml);
         using var tenantPrepare = await AccountTestHost.PostAsync(tenant, "/Billing", "/Billing/PrepareCharge", ("AccountId", accountId.ToString()));
         Assert.StartsWith("http://localhost/Account/Denied", tenantPrepare.Headers.Location?.OriginalString);
         using (var scope = host.Services.CreateScope())

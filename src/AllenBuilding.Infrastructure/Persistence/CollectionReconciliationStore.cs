@@ -80,7 +80,8 @@ public sealed class CollectionReconciliationStore(OfficeDbContext db, TimeProvid
                         foreach (var obligation in obligations)
                         {
                             var allocated = await db.PaymentAllocations.Where(x => x.ObligationId == obligation.Id).SumAsync(x => (long?)x.AmountMinorUnits, cancellationToken) ?? 0;
-                            if (obligation.AmountMinorUnits - allocated != attempt.Items.Single(i => i.ObligationId == obligation.Id).AmountMinorUnits)
+                            var credited = await db.ObligationCredits.Where(x => x.ObligationId == obligation.Id).SumAsync(x => (long?)x.AmountMinorUnits, cancellationToken) ?? 0;
+                            if (obligation.AmountMinorUnits - credited - allocated != attempt.Items.Single(i => i.ObligationId == obligation.Id).AmountMinorUnits)
                                 throw new InvalidOperationException("The ledger no longer matches the reviewed allocation.");
                         }
                         recorded = SettlementPayment.Record(attempt, fact, time.GetUtcNow()); db.SettlementPayments.Add(recorded);

@@ -78,10 +78,10 @@ public sealed class CollectionStore(OfficeDbContext db, ICurrentActor current, C
             if (db is MySqlOfficeDbContext)
                 await db.Database.ExecuteSqlInterpolatedAsync($"SELECT id FROM obligations WHERE id = {id.ToString("D")} AND account_id = {accountId.ToString("D")} FOR UPDATE", cancellationToken);
         // Separate aggregate per obligation: joins cannot multiply cash allocations.
-        // Credits/refunds/holds must extend this ledger before their capabilities are enabled.
+        // Refunds/disputes require their separate ledger before enabling returned-money workflows.
         return await db.Obligations.AsNoTracking().Where(x => x.AccountId == accountId && ids.Contains(x.Id))
             .OrderBy(x => x.Id).Select(x => new ReviewedCollectionBalance(x.Id, x.AccountId, x.Version,
-                x.AmountMinorUnits - (db.PaymentAllocations.Where(a => a.ObligationId == x.Id).Sum(a => (long?)a.AmountMinorUnits) ?? 0), x.Currency,
+                x.AmountMinorUnits - (db.ObligationCredits.Where(c => c.ObligationId == x.Id).Sum(c => (long?)c.AmountMinorUnits) ?? 0) - (db.PaymentAllocations.Where(a => a.ObligationId == x.Id).Sum(a => (long?)a.AmountMinorUnits) ?? 0), x.Currency,
                 db.CollectionGuards.Any(g => g.ObligationId == x.Id),
                 db.FinancialExceptions.Any(e => e.AccountId == x.AccountId && e.State != FinancialExceptionState.Resolved) ||
                 db.PaymentAttemptItems.Any(i => i.ObligationId == x.Id && db.PaymentAttempts.Any(a => a.Id == i.AttemptId &&

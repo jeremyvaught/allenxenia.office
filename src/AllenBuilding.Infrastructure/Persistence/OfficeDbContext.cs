@@ -12,6 +12,7 @@ namespace AllenBuilding.Infrastructure.Persistence;
 
 public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbContext<OfficeUser>(options)
 {
+    public DbSet<ObligationCredit> ObligationCredits => Set<ObligationCredit>();
     public DbSet<SettlementPayment> SettlementPayments => Set<SettlementPayment>();
     public DbSet<PaymentAllocation> PaymentAllocations => Set<PaymentAllocation>();
     public DbSet<CustomerProvision> CustomerProvisions => Set<CustomerProvision>();
@@ -288,6 +289,15 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
             e.HasAlternateKey(x => new { x.AttemptId, x.ObligationId, x.AccountId });
             e.HasOne<Obligation>().WithMany().HasForeignKey(x => new { x.ObligationId, x.AccountId })
                 .HasPrincipalKey(x => new { x.Id, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<ObligationCredit>(e =>
+        {
+            e.ToTable("obligation_credits", table => table.HasCheckConstraint("CK_credit_amount", "amount_minor_units > 0 AND amount_minor_units <= 99999999 AND currency = 'USD'"));
+            e.HasKey(x => x.Id); e.Property(x => x.ActorId).HasMaxLength(450); e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(32);
+            e.Property(x => x.Currency).HasMaxLength(3); e.Property(x => x.Reason).HasMaxLength(2000);
+            e.HasIndex(x => new { x.ActorId, x.OperationId }).IsUnique(); e.HasIndex(x => new { x.ObligationId, x.RecordedAt, x.Id });
+            e.HasOne<Obligation>().WithMany().HasForeignKey(x => new { x.ObligationId, x.AccountId }).HasPrincipalKey(x => new { x.Id, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.ActorId).OnDelete(DeleteBehavior.Restrict);
         });
         model.Entity<SettlementPayment>(e =>
         {

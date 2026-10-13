@@ -55,7 +55,8 @@ public sealed class CollectionWorkQueue(OfficeDbContext db, TimeProvider time) :
                 if (db is MySqlOfficeDbContext) await db.Database.ExecuteSqlInterpolatedAsync($"SELECT id FROM obligations WHERE id = {item.ObligationId.ToString("D")} FOR UPDATE", token);
                 var obligation = await db.Obligations.AsNoTracking().SingleAsync(x => x.Id == item.ObligationId, token);
                 var paid = await db.PaymentAllocations.Where(x => x.ObligationId == item.ObligationId).SumAsync(x => (long?)x.AmountMinorUnits, token) ?? 0;
-                valid &= obligation.Version == item.ReviewedVersion && obligation.AmountMinorUnits - paid == item.AmountMinorUnits &&
+                var credited = await db.ObligationCredits.Where(x => x.ObligationId == item.ObligationId).SumAsync(x => (long?)x.AmountMinorUnits, token) ?? 0;
+                valid &= obligation.Version == item.ReviewedVersion && obligation.AmountMinorUnits - credited - paid == item.AmountMinorUnits &&
                     guards.Any(x => x.ObligationId == item.ObligationId && x.AccountId == original.AccountId);
             }
             if (!valid)
