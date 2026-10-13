@@ -264,6 +264,11 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .HasColumnType("TEXT")
                         .HasColumnName("actor_id");
 
+                    b.Property<string>("AgreementHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("agreement_hash");
+
                     b.Property<DateTime?>("AppliedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("applied_at");
@@ -292,6 +297,10 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .HasMaxLength(32)
                         .HasColumnType("TEXT")
                         .HasColumnName("state");
+
+                    b.Property<DateTime?>("VerifiedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("verified_at");
 
                     b.Property<string>("Version")
                         .IsConcurrencyToken()

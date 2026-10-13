@@ -320,7 +320,7 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
         });
         model.Entity<CashMovementReview>(e =>
         {
-            e.ToTable("cash_movement_reviews"); e.HasKey(x => x.MovementId); e.Property(x => x.Version).IsConcurrencyToken(); e.Property(x => x.State).HasConversion<string>().HasMaxLength(32);
+            e.ToTable("cash_movement_reviews"); e.HasKey(x => x.MovementId); e.Property(x => x.AgreementHash).HasMaxLength(64); e.Property(x => x.Version).IsConcurrencyToken(); e.Property(x => x.State).HasConversion<string>().HasMaxLength(32);
             e.Property(x => x.Disposition).HasConversion<string>().HasMaxLength(32); e.Property(x => x.ActorId).HasMaxLength(450); e.Property(x => x.Reason).HasMaxLength(2000);
             e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.ActorId).OnDelete(DeleteBehavior.Restrict);
             e.HasIndex(x => new { x.AccountId, x.State, x.CreatedAt });

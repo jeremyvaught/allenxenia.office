@@ -14,7 +14,7 @@ public interface ICollectionGatewayFactory
     ICollectionGateway Open(PaymentAttempt original, CheckoutProfile profile);
 }
 
-public sealed class CollectionWorker(ICollectionWorkQueue queue, ICollectionGatewayFactory gateways)
+public sealed class CollectionWorker(ICollectionWorkQueue queue, ICollectionGatewayFactory gateways, ICashInventoryReader? cash = null)
 {
     public async Task<bool> ProcessOneAsync(CancellationToken cancellationToken = default)
     {
@@ -31,17 +31,25 @@ public sealed class CollectionWorker(ICollectionWorkQueue queue, ICollectionGate
             else observation = lease.Original.SessionId is { } session
                 ? await gateway.ReadAsync(lease.Original, session, deadline.Token).WaitAsync(deadline.Token)
                 : await gateway.CreateAsync(lease.Original, deadline.Token).WaitAsync(deadline.Token);
+            if (lease.ReadOnly && lease.Original.State == PaymentAttemptState.Settled && observation.State == ProviderCollectionState.Paid)
+                observation = observation with { CashInventory = cash is null ? new(CashObservationState.Invalid) : await cash.ReadInventoryAsync(lease.Original, deadline.Token).WaitAsync(deadline.Token) };
         }
         catch (OperationCanceledException) { observation = new(ProviderCollectionState.Unknown); }
         catch (Exception) { observation = new(ProviderCollectionState.Unknown); }
         finally { (gateway as IDisposable)?.Dispose(); }
         using var completion = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var completed = await queue.CompleteAsync(lease, observation, completion.Token);
-        operation.Result = !completed ? OfficeOutcome.LeaseLost : observation.State switch
+        operation.Result = !completed ? OfficeOutcome.LeaseLost : observation.CashInventory?.State switch
         {
-            ProviderCollectionState.Unknown => OfficeOutcome.Uncertain,
-            ProviderCollectionState.Invalid => OfficeOutcome.Failure,
-            _ => OfficeOutcome.Success
+            CashObservationState.Unknown => OfficeOutcome.Uncertain,
+            CashObservationState.Invalid => OfficeOutcome.Failure,
+            CashObservationState.Pending => OfficeOutcome.Retry,
+            _ => observation.State switch
+            {
+                ProviderCollectionState.Unknown => OfficeOutcome.Uncertain,
+                ProviderCollectionState.Invalid => OfficeOutcome.Failure,
+                _ => OfficeOutcome.Success
+            }
         };
         return true;
     }

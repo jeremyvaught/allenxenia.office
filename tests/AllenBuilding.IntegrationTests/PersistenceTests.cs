@@ -84,7 +84,7 @@ public sealed class PersistenceTests
             await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO obligation_credits (id, account_id, obligation_id, reviewed_version, operation_id, actor_id, kind, amount_minor_units, currency, reason, recorded_at) VALUES ({credit.Id.ToString("D")}, {cashAccount.Id.ToString("D")}, {creditedDebt.Id.ToString("D")}, {credit.ReviewedVersion.ToString("D")}, {credit.OperationId.ToString("D")}, {legacyUser.Id}, {"Credit"}, {1L}, {"USD"}, {credit.Reason}, {now.UtcDateTime})");
             await db.Database.MigrateAsync();
             var restoredReview = await db.CashMovementReviews.AsNoTracking().SingleAsync(x => x.MovementId == movement.Id);
-            Assert.Equal(CashMovementReviewState.Pending, restoredReview.State); Assert.Equal(cashReview.Version, restoredReview.Version); Assert.Null(restoredReview.OperationId); Assert.Null(restoredReview.Disposition);
+            Assert.Equal(CashMovementReviewState.Pending, restoredReview.State); Assert.Equal(cashReview.Version, restoredReview.Version); Assert.Null(restoredReview.OperationId); Assert.Null(restoredReview.Disposition); Assert.Null(restoredReview.VerifiedAt); Assert.Null(restoredReview.AgreementHash);
             var restoredCredit = await db.ObligationCredits.AsNoTracking().SingleAsync(x => x.Id == credit.Id); Assert.Equal(1, restoredCredit.AmountMinorUnits); Assert.Null(restoredCredit.SourceMovementId);
             Assert.Equal(-100, (await db.CashMovements.AsNoTracking().SingleAsync(x => x.Id == movement.Id)).SignedMinorUnits);
             Assert.Equal(1000, (await db.SettlementPayments.AsNoTracking().SingleAsync(x => x.Id == cashCapture.Id)).AmountMinorUnits);
@@ -176,6 +176,7 @@ public sealed class PersistenceTests
         await CashMovementContract.VerifyAsync(create);
         await CashSourceRecoveryContract.VerifyAsync(create);
         await RefundDispositionContract.VerifyAsync(create);
+        await CashAgreementContract.VerifyAsync(create);
     }
 
     private static async Task VerifyProtectedIdentity(Func<OfficeDbContext> create)

@@ -43,4 +43,30 @@ public sealed class CashMovementTests
         foreach (var mismatch in new[] { fixture.Fact with { CustomerId = "cus_other" }, fixture.Fact with { LiveMode = true }, fixture.Fact with { PaymentId = "pi_other" }, fixture.Fact with { Currency = "EUR" }, fixture.Fact with { AccountId = Guid.NewGuid() } })
             Assert.Throws<InvalidOperationException>(() => CashMovement.Record(fixture.Capture, fixture.Original, mismatch, Now));
     }
+    [Fact]
+    public void Final_refund_agreement_keeps_the_reviewed_disposition_and_monotonic_evidence()
+    {
+        var fixture = Fixture(); var movement = CashMovement.Record(fixture.Capture, fixture.Original, fixture.Fact, Now); var review = CashMovementReview.Open(movement); var hash = new string('A', 64);
+        Assert.Throws<InvalidOperationException>(() => review.ConfirmRefundAgreement(movement, hash, Now));
+        var operation = Guid.NewGuid(); review.ApplyRefund(movement, operation, "manager", RefundDisposition.CreditDebt, "Reviewed debt reduction", Now);
+        Assert.Throws<InvalidOperationException>(() => review.ConfirmRefundAgreement(movement, "unverified", Now));
+        review.ConfirmRefundAgreement(movement, hash, Now); var version = review.Version;
+        Assert.Equal(CashMovementReviewState.Classified, review.State); Assert.Equal(operation, review.OperationId); Assert.Equal(RefundDisposition.CreditDebt, review.Disposition); Assert.Equal(Now, review.VerifiedAt);
+        review.ConfirmRefundAgreement(movement, hash, Now); Assert.Equal(version, review.Version);
+        review.ConfirmRefundAgreement(movement, hash, Now.AddMinutes(1)); Assert.NotEqual(version, review.Version);
+        Assert.Throws<InvalidOperationException>(() => review.ConfirmRefundAgreement(movement, new string('B', 64), Now)); Assert.Equal(Now.AddMinutes(1), review.VerifiedAt);
+    }
+    [Fact]
+    public void Restored_dispute_agreement_requires_complete_matching_net_zero_money()
+    {
+        var fixture = Fixture(); var withdrawn = CashMovement.Record(fixture.Capture, fixture.Original, fixture.Fact with { Kind = CashMovementKind.DisputeWithdrawal, SourceId = "du_agreement", SignedMinorUnits = -1000 }, Now);
+        var restored = CashMovement.Record(fixture.Capture, fixture.Original, fixture.Fact with { Kind = CashMovementKind.DisputeReinstatement, SourceId = "du_agreement", TransactionId = "txn_reinstated", SignedMinorUnits = 1000 }, Now);
+        var foreign = CashMovement.Record(fixture.Capture, fixture.Original, fixture.Fact with { Kind = CashMovementKind.DisputeReinstatement, SourceId = "du_foreign", TransactionId = "txn_foreign", SignedMinorUnits = 1000 }, Now);
+        var review = CashMovementReview.Open(withdrawn); var hash = new string('A', 64);
+        Assert.Throws<InvalidOperationException>(() => review.ConfirmRestoredDispute(withdrawn, [withdrawn], hash, Now));
+        Assert.Throws<InvalidOperationException>(() => review.ConfirmRestoredDispute(withdrawn, [withdrawn, foreign], hash, Now));
+        review.ConfirmRestoredDispute(withdrawn, [withdrawn, restored], hash, Now); Assert.Equal(CashMovementReviewState.Classified, review.State); Assert.Null(review.Disposition);
+        Assert.Equal(-1000, withdrawn.SignedMinorUnits); Assert.Equal(1000, fixture.Capture.AmountMinorUnits);
+    }
+
 }

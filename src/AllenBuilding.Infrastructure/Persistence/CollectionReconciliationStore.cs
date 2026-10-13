@@ -42,8 +42,11 @@ public sealed class CollectionReconciliationStore(OfficeDbContext db, TimeProvid
                 payment.Allocations.Count == attempt.Items.Count && payment.Allocations.All(x => attempt.Items.Any(i =>
                     i.ObligationId == x.ObligationId && i.AccountId == x.AccountId && i.AmountMinorUnits == x.AmountMinorUnits));
             var pendingCash = await db.CashSourceWork.AnyAsync(w => w.AttemptId == attempt.Id && w.State != CollectionWorkState.Completed, cancellationToken) ||
-                await db.CashMovements.AnyAsync(m => m.AttemptId == attempt.Id && !db.CashMovementReviews.Any(r => r.MovementId == m.Id && r.State == CashMovementReviewState.Classified), cancellationToken);
-            agrees &= !pendingCash;
+                await db.CashMovements.AnyAsync(m => m.AttemptId == attempt.Id && !db.CashMovementReviews.Any(r => r.MovementId == m.Id && r.State == CashMovementReviewState.Classified && r.VerifiedAt != null && r.AgreementHash != null && r.AgreementHash.Length == 64), cancellationToken);
+            if (agrees && observation.CashInventory is { State: CashObservationState.Verified, Inventory: { } inventory })
+                agrees = await new CashAgreementStore(db, time).VerifyLockedAsync(attempt, inventory, cancellationToken);
+            else agrees &= !pendingCash && observation.CashInventory is null && lease?.ReadOnly != true &&
+                !await db.FinancialExceptions.AnyAsync(x => x.AttemptId == attempt.Id && x.State != FinancialExceptionState.Resolved, cancellationToken);
             if (agrees) await ResolveIssue(attempt.Id, observation, cancellationToken);
             else await ObserveIssue(attempt, pendingCash ? FinancialFailure.ExternalCashMovement : FinancialFailure.TerminalDisagreement, observation, cancellationToken);
             return await Commit(agrees ? new(ReconciliationCode.AlreadyApplied, payment!.Id) : new(ReconciliationCode.NeedsReview), transaction, cancellationToken, lease, eventLease);
@@ -163,8 +166,10 @@ public sealed class CollectionReconciliationStore(OfficeDbContext db, TimeProvid
     {
         try
         {
-            if (!await ValidFence(lease, eventLease, false, cancellationToken)) return new(ReconciliationCode.Unavailable);
-            await db.SaveChangesAsync(cancellationToken); await transaction.CommitAsync(cancellationToken);
+            if (!await ValidFence(lease, eventLease, false, cancellationToken)) { await transaction.RollbackAsync(cancellationToken); db.ChangeTracker.Clear(); return new(ReconciliationCode.Unavailable); }
+            await db.SaveChangesAsync(cancellationToken);
+            if (!await ValidFence(lease, eventLease, false, cancellationToken)) { await transaction.RollbackAsync(cancellationToken); db.ChangeTracker.Clear(); return new(ReconciliationCode.Unavailable); }
+            await transaction.CommitAsync(cancellationToken);
             return result;
         }
         catch (DbUpdateConcurrencyException) { return new(ReconciliationCode.Conflict); }

@@ -57,6 +57,16 @@ public static class PaymentEventWorkContract
             Assert.Equal(FinancialExceptionState.Open, (await db.FinancialExceptions.SingleAsync(x => x.AttemptId == first.Attempt.Id)).State);
             Assert.Equal(1, await db.SettlementPayments.CountAsync(x => x.AttemptId == first.Attempt.Id));
         }
+        // A later Paid signal cannot clear an unclassified external-money case, even before its cash rows arrive.
+        var afterAdjustment = Event("checkout.session.completed", reference.SessionId!);
+        await using (var db = create()) { db.Add(afterAdjustment); await db.SaveChangesAsync(); }
+        var afterLease = (await Claim())!; var afterTarget = (await Target(afterLease, reference))!;
+        Assert.True(await Complete(afterLease, reference, afterTarget, Paid(afterTarget.Original, reference.SessionId!)));
+        await using (var db = create())
+        {
+            Assert.Equal(FinancialExceptionState.Open, (await db.FinancialExceptions.SingleAsync(x => x.AttemptId == first.Attempt.Id)).State);
+            Assert.Equal(PaymentEventState.NeedsReview, (await db.PaymentEvents.SingleAsync(x => x.Id == afterAdjustment.Id)).State);
+        }
         var unmapped = await Seed(); var unmappedLease = (await Claim())!; var wrong = Reference(unmapped.Attempt, unmapped.Event) with { AccountId = Guid.NewGuid() };
         Assert.Null(await Target(unmappedLease, wrong)); Assert.True(await Complete(unmappedLease, wrong, null, null));
         await using (var db = create()) { Assert.Equal("UnmappedResource", (await db.PaymentEvents.SingleAsync(x => x.Id == unmapped.Event.Id)).ReviewReason); Assert.True(await db.CollectionGuards.AnyAsync(x => x.AttemptId == unmapped.Attempt.Id)); }

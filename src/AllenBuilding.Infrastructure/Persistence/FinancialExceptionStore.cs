@@ -53,7 +53,9 @@ public sealed class FinancialExceptionStore(OfficeDbContext db, ICurrentActor cu
                               where movement.AccountId == row.Issue.AccountId && movement.AttemptId == row.Attempt.Id
                               orderby movement.RecordedAt descending, movement.Id descending
                               select new FinancialCashFact(movement.Id, movement.Kind, movement.SignedMinorUnits, movement.Currency, movement.SourceId,
-                                  movement.TransactionId, movement.ProviderAt, review == null ? null : (CashMovementReviewState?)review.State, review == null ? null : (Guid?)review.Version))
+                                  movement.TransactionId, movement.ProviderAt, review == null || (review.State == CashMovementReviewState.Classified && (review.VerifiedAt == null || review.AgreementHash == null || review.AgreementHash.Length != 64)) ? null : (CashMovementReviewState?)review.State,
+                                  review == null ? null : (Guid?)review.Version,
+                                  review == null || review.AgreementHash == null || review.AgreementHash.Length != 64 ? null : review.VerifiedAt))
                 .Take(50).ToListAsync(cancellationToken);
             var sources = await db.CashSourceWork.AsNoTracking().Where(x => x.AttemptId == row.Attempt.Id && x.AccountId == row.Issue.AccountId)
                 .OrderBy(x => x.State == CollectionWorkState.Completed).ThenByDescending(x => x.CreatedAt).ThenBy(x => x.Id)

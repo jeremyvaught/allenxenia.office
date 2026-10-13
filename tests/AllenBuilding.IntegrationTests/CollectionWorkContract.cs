@@ -123,9 +123,14 @@ public static class CollectionWorkContract
         await using (var db = create())
         {
             var factory = new CallbackFactory(original => Task.FromResult(Paid(original)));
-            Assert.True(await new CollectionWorker(new CollectionWorkQueue(db, clock), factory).ProcessOneAsync()); Assert.Equal(0, factory.Creates); Assert.Equal(1, factory.Reads);
+            Assert.True(await new CollectionWorker(new CollectionWorkQueue(db, clock), factory, new EmptyCashInventory(clock)).ProcessOneAsync()); Assert.Equal(0, factory.Creates); Assert.Equal(1, factory.Reads);
         }
         await using (var db = create()) { Assert.Equal(1, await db.SettlementPayments.CountAsync(x => x.AttemptId == polling.Attempt.Id)); Assert.Equal(FinancialExceptionState.Resolved, (await db.FinancialExceptions.SingleAsync(x => x.AttemptId == polling.Attempt.Id)).State); }
+    }
+    private sealed class EmptyCashInventory(TimeProvider time) : ICashInventoryReader
+    {
+        public Task<CashInventoryObservation> ReadInventoryAsync(PaymentAttempt original, CancellationToken cancellationToken) => Task.FromResult(new CashInventoryObservation(CashObservationState.Verified,
+            new(original.ProviderAccount, original.LiveMode, original.AccountId, original.Id, original.CustomerId, original.PaymentId!, "ch_" + original.Id.ToString("N"), original.TotalMinorUnits, 0, [], [], time.GetUtcNow())));
     }
     private sealed class WorkClock : TimeProvider
     { public DateTimeOffset Now { get; set; } = new(2020, 1, 1, 12, 0, 0, TimeSpan.Zero); public override DateTimeOffset GetUtcNow() => Now; }

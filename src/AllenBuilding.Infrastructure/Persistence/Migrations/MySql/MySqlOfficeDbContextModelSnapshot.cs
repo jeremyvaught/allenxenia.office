@@ -298,6 +298,12 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .HasColumnName("actor_id")
                         .UseCollation("utf8mb4_bin");
 
+                    b.Property<string>("AgreementHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("agreement_hash")
+                        .UseCollation("utf8mb4_bin");
+
                     b.Property<DateTime?>("AppliedAt")
                         .HasColumnType("datetime(6)")
                         .HasColumnName("applied_at");
@@ -328,6 +334,10 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .HasMaxLength(32)
                         .HasColumnType("varchar(32)")
                         .HasColumnName("state");
+
+                    b.Property<DateTime?>("VerifiedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("verified_at");
 
                     b.Property<string>("Version")
                         .IsConcurrencyToken()

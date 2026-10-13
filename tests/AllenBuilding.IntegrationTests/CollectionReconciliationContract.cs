@@ -46,13 +46,17 @@ public static class CollectionReconciliationContract
             Assert.Equal(FinancialExceptionState.Open, issue.State); Assert.Equal(FinancialFailure.TerminalDisagreement, issue.Failure);
             Assert.Equal(PaymentAttemptState.Settled, (await db.PaymentAttempts.SingleAsync(x => x.Id == successful.Attempt.Id)).State);
         }
-        Assert.Equal(ReconciliationCode.AlreadyApplied, (await Reconcile(successful.Attempt.Id, successful.Fact.SessionId, _ => Task.FromResult(Paid(successful.Fact)))).Code);
+        Assert.Equal(ReconciliationCode.NeedsReview, (await Reconcile(successful.Attempt.Id, successful.Fact.SessionId, _ => Task.FromResult(Paid(successful.Fact)))).Code);
+        Assert.Equal(ReconciliationCode.AlreadyApplied, (await Reconcile(successful.Attempt.Id, successful.Fact.SessionId, original => Task.FromResult(Paid(successful.Fact) with
+        {
+            CashInventory = new(CashObservationState.Verified, new(original.ProviderAccount, original.LiveMode, original.AccountId, original.Id, original.CustomerId, original.PaymentId!, "ch_" + original.Id.ToString("N"), original.TotalMinorUnits, 0, [], [], DateTimeOffset.UtcNow))
+        }))).Code);
         Assert.Equal(ReconciliationCode.NeedsReview, (await Reconcile(successful.Attempt.Id, successful.Fact.SessionId, _ => Task.FromResult(new ProviderCollectionObservation(ProviderCollectionState.Unknown)))).Code);
         await using (var db = create())
         {
             var issue = await db.FinancialExceptions.SingleAsync(x => x.AttemptId == successful.Attempt.Id);
             Assert.Equal(FinancialExceptionState.Open, issue.State);
-            Assert.Equal(new[] { "Opened", "Resolved", "Reopened" }, await db.FinancialExceptionHistory.Where(x => x.ExceptionId == issue.Id).OrderBy(x => x.OccurredAt).Select(x => x.Action).ToArrayAsync());
+            Assert.Equal(new[] { "Opened", "Observed", "CashAgreementVerified", "Resolved", "Reopened" }, await db.FinancialExceptionHistory.Where(x => x.ExceptionId == issue.Id).OrderBy(x => x.OccurredAt).Select(x => x.Action).ToArrayAsync());
             Assert.Equal(1, await db.FinancialExceptions.CountAsync(x => x.AttemptId == successful.Attempt.Id));
         }
         await using (var db = create())
