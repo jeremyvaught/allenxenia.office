@@ -24,17 +24,31 @@ public sealed class CollectionReconciliationStore(OfficeDbContext db, TimeProvid
         var attempt = await db.PaymentAttempts.Include(x => x.Items).SingleAsync(x => x.Id == attemptId, cancellationToken);
         await db.Entry(attempt).ReloadAsync(cancellationToken);
         if (attempt.Version != version) return new(ReconciliationCode.Conflict);
-        var payment = await db.SettlementPayments.AsNoTracking().SingleOrDefaultAsync(x => x.AttemptId == attempt.Id, cancellationToken);
+        var payment = await db.SettlementPayments.AsNoTracking().Include(x => x.Allocations).SingleOrDefaultAsync(x => x.AttemptId == attempt.Id, cancellationToken);
         if (attempt.State == PaymentAttemptState.Settled)
         {
             var fact = observation.Settlement;
-            return observation.State == ProviderCollectionState.Paid && payment is not null && fact is not null && observation.SessionId == fact.SessionId &&
+            var agrees = observation.State == ProviderCollectionState.Paid && payment is not null && fact is not null && observation.SessionId == fact.SessionId &&
                 fact.ProviderAccount == attempt.ProviderAccount && fact.LiveMode == attempt.LiveMode && fact.CustomerId == attempt.CustomerId &&
                 fact.SessionId == attempt.SessionId && fact.PaymentId == attempt.PaymentId && payment.CollectionReference == fact.PaymentId &&
-                fact.AmountMinorUnits == payment.AmountMinorUnits && fact.Currency == payment.Currency
-                ? new(ReconciliationCode.AlreadyApplied, payment.Id) : new(ReconciliationCode.NeedsReview);
+                fact.AmountMinorUnits == attempt.TotalMinorUnits && fact.AmountMinorUnits == payment.AmountMinorUnits && fact.Currency == payment.Currency &&
+                payment.Allocations.Count == attempt.Items.Count && payment.Allocations.All(x => attempt.Items.Any(i =>
+                    i.ObligationId == x.ObligationId && i.AccountId == x.AccountId && i.AmountMinorUnits == x.AmountMinorUnits));
+            if (agrees) await ResolveIssue(attempt.Id, cancellationToken);
+            else await ObserveIssue(attempt, FinancialFailure.TerminalDisagreement, observation, cancellationToken);
+            return await Commit(agrees ? new(ReconciliationCode.AlreadyApplied, payment!.Id) : new(ReconciliationCode.NeedsReview), transaction, cancellationToken);
         }
-        if (attempt.State is PaymentAttemptState.Admitted or PaymentAttemptState.Uncollected || payment is not null) return new(ReconciliationCode.NeedsReview);
+        if (attempt.State == PaymentAttemptState.Uncollected && observation.State == ProviderCollectionState.Uncollected &&
+            observation.SessionId is { } finalSession && finalSession == attempt.SessionId && payment is null)
+        {
+            await ResolveIssue(attempt.Id, cancellationToken);
+            return await Commit(new(ReconciliationCode.AlreadyApplied), transaction, cancellationToken);
+        }
+        if (attempt.State is PaymentAttemptState.Admitted or PaymentAttemptState.Uncollected || payment is not null)
+        {
+            await ObserveIssue(attempt, FinancialFailure.TerminalDisagreement, observation, cancellationToken);
+            return await Commit(new(ReconciliationCode.NeedsReview), transaction, cancellationToken);
+        }
         var obligations = new List<Obligation>();
         foreach (var item in attempt.Items.OrderBy(x => x.ObligationId.ToString("D"), StringComparer.Ordinal))
         {
@@ -78,11 +92,49 @@ public sealed class CollectionReconciliationStore(OfficeDbContext db, TimeProvid
             }
             catch (InvalidOperationException) { review = true; }
         }
-        if (review) attempt.RequireReview();
+        if (review)
+        {
+            attempt.RequireReview();
+            var failure = !completeGuards ? FinancialFailure.ClaimsIncomplete : changed ? FinancialFailure.LedgerChanged :
+                observation.State == ProviderCollectionState.Unknown ? FinancialFailure.ProviderUnknown : FinancialFailure.ProviderMismatch;
+            await ObserveIssue(attempt, failure, observation, cancellationToken);
+        }
+        else await ResolveIssue(attempt.Id, cancellationToken);
+        return await Commit(new(review ? ReconciliationCode.NeedsReview : ReconciliationCode.Applied, recorded?.Id), transaction, cancellationToken);
+    }
+    private async Task ObserveIssue(PaymentAttempt attempt, FinancialFailure failure, ProviderCollectionObservation observation, CancellationToken token)
+    {
+        var issue = await db.FinancialExceptions.SingleOrDefaultAsync(x => x.AttemptId == attempt.Id, token);
+        var known = observation.State is ProviderCollectionState.Open or ProviderCollectionState.Processing or ProviderCollectionState.Paid or ProviderCollectionState.Uncollected
+            ? observation.State.ToString() : null;
+        string action;
+        if (issue is null)
+        {
+            issue = FinancialException.Open(attempt, failure, known, time.GetUtcNow()); db.FinancialExceptions.Add(issue); action = "Opened";
+        }
+        else
+        {
+            await db.Entry(issue).ReloadAsync(token);
+            action = issue.State == FinancialExceptionState.Resolved ? "Reopened" : "Observed";
+            issue.Observe(failure, known, time.GetUtcNow());
+        }
+        db.FinancialExceptionHistory.Add(FinancialExceptionHistory.Record(issue.Id, action, null, failure.ToString(), time.GetUtcNow()));
+    }
+    private async Task ResolveIssue(Guid attemptId, CancellationToken token)
+    {
+        var issue = await db.FinancialExceptions.SingleOrDefaultAsync(x => x.AttemptId == attemptId, token);
+        if (issue is null) return;
+        await db.Entry(issue).ReloadAsync(token);
+        if (issue.State == FinancialExceptionState.Resolved) return;
+        issue.ResolveVerified(time.GetUtcNow());
+        db.FinancialExceptionHistory.Add(FinancialExceptionHistory.Record(issue.Id, "Resolved", null, "Original canonical outcome verified", time.GetUtcNow()));
+    }
+    private async Task<ReconciliationResult> Commit(ReconciliationResult result, Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction, CancellationToken cancellationToken)
+    {
         try
         {
             await db.SaveChangesAsync(cancellationToken); await transaction.CommitAsync(cancellationToken);
-            return new(review ? ReconciliationCode.NeedsReview : ReconciliationCode.Applied, recorded?.Id);
+            return result;
         }
         catch (DbUpdateConcurrencyException) { return new(ReconciliationCode.Conflict); }
         catch (DbUpdateException e) when (e.InnerException is MySql.Data.MySqlClient.MySqlException { Number: 1062 or 1452 or 3819 } or Microsoft.Data.Sqlite.SqliteException { SqliteErrorCode: 19 })

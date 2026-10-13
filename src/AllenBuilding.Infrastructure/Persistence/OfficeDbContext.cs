@@ -17,6 +17,8 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
     public DbSet<BillingCustomerBinding> BillingCustomers => Set<BillingCustomerBinding>();
     public DbSet<PaymentAttempt> PaymentAttempts => Set<PaymentAttempt>();
     public DbSet<PaymentEventInbox> PaymentEvents => Set<PaymentEventInbox>();
+    public DbSet<FinancialException> FinancialExceptions => Set<FinancialException>();
+    public DbSet<FinancialExceptionHistory> FinancialExceptionHistory => Set<FinancialExceptionHistory>();
     public DbSet<PaymentAttemptItem> PaymentAttemptItems => Set<PaymentAttemptItem>();
     public DbSet<CollectionGuard> CollectionGuards => Set<CollectionGuard>();
     public DbSet<RentAccount> RentAccounts => Set<RentAccount>();
@@ -203,6 +205,23 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
             e.HasIndex(x => new { x.AccountId, x.ProviderAccount, x.LiveMode }).IsUnique();
             e.HasIndex(x => new { x.ProviderAccount, x.LiveMode, x.CustomerId }).IsUnique();
             e.HasOne<RentAccount>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<FinancialException>(e =>
+        {
+            e.ToTable("financial_exceptions"); e.HasKey(x => x.Id); e.Property(x => x.Version).IsConcurrencyToken();
+            e.Property(x => x.State).HasConversion<string>().HasMaxLength(32); e.Property(x => x.Failure).HasConversion<string>().HasMaxLength(64);
+            e.Property(x => x.OwnerUserId).HasMaxLength(450); e.Property(x => x.LastVerifiedState).HasMaxLength(32);
+            e.HasIndex(x => x.AttemptId).IsUnique(); e.HasIndex(x => new { x.AccountId, x.State, x.LastSeenAt });
+            e.HasOne<PaymentAttempt>().WithMany().HasForeignKey(x => new { x.AttemptId, x.AccountId }).HasPrincipalKey(x => new { x.Id, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.OwnerUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<FinancialExceptionHistory>(e =>
+        {
+            e.ToTable("financial_exception_history"); e.HasKey(x => x.Id); e.Property(x => x.Action).HasMaxLength(64);
+            e.Property(x => x.ActorUserId).HasMaxLength(450); e.Property(x => x.Reason).HasMaxLength(2000);
+            e.HasIndex(x => new { x.ExceptionId, x.OccurredAt, x.Id });
+            e.HasOne<FinancialException>().WithMany().HasForeignKey(x => x.ExceptionId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.ActorUserId).OnDelete(DeleteBehavior.Restrict);
         });
         model.Entity<PaymentEventInbox>(e =>
         {

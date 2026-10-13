@@ -128,5 +128,24 @@ public static class CollectionAdmissionContract
             Assert.Equal(0, await db.PaymentAttempts.CountAsync(x => x.AccountId == otherAccount.Id));
             Assert.False(await db.CollectionGuards.AnyAsync(x => x.ObligationId == stale.Id));
         }
+        var peerBinding = BillingCustomerBinding.Create(otherAccount.Id, "acct_admission", false, "cus_" + Guid.NewGuid().ToString("N"), now);
+        var paidPeer = PaymentAttempt.Admit(Guid.NewGuid(), peer.Id, peerBinding, [new(foreign.Id, otherAccount.Id, foreign.Version, 1000)], now); paidPeer.BeginDispatch(now);
+        var peerCapture = SettlementPayment.Record(paidPeer, new("acct_admission", false, peerBinding.CustomerId, "cs_" + paidPeer.Id.ToString("N"), "pi_" + paidPeer.Id.ToString("N"), 1000, "USD"), now);
+        var laterDebt = Charge("Later debt after terminal discrepancy", otherAccount.Id);
+        var terminalIssue = FinancialException.Open(paidPeer, FinancialFailure.TerminalDisagreement, null, now);
+        await using (var db = create()) { db.AddRange(peerBinding, paidPeer, peerCapture, laterDebt, terminalIssue); await db.SaveChangesAsync(); }
+        var terminalHeld = (await As(roommate, x => x.ReviewAsync(otherAccount.Id, new[] { laterDebt.Id }))).Single();
+        Assert.True(terminalHeld.Held); Assert.False(terminalHeld.HasProviderInstruction); Assert.Equal(1000, terminalHeld.RemainingMinorUnits);
+        Assert.Equal(CollectionCode.Conflict, (await As(roommate, x => x.AdmitAsync(new(Guid.NewGuid(), otherAccount.Id, new[] { terminalHeld with { Held = false } })))).Code);
+        await using (var db = create())
+        {
+            var duplicate = FinancialException.Open(paidPeer, FinancialFailure.ProviderUnknown, null, now); db.Add(duplicate);
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        }
+        await using (var db = create())
+        {
+            Assert.Equal(1, await db.FinancialExceptions.CountAsync(x => x.AttemptId == paidPeer.Id));
+            Assert.Equal(PaymentAttemptState.Settled, (await db.PaymentAttempts.SingleAsync(x => x.Id == paidPeer.Id)).State);
+        }
     }
 }

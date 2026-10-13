@@ -42,6 +42,21 @@ public static class CollectionReconciliationContract
         Assert.Equal(ReconciliationCode.NeedsReview, (await Reconcile(successful.Attempt.Id, successful.Fact.SessionId, _ => Task.FromResult(new ProviderCollectionObservation(ProviderCollectionState.Unknown)))).Code);
         await using (var db = create())
         {
+            var issue = await db.FinancialExceptions.SingleAsync(x => x.AttemptId == successful.Attempt.Id);
+            Assert.Equal(FinancialExceptionState.Open, issue.State); Assert.Equal(FinancialFailure.TerminalDisagreement, issue.Failure);
+            Assert.Equal(PaymentAttemptState.Settled, (await db.PaymentAttempts.SingleAsync(x => x.Id == successful.Attempt.Id)).State);
+        }
+        Assert.Equal(ReconciliationCode.AlreadyApplied, (await Reconcile(successful.Attempt.Id, successful.Fact.SessionId, _ => Task.FromResult(Paid(successful.Fact)))).Code);
+        Assert.Equal(ReconciliationCode.NeedsReview, (await Reconcile(successful.Attempt.Id, successful.Fact.SessionId, _ => Task.FromResult(new ProviderCollectionObservation(ProviderCollectionState.Unknown)))).Code);
+        await using (var db = create())
+        {
+            var issue = await db.FinancialExceptions.SingleAsync(x => x.AttemptId == successful.Attempt.Id);
+            Assert.Equal(FinancialExceptionState.Open, issue.State);
+            Assert.Equal(new[] { "Opened", "Resolved", "Reopened" }, await db.FinancialExceptionHistory.Where(x => x.ExceptionId == issue.Id).OrderBy(x => x.OccurredAt).Select(x => x.Action).ToArrayAsync());
+            Assert.Equal(1, await db.FinancialExceptions.CountAsync(x => x.AttemptId == successful.Attempt.Id));
+        }
+        await using (var db = create())
+        {
             var cash = await db.SettlementPayments.Include(x => x.Allocations).SingleAsync(x => x.AttemptId == successful.Attempt.Id);
             Assert.Equal(1000, cash.AmountMinorUnits); Assert.Single(cash.Allocations); Assert.Equal(successful.Debt.Id, cash.Allocations.Single().ObligationId);
             Assert.False(await db.CollectionGuards.AnyAsync(x => x.AttemptId == successful.Attempt.Id));
@@ -61,6 +76,9 @@ public static class CollectionReconciliationContract
         })).Code);
         var wrong = await Scenario();
         Assert.Equal(ReconciliationCode.NeedsReview, (await Reconcile(wrong.Attempt.Id, wrong.Fact.SessionId, _ => Task.FromResult(Paid(wrong.Fact with { AmountMinorUnits = 999 })))).Code);
+        var missing = await Scenario();
+        await using (var db = create()) { db.CollectionGuards.Remove(await db.CollectionGuards.SingleAsync(x => x.AttemptId == missing.Attempt.Id)); await db.SaveChangesAsync(); }
+        Assert.Equal(ReconciliationCode.NeedsReview, (await Reconcile(missing.Attempt.Id, missing.Fact.SessionId, _ => Task.FromResult(Paid(missing.Fact)))).Code);
         var raced = await Scenario();
         async Task<ReconciliationResult> ApplyOriginal()
         {
@@ -84,7 +102,10 @@ public static class CollectionReconciliationContract
             {
                 Assert.Equal(PaymentAttemptState.NeedsReview, (await db.PaymentAttempts.SingleAsync(x => x.Id == id)).State);
                 Assert.True(await db.CollectionGuards.AnyAsync(x => x.AttemptId == id)); Assert.False(await db.SettlementPayments.AnyAsync(x => x.AttemptId == id));
+                Assert.Equal(FinancialExceptionState.Open, (await db.FinancialExceptions.SingleAsync(x => x.AttemptId == id)).State);
             }
+            Assert.Equal(FinancialFailure.LedgerChanged, (await db.FinancialExceptions.SingleAsync(x => x.AttemptId == changed.Attempt.Id)).Failure);
+            Assert.Equal(FinancialFailure.ClaimsIncomplete, (await db.FinancialExceptions.SingleAsync(x => x.AttemptId == missing.Attempt.Id)).Failure);
             Assert.Equal(PaymentAttemptState.Processing, (await db.PaymentAttempts.SingleAsync(x => x.Id == processing.Attempt.Id)).State);
             Assert.True(await db.CollectionGuards.AnyAsync(x => x.AttemptId == processing.Attempt.Id));
             Assert.False(await db.SettlementPayments.AnyAsync(x => x.AttemptId == processing.Attempt.Id));

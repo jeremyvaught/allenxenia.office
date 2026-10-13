@@ -79,7 +79,8 @@ public sealed class CollectionStore(OfficeDbContext db, ICurrentActor current, C
         return await db.Obligations.AsNoTracking().Where(x => x.AccountId == accountId && ids.Contains(x.Id))
             .OrderBy(x => x.Id).Select(x => new ReviewedCollectionBalance(x.Id, x.AccountId, x.Version,
                 x.AmountMinorUnits - (db.PaymentAllocations.Where(a => a.ObligationId == x.Id).Sum(a => (long?)a.AmountMinorUnits) ?? 0), x.Currency,
-                db.CollectionGuards.Any(g => g.ObligationId == x.Id), db.PaymentAttemptItems.Any(i => i.ObligationId == x.Id &&
-                    db.PaymentAttempts.Any(a => a.Id == i.AttemptId && a.State == PaymentAttemptState.NeedsReview)))).ToListAsync(cancellationToken);
+                db.CollectionGuards.Any(g => g.ObligationId == x.Id),
+                db.FinancialExceptions.Any(e => e.AccountId == x.AccountId && e.State != FinancialExceptionState.Resolved) ||
+                db.PaymentAttemptItems.Any(i => i.ObligationId == x.Id && db.PaymentAttempts.Any(a => a.Id == i.AttemptId && a.State == PaymentAttemptState.NeedsReview)))).ToListAsync(cancellationToken);
     }
 }
