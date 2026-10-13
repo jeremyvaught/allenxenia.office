@@ -69,6 +69,7 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
   expect(new URL(page.url()).search).toBe('');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.goto(path);
+  await page.getByLabel('Your comment', { exact: true }).fill('Tenant update typed before management changes.');
 
   const managerContext = await browser.newContext({ baseURL: 'http://127.0.0.1:5088', viewport: { width: 320, height: 800 },
     colorScheme: 'light', isMobile: Boolean(testInfo.project.use.isMobile), hasTouch: Boolean(testInfo.project.use.hasTouch) });
@@ -102,8 +103,10 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await manager.getByLabel('Your comment', { exact: true }).fill('Private supplier details');
     await manager.getByRole('checkbox', { name: /Internal note/ }).check();
     await manager.getByRole('button', { name: 'Add comment', exact: true }).click();
-    await page.reload();
+    await page.getByRole('button', { name: 'Add comment', exact: true }).click();
+    await expect(page.getByText('Tenant update typed before management changes.', { exact: true })).toBeVisible();
     await expect(page.getByText('Private supplier details')).toHaveCount(0);
+    await manager.reload();
     await manager.getByLabel('Resolution', { exact: true }).fill('Replaced the seal and tested for leaks.');
     await manager.getByRole('button', { name: 'Complete', exact: true }).click();
     await expect(manager.getByText('Verify the work before closing this request.', { exact: false })).toBeVisible();

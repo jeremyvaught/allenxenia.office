@@ -70,13 +70,22 @@ public sealed class MaintenanceController(MaintenanceActions actions) : Controll
         return Outcome(await actions.SubmitOnBehalfAsync(new(form.OperationId, form.MembershipId, form.Title, form.Description, form.Location)), true);
     }
 
-    [HttpPost]
-    public async Task<IActionResult> Change(ChangeRequestForm form) => ModelState.IsValid
-        ? Outcome(await actions.ChangeAsync(form.Command(), false), false) : Error(MaintenanceCode.ValidationFailed);
+    [HttpPost, RequestSizeLimit(10000)]
+    public Task<IActionResult> Change(ChangeRequestForm form) => ApplyChange(form, false);
 
-    [Authorize(Policy = OfficeSecurity.ManagerPolicy), HttpPost]
-    public async Task<IActionResult> ManageChange(ChangeRequestForm form) => ModelState.IsValid
-        ? Outcome(await actions.ChangeAsync(form.Command(), true), true) : Error(MaintenanceCode.ValidationFailed);
+    [Authorize(Policy = OfficeSecurity.ManagerPolicy), HttpPost, RequestSizeLimit(10000)]
+    public Task<IActionResult> ManageChange(ChangeRequestForm form) => ApplyChange(form, true);
+
+    private async Task<IActionResult> ApplyChange(ChangeRequestForm form, bool management)
+    {
+        var result = ModelState.IsValid ? await actions.ChangeAsync(form.Command(), management) : new MaintenanceResult(MaintenanceCode.ValidationFailed);
+        if (result.Code is not (MaintenanceCode.Conflict or MaintenanceCode.ValidationFailed)) return Outcome(result, management);
+        var current = await actions.ReadAsync(form.WorkOrderId, management, HttpContext.RequestAborted);
+        if (current is null) return NotFound();
+        ViewData["Manager"] = management; ViewData["ActionDraft"] = form; ViewData["ActionError"] = result.Code;
+        Response.StatusCode = result.Code == MaintenanceCode.Conflict ? 409 : 400;
+        return View("Details", current);
+    }
 
     private async Task<IActionResult> DetailsView(Guid id, bool management)
     {

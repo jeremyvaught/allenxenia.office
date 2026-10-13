@@ -59,9 +59,9 @@ public sealed class NotificationQueue(OfficeDbContext db, IDataProtectionProvide
         if (message.Kind != "MaintenanceUpdate" || !user.EmailConfirmed) return null;
         var orderId = data.GetProperty("workOrderId").GetGuid(); var membershipId = data.GetProperty("membershipId").GetGuid();
         if (!data.TryGetProperty("historyId", out var historyId)) return null;
-        var visibility = await db.WorkOrderHistory.AsNoTracking().Where(x => x.Id == historyId.GetGuid() && x.WorkOrderId == orderId)
-            .Select(x => (Domain.Maintenance.HistoryVisibility?)x.Visibility).SingleOrDefaultAsync(cancellationToken);
-        if (visibility is null) return null;
+        var history = await db.WorkOrderHistory.AsNoTracking().Where(x => x.Id == historyId.GetGuid() && x.WorkOrderId == orderId)
+            .Select(x => new { x.Visibility, x.Action }).SingleOrDefaultAsync(cancellationToken);
+        if (history is null || history.Action == "Comment" || history.Visibility == Domain.Maintenance.HistoryVisibility.Internal) return null;
         var identity = await db.WorkOrders.AsNoTracking().Where(x => x.Id == orderId && x.RequesterMembershipId == membershipId)
             .Select(x => new { x.SuiteId, x.RequesterUserId }).SingleOrDefaultAsync(cancellationToken);
         if (identity is null) return null;
@@ -73,7 +73,7 @@ public sealed class NotificationQueue(OfficeDbContext db, IDataProtectionProvide
                              join grant in db.BuildingManagers on suite.BuildingId equals grant.BuildingId
                              where suite.Id == identity.SuiteId && grant.UserId == user.Id
                              select grant.UserId).AnyAsync(cancellationToken);
-        return (tenant && visibility == Domain.Maintenance.HistoryVisibility.TenantVisible) || manager ? new(message.Id, user.Email, "Maintenance request update",
+        return tenant || (manager && history.Action is "Submitted" or "SubmittedOnBehalf") ? new(message.Id, user.Email, "Maintenance request update",
             "A maintenance request has an update. Sign in to view it:\n" + new Uri(publicOrigin, "Portal")) : null;
     }
 

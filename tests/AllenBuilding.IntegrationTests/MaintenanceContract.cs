@@ -133,6 +133,11 @@ public static class MaintenanceContract
         Assert.DoesNotContain(privateView.History, x => x.Internal || x.Note == "Private management note");
         var internalAttempt = new ChangeRequest(Guid.NewGuid(), id, privateView.Version, MaintenanceAction.Comment, Note: "Disallowed", Internal: true);
         Assert.Equal(MaintenanceCode.Unavailable, (await As(tenant, sp => sp.GetRequiredService<MaintenanceActions>().ChangeAsync(internalAttempt, false))).Code);
+        var staleComment = new ChangeRequest(Guid.NewGuid(), id, first.Version!.Value, MaintenanceAction.Comment, Note: "Late tenant comment from an older page");
+        var appended = await As(tenant, sp => sp.GetRequiredService<MaintenanceActions>().ChangeAsync(staleComment, false));
+        Assert.Equal(MaintenanceCode.Success, appended.Code);
+        Assert.Equal(appended, await As(tenant, sp => sp.GetRequiredService<MaintenanceActions>().ChangeAsync(staleComment, false)));
+        Assert.Equal(MaintenanceCode.Unavailable, (await As(peer, sp => sp.GetRequiredService<MaintenanceActions>().ChangeAsync(staleComment, false))).Code);
         int receiptsBefore;
         using (var scope = provider.CreateScope()) receiptsBefore = await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().MaintenanceReceipts.CountAsync(x => x.WorkOrderId == id);
         Assert.Equal(MaintenanceCode.ValidationFailed, (await Change(MaintenanceAction.Complete)).Code);

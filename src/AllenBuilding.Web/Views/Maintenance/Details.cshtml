@@ -1,8 +1,16 @@
 @model AllenBuilding.Application.Maintenance.RequestDetails
 @using AllenBuilding.Application.Maintenance
 @using AllenBuilding.Domain.Maintenance
-@{ ViewData["Title"] = "Maintenance request"; var manager = ViewData["Manager"] is true; }
+@{ ViewData["Title"] = "Maintenance request"; var manager = ViewData["Manager"] is true; var draft = ViewData["ActionDraft"] as ChangeRequestForm; }
 <div class="page">
+    @if (draft is not null)
+    {
+        <p role="alert" class="mb-5 rounded-lg border border-line bg-panel p-4">@(ViewData["ActionError"] is MaintenanceCode.Conflict ? "Review the current request before trying again. Your text is preserved below." : "Check your information and try again. Your text is preserved below; nothing was saved.")</p>
+        @if (draft.Note is not null && draft.Action != MaintenanceAction.Comment)
+        {
+            <details class="mb-5 rounded-lg border border-line bg-panel p-4"><summary class="min-h-11 cursor-pointer">Your unsaved text</summary><p class="whitespace-pre-wrap break-words">@draft.Note</p></details>
+        }
+    }
     <a asp-action="@(manager ? "Manage" : "Index")" class="mb-6 flex min-h-11 items-center underline">Back to requests</a>
     <div class="mb-8"><p class="mb-2 text-sm text-muted">@Model.Suite · @MaintenanceText.Status(Model.Status)</p><h1 class="break-words text-3xl font-semibold sm:text-4xl">@Model.Title</h1></div>
     <div class="grid items-start gap-6 lg:grid-cols-3">
@@ -16,9 +24,9 @@
             <section class="rounded-2xl border border-line bg-panel p-6">
                 <h2 class="mb-4 text-xl font-semibold">Add a comment</h2>
                 <form asp-action="@(manager ? "ManageChange" : "Change")" method="post" class="space-y-4">
-                    <input name="OperationId" value="@Guid.NewGuid()" type="hidden" /><input name="WorkOrderId" value="@Model.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" /><input name="Action" value="Comment" type="hidden" />
-                    <label for="comment" class="block">Your comment</label><textarea id="comment" name="Note" maxlength="2000" rows="4" required class="field"></textarea>
-                    @if (manager) { <label class="flex min-h-11 items-center gap-3"><input name="Internal" value="true" type="checkbox" /> Internal note — visible only to management</label> }
+                    <input name="OperationId" value="@(draft?.Action == MaintenanceAction.Comment ? draft.OperationId : Guid.NewGuid())" type="hidden" /><input name="WorkOrderId" value="@Model.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" /><input name="Action" value="Comment" type="hidden" />
+                    <label for="comment" class="block">Your comment</label><textarea id="comment" name="Note" maxlength="2000" rows="4" required class="field">@(draft?.Action == MaintenanceAction.Comment ? draft.Note : null)</textarea>
+                    @if (manager) { <label class="flex min-h-11 items-center gap-3"><input name="Internal" value="true" type="checkbox" checked="@(draft?.Action == MaintenanceAction.Comment && draft.Internal)" /> Internal note — visible only to management</label> }
                     <button class="button">Add comment</button>
                 </form>
             </section>
@@ -52,7 +60,7 @@
                 @foreach (var action in choices)
                 {
                     <form asp-action="ManageChange" method="post" class="mb-5 space-y-3 border-b border-line pb-5">
-                        <input name="OperationId" value="@Guid.NewGuid()" type="hidden" /><input name="WorkOrderId" value="@Model.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" /><input name="Action" value="@action" type="hidden" />
+                        <input name="OperationId" value="@(draft?.Action == action ? draft.OperationId : Guid.NewGuid())" type="hidden" /><input name="WorkOrderId" value="@Model.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" /><input name="Action" value="@action" type="hidden" />
                         @if (action == MaintenanceAction.Assign)
                         {
                             <label for="assignee" class="block">Assign to</label><select id="assignee" name="Assignee" class="field" required><option value="">Choose a manager or contractor</option>
@@ -65,9 +73,9 @@
                         }
                         @if (action is MaintenanceAction.Complete or MaintenanceAction.Cancel or MaintenanceAction.Reopen)
                         {
-                            <label for="note-@action" class="block">@(action == MaintenanceAction.Complete ? "Resolution" : "Explanation")</label><textarea id="note-@action" name="Note" maxlength="2000" rows="3" required class="field"></textarea>
+                            <label for="note-@action" class="block">@(action == MaintenanceAction.Complete ? "Resolution" : action == MaintenanceAction.Cancel ? "Reason for cancelling the request" : "Reason for reopening the request")</label><textarea id="note-@action" name="Note" maxlength="2000" rows="3" required class="field">@(draft?.Action == action ? draft.Note : null)</textarea>
                         }
-                        <button class="quiet-button w-full">@(action == MaintenanceAction.AssignSelf ? "Assign to me" : action == MaintenanceAction.Assign ? "Save assignment" : action == MaintenanceAction.Close ? "Verify work and close" : action.ToString())</button>
+                        <button class="quiet-button w-full">@(action == MaintenanceAction.AssignSelf ? "Assign to me" : action == MaintenanceAction.Assign ? "Save assignment" : action == MaintenanceAction.Close ? "Verify work and close" : action == MaintenanceAction.Cancel ? "Cancel request" : action.ToString())</button>
                     </form>
                 }
             </section>

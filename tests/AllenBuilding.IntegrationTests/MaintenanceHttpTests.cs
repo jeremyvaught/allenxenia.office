@@ -11,6 +11,74 @@ namespace AllenBuilding.IntegrationTests;
 public sealed class MaintenanceHttpTests
 {
     [Fact]
+    public async Task A_tenant_comment_survives_invisible_manager_activity_and_replays_once_without_email_fan_out()
+    {
+        await using var host = new AccountTestHost(); await host.InitializeAsync(); var (managerId, building) = await host.SeedManagerAsync();
+        var (email, peerEmail, member) = await SeedTenants(host, building);
+        using var tenant = host.Browser(); await Login(tenant, email);
+        using var submitted = await AccountTestHost.PostAsync(tenant, "/Maintenance/Create", "/Maintenance/Create",
+            ("OperationId", Guid.NewGuid().ToString()), ("MembershipId", member.ToString()), ("Title", "Comment test"), ("Description", "Fixture"), ("Location", "Office"));
+        var path = submitted.Headers.Location!.OriginalString; Guid id; Guid version; int messages;
+        using (var scope = host.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); var order = await db.WorkOrders.SingleAsync();
+            id = order.Id; version = order.Version; messages = await db.AccountMessages.CountAsync();
+        }
+        using var manager = host.Browser(); await host.LoginManagerAsync(manager, managerId);
+        using var note = await AccountTestHost.PostAsync(manager, path.Replace("Details", "ManageDetails"), "/Maintenance/ManageChange",
+            ("OperationId", Guid.NewGuid().ToString()), ("WorkOrderId", id.ToString()), ("Version", version.ToString()),
+            ("Action", "Comment"), ("Internal", "true"), ("Note", "Hidden manager note"));
+        Assert.Equal(HttpStatusCode.Redirect, note.StatusCode);
+        using (var scope = host.Services.CreateScope())
+            Assert.Equal(messages, await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().AccountMessages.CountAsync());
+        var values = new[] { ("OperationId", Guid.NewGuid().ToString()), ("WorkOrderId", id.ToString()), ("Version", version.ToString()),
+            ("Action", "Comment"), ("Note", "Tenant comment <script>canary</script>") };
+        using var comment = await AccountTestHost.PostAsync(tenant, path, "/Maintenance/Change", values);
+        Assert.Equal(HttpStatusCode.Redirect, comment.StatusCode);
+        using var repeated = await AccountTestHost.PostAsync(tenant, path, "/Maintenance/Change", values);
+        Assert.Equal(comment.Headers.Location, repeated.Headers.Location);
+        var html = await tenant.GetStringAsync(path); Assert.Contains("Tenant comment &lt;script&gt;", html); Assert.DoesNotContain("Hidden manager note", html);
+        using var peer = host.Browser(); await Login(peer, peerEmail);
+        using var denied = await AccountTestHost.PostAsync(peer, "/Maintenance", "/Maintenance/Change", values);
+        Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode);
+        using var final = host.Services.CreateScope(); var saved = final.ServiceProvider.GetRequiredService<OfficeDbContext>();
+        Assert.Equal(3, await saved.WorkOrderHistory.CountAsync()); Assert.Equal(3, await saved.MaintenanceReceipts.CountAsync());
+        Assert.Equal(messages, await saved.AccountMessages.CountAsync());
+    }
+
+    [Fact]
+    public async Task Manager_conflicts_keep_the_typed_explanation_and_status_mail_goes_only_to_the_requester()
+    {
+        await using var host = new AccountTestHost(); await host.InitializeAsync(); var (managerId, building) = await host.SeedManagerAsync();
+        var (email, _, member) = await SeedTenants(host, building); using var tenant = host.Browser(); await Login(tenant, email);
+        using var submitted = await AccountTestHost.PostAsync(tenant, "/Maintenance/Create", "/Maintenance/Create",
+            ("OperationId", Guid.NewGuid().ToString()), ("MembershipId", member.ToString()), ("Title", "Status test"), ("Description", "Fixture"), ("Location", "Office"));
+        Guid id; Guid version;
+        using (var scope = host.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); var order = await db.WorkOrders.SingleAsync();
+            id = order.Id; version = order.Version; db.AccountMessages.RemoveRange(await db.AccountMessages.ToListAsync()); await db.SaveChangesAsync();
+        }
+        using var manager = host.Browser(); await host.LoginManagerAsync(manager, managerId);
+        var path = $"/Maintenance/ManageDetails/{id}";
+        using var triage = await AccountTestHost.PostAsync(manager, path, "/Maintenance/ManageChange", ("OperationId", Guid.NewGuid().ToString()),
+            ("WorkOrderId", id.ToString()), ("Version", version.ToString()), ("Action", "Triage"), ("Priority", "Normal"), ("Trade", "General"));
+        Assert.Equal(HttpStatusCode.Redirect, triage.StatusCode);
+        using var conflict = await AccountTestHost.PostAsync(manager, path, "/Maintenance/ManageChange", ("OperationId", Guid.NewGuid().ToString()),
+            ("WorkOrderId", id.ToString()), ("Version", version.ToString()), ("Action", "Cancel"), ("Note", "Preserve this <script>explanation</script>"));
+        Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
+        var html = await conflict.Content.ReadAsStringAsync(); Assert.Contains("Preserve this &lt;script&gt;explanation&lt;/script&gt;", html);
+        Assert.Contains("Review the current request", html);
+        using var final = host.Services.CreateScope(); var dbFinal = final.ServiceProvider.GetRequiredService<OfficeDbContext>();
+        var message = Assert.Single(await dbFinal.AccountMessages.ToArrayAsync());
+        Assert.Equal((await dbFinal.Users.SingleAsync(x => x.Email == email)).Id, message.UserId);
+        message.State = MessageState.Sending; message.LeaseUntil = host.Clock.GetUtcNow().AddMinutes(1); await dbFinal.SaveChangesAsync();
+        var envelope = await final.ServiceProvider.GetRequiredService<AllenBuilding.Application.Notifications.INotificationQueue>()
+            .ComposeAsync(new(message.Id, message.LeaseToken), default);
+        Assert.NotNull(envelope); Assert.Equal(email, envelope.Recipient);
+    }
+
+    [Fact]
     public async Task Tenant_http_requests_are_private_and_retries_preserve_a_single_commit()
     {
         await using var host = new AccountTestHost(); await host.InitializeAsync();

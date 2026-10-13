@@ -235,7 +235,10 @@ public sealed class MaintenanceStore(OfficeDbContext db, ICurrentActor current, 
             return new(MaintenanceCode.Unavailable);
         var replay = await Replay(actor.UserId, command.OperationId, hash, cancellationToken);
         if (replay is not null) return replay;
-        if (pending?.State == AssistantReviewState.Completed || order.Version != command.Version) return new(MaintenanceCode.Conflict);
+        // An ordinary tenant comment appends text; hidden notes/status updates cannot
+        // invalidate it. Reviewed assistant actions and manager edits keep version checks.
+        var appendOnlyTenantComment = !management && review is null && command.Action == MaintenanceAction.Comment;
+        if (pending?.State == AssistantReviewState.Completed || (!appendOnlyTenantComment && order.Version != command.Version)) return new(MaintenanceCode.Conflict);
         string? assignmentNote = null;
         if (command.Action is MaintenanceAction.Assign or MaintenanceAction.AssignSelf)
         {
@@ -258,11 +261,12 @@ public sealed class MaintenanceStore(OfficeDbContext db, ICurrentActor current, 
                 assignmentNote = "Assigned to " + name + ".";
             }
         }
+        var previousStatus = order.Status;
         try { mutation(order); }
         catch (ArgumentException) { return new(MaintenanceCode.ValidationFailed); }
         catch (InvalidOperationException) { return new(MaintenanceCode.Conflict); }
         pending?.Complete(order.Id, order.Version, order.Status, time.GetUtcNow());
-        await Record(actor.UserId, command.OperationId, hash, order, command.Action.ToString(), assignmentNote ?? command.Note?.Trim(), command.Internal, now, cancellationToken);
+        await Record(actor.UserId, command.OperationId, hash, order, command.Action.ToString(), assignmentNote ?? command.Note?.Trim(), command.Internal, now, cancellationToken, order.Status != previousStatus);
         try
         {
             await db.SaveChangesAsync(cancellationToken); await transaction.CommitAsync(cancellationToken);
@@ -280,7 +284,7 @@ public sealed class MaintenanceStore(OfficeDbContext db, ICurrentActor current, 
     }
 
     private async Task Record(string actor, Guid operation, string hash, WorkOrder order, string action, string? note, bool internalNote,
-        DateTimeOffset now, CancellationToken cancellationToken)
+        DateTimeOffset now, CancellationToken cancellationToken, bool notify = true)
     {
         var entry = new WorkOrderHistory
         {
@@ -303,8 +307,11 @@ public sealed class MaintenanceStore(OfficeDbContext db, ICurrentActor current, 
             ResultStatus = order.Status,
             OccurredAt = now
         });
+        if (!notify || internalNote || action == "Comment") return;
         var building = await db.Suites.Where(x => x.Id == order.SuiteId).Select(x => x.BuildingId).SingleAsync(cancellationToken);
-        var recipients = (await db.BuildingManagers.Where(x => x.BuildingId == building).Select(x => x.UserId).ToListAsync(cancellationToken)).ToHashSet();
+        var recipients = new HashSet<string>();
+        if (action is "Submitted" or "SubmittedOnBehalf")
+            recipients.UnionWith(await db.BuildingManagers.Where(x => x.BuildingId == building && x.UserId != actor).Select(x => x.UserId).ToListAsync(cancellationToken));
         if (!internalNote && await db.Memberships.AnyAsync(x => x.Id == order.RequesterMembershipId && x.RevokedAt == null &&
             x.StartsAt <= now && (x.EndsAt == null || x.EndsAt > now), cancellationToken) &&
             await db.ActiveGrants.AnyAsync(x => x.MembershipId == order.RequesterMembershipId, cancellationToken)) recipients.Add(order.RequesterUserId);
