@@ -26,9 +26,10 @@ public sealed class MaintenanceStore(OfficeDbContext db, ICurrentActor current, 
                select order;
     }
 
-    public async Task<IReadOnlyList<RequestSummary>> ListAsync(Actor actor, bool management, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<RequestSummary>> ListAsync(Actor actor, bool management, CancellationToken cancellationToken, Guid? membershipId = null)
         => await (from order in Scoped(actor, management).AsNoTracking()
                   join suite in db.Suites on order.SuiteId equals suite.Id
+                  where membershipId == null || order.RequesterMembershipId == membershipId
                   orderby order.CreatedAt descending, order.Id descending
                   select new RequestSummary(order.Id, suite.Name, order.Title, order.Status, order.CreatedAt))
             .Take(100).ToListAsync(cancellationToken);

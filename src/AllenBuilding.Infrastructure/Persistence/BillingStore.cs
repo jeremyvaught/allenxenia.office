@@ -10,13 +10,14 @@ namespace AllenBuilding.Infrastructure.Persistence;
 
 public sealed partial class BillingStore(OfficeDbContext db, ICurrentActor current, AccountInvitations audit, TimeProvider time) : IBillingStore
 {
-    public async Task<IReadOnlyList<BillingAccount>> ReadAsync(Actor actor, bool management, CancellationToken cancellationToken, Guid? accountId)
+    public async Task<IReadOnlyList<BillingAccount>> ReadAsync(Actor actor, bool management, CancellationToken cancellationToken, Guid? accountId, Guid? membershipId = null)
     {
         var query = from account in Accounts(actor, management)
                     join membership in db.Memberships on account.MembershipId equals membership.Id
                     join suite in db.Suites on membership.SuiteId equals suite.Id
                     join user in db.Users on membership.UserId equals user.Id
                     where accountId == null || account.Id == accountId
+                    where membershipId == null || membership.Id == membershipId
                     orderby suite.Name, account.Id
                     select new { Account = account, Suite = suite.Name, user.Email, MembershipVersion = membership.Version };
         var rows = await query.Take(50).ToListAsync(cancellationToken);

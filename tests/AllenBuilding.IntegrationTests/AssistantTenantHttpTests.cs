@@ -1,6 +1,8 @@
 using System.Net;
 using AllenBuilding.Application.Assistant;
+using AllenBuilding.Domain.Billing;
 using AllenBuilding.Domain.Knowledge;
+using AllenBuilding.Domain.Maintenance;
 using AllenBuilding.Domain.Tenancy;
 using AllenBuilding.Infrastructure.Identity;
 using AllenBuilding.Infrastructure.Persistence;
@@ -12,6 +14,55 @@ namespace AllenBuilding.IntegrationTests;
 
 public sealed class AssistantTenantHttpTests
 {
+    [Theory]
+    [InlineData("requests")]
+    [InlineData("billing")]
+    public async Task Record_cards_use_the_selected_membership_and_never_send_record_values_to_the_model(string route)
+    {
+        var model = new Model { Route = route }; await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true }; await host.InitializeAsync();
+        var fixture = await Seed(host); var records = await SeedRecords(host, fixture); using var browser = host.Browser(); await Login(browser);
+        using var response = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", ("question", "Show my records"), ("membershipId", fixture.First.Id.ToString()));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode); var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains(route == "requests" ? "Selected dripping tap" : "Selected rent charge", html);
+        Assert.DoesNotContain("Other-membership-canary", html); Assert.DoesNotContain("Second confidential suite", html);
+        if (route == "requests") { Assert.Contains("Status: Triaged", html); Assert.Contains("/Maintenance/Details/" + records.Request, html); }
+        else
+        {
+            Assert.Contains("Issued: $1,125.00 USD", html); Assert.Contains("Recorded credits: $125.00 USD", html);
+            Assert.Contains("Charge after credits: $1,000.00 USD", html); Assert.Contains("not an outstanding balance", html);
+            Assert.Contains("/Billing/Account/" + records.Account, html);
+        }
+        var providerInput = System.Text.Json.JsonSerializer.Serialize(model.Input);
+        Assert.DoesNotContain("Selected dripping tap", providerInput); Assert.DoesNotContain("Selected rent charge", providerInput);
+        Assert.DoesNotContain("112500", providerInput); Assert.DoesNotContain(records.Account.ToString(), providerInput);
+        using var scope = host.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+        Assert.Equal(7, await db.WorkOrders.CountAsync()); Assert.Equal(2, await db.Obligations.CountAsync()); Assert.Empty(await db.WorkOrderHistory.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Revoked_membership_suppresses_record_cards_even_without_knowledge_sources()
+    {
+        var model = new Model { Route = "requests" }; AccountTestHost host = null!; Fixture fixture = null!;
+        host = new AccountTestHost
+        {
+            AssistantModel = model,
+            AssistantTenantHelpEnabled = true,
+            BeforeAssistantRelease = async () =>
+        {
+            using var scope = host.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+            (await db.Memberships.SingleAsync(x => x.Id == fixture.First.Id)).Revoke(fixture.EditorId, "Access ended", DateTimeOffset.UtcNow);
+            db.ActiveGrants.Remove(await db.ActiveGrants.SingleAsync(x => x.MembershipId == fixture.First.Id)); await db.SaveChangesAsync();
+        }
+        };
+        await using (host)
+        {
+            await host.InitializeAsync(); fixture = await Seed(host); await SeedRecords(host, fixture); using var browser = host.Browser(); await Login(browser);
+            using var response = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", ("question", "records"), ("membershipId", fixture.First.Id.ToString()));
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode); Assert.Empty(model.Input!.Sources);
+            Assert.DoesNotContain("Selected dripping tap", await response.Content.ReadAsStringAsync());
+        }
+    }
+
     [Fact]
     public async Task A_selected_original_membership_filters_before_generation_and_uses_private_citations_and_secure_routes()
     {
@@ -126,14 +177,27 @@ public sealed class AssistantTenantHttpTests
         await db.SaveChangesAsync(); return new(first, second, foreign, ids[0], ids[1], editor);
     }
     private sealed record Fixture(Membership First, Membership Second, Membership Foreign, Guid FirstArticle, Guid SecondArticle, string EditorId);
+    private static async Task<(Guid Request, Guid Account)> SeedRecords(AccountTestHost host, Fixture fixture)
+    {
+        using var scope = host.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); var now = DateTimeOffset.UtcNow;
+        var request = WorkOrder.Submit(fixture.First.SuiteId, fixture.First.Id, fixture.First.UserId, "Selected dripping tap", "Synthetic water leak", "Kitchen", now.AddDays(-1));
+        request.Triage(Priority.Normal, Trade.Plumbing, now); db.Add(request);
+        for (var i = 0; i < 6; i++) db.Add(WorkOrder.Submit(fixture.Second.SuiteId, fixture.Second.Id, fixture.Second.UserId, "Other-membership-canary " + i, "Synthetic description", "Elsewhere", now));
+        var first = RentAccount.Open(Guid.NewGuid(), fixture.First.Id); var second = RentAccount.Open(Guid.NewGuid(), fixture.Second.Id);
+        var charge = Obligation.Issue(first.Id, new Money(112500), "Selected rent charge", new(2026, 11, 1), fixture.EditorId, now);
+        var other = Obligation.Issue(second.Id, new Money(99999), "Other-membership-canary charge", new(2026, 11, 1), fixture.EditorId, now);
+        var credit = ObligationCredit.RecordLocal(Guid.NewGuid(), fixture.EditorId, new(charge.Id, first.Id, charge.Version, charge.AmountMinorUnits), 12500, ObligationCreditKind.Credit, "Synthetic credit", now);
+        charge.FinancialStateChanged(); db.AddRange(first, second, charge, other, credit); await db.SaveChangesAsync(); return (request.Id, first.Id);
+    }
     private sealed class Model : IAssistantModel
     {
+        public string Route { get; init; } = "new_request";
         public AssistantModelInput? Input { get; private set; }
         public int Calls { get; private set; }
         public Task<AssistantModelReply> AnswerAsync(AssistantModelInput input, CancellationToken cancellationToken)
         {
             Input = input; Calls++;
-            return Task.FromResult(new AssistantModelReply(AssistantModelCode.Success, "generated-private-canary", input.Sources.Select(x => x.ArticleId).ToArray(), "new_request"));
+            return Task.FromResult(new AssistantModelReply(AssistantModelCode.Success, "generated-private-canary", input.Sources.Select(x => x.ArticleId).ToArray(), Route));
         }
     }
 }

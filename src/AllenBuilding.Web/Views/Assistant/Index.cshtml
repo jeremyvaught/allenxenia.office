@@ -10,7 +10,34 @@
         <h2 class="mb-3 text-lg font-semibold">Office assistant</h2>
         @if (Model.Scope is not null) { <p class="mb-3 break-words text-sm text-muted">Tenant guidance · @Model.Scope.Suite</p> }
         <p class="whitespace-pre-wrap break-words leading-relaxed">@Model.Text</p>
-        <p class="mt-4 text-sm text-muted">Nothing has been submitted. Use the secure page to complete your next step.</p>
+        <p class="mt-4 text-sm text-muted">This answer hasn't submitted a request, comment or payment.</p>
+        @if (Model.Requests is not null)
+        {
+            <section aria-label="Your maintenance records" class="mt-6 border-t border-line pt-5">
+                <h3 class="mb-3 font-semibold">Your maintenance records</h3>
+                @if (Model.Requests.Count == 0) { <p>No requests are available for this membership.</p> }
+                <ul class="space-y-4">@foreach (var request in Model.Requests) {
+                    <li class="min-w-0 rounded-xl border border-line p-4"><h4 class="break-words font-semibold">@request.Title</h4><p class="mt-2">Status: @MaintenanceText.Status(request.Status)</p><p class="mt-2 text-sm text-muted">Submitted @request.CreatedAt.ToString("MMM d, yyyy HH:mm 'UTC'")</p><a href="/Maintenance/Details/@request.Id" class="quiet-button mt-3">View request</a></li>
+                }</ul>
+                <p class="mt-3 text-sm text-muted">Showing up to five recent requests for this membership. Open a request for its history and current status.</p>
+            </section>
+        }
+        @if (Model.Billing is not null)
+        {
+            <section aria-label="Your billing records" class="mt-6 border-t border-line pt-5">
+                <h3 class="mb-3 font-semibold">Your billing records</h3>
+                <p class="mb-4 text-sm leading-relaxed text-muted">These are issued charges and recorded credits, not an outstanding balance. Payment status isn't included here. Open your account to review its records and available options.</p>
+                @if (Model.Billing.Count == 0) { <p>No billing account is available for this membership.</p> }
+                @foreach (var account in Model.Billing) {
+                    <h4 class="mb-3 break-words font-semibold">@account.Suite</h4>
+                    @if (account.Obligations.Count == 0) { <p>No charges have been issued.</p> }
+                    <ul class="space-y-4">@foreach (var charge in account.Obligations.Take(5)) {
+                        <li class="min-w-0 rounded-xl border border-line p-4"><h5 class="break-words font-semibold">@charge.Description</h5><p class="mt-2">Issued: @BillingDisplay.Usd(charge.IssuedMinorUnits) USD</p><p class="mt-2 text-sm text-muted">Due @charge.DueOn.ToString("yyyy-MM-dd")</p>@if (charge.CreditedMinorUnits > 0) { <p class="mt-2">Recorded credits: @BillingDisplay.Usd(charge.CreditedMinorUnits) USD</p><p class="mt-2">Charge after credits: @BillingDisplay.Usd(charge.NetChargeMinorUnits) USD</p> }</li>
+                    }</ul>
+                    <p class="mt-3 text-sm text-muted">Showing up to five charges, ordered by due date.</p><a href="/Billing/Account/@account.Id" class="quiet-button mt-3">Open billing account</a>
+                }
+            </section>
+        }
         @if (Model.Sources?.Count > 0)
         {
             <h3 class="mt-5 font-semibold">Published sources</h3>

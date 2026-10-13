@@ -26,7 +26,7 @@ public interface IBillingStore
 {
     Task<BillingResult> EndAsync(Actor actor, EndTenancy command, string hash, CancellationToken cancellationToken);
     Task<IReadOnlyList<BillingClosureItem>> ClosuresAsync(Actor actor, CancellationToken cancellationToken);
-    Task<IReadOnlyList<BillingAccount>> ReadAsync(Actor actor, bool management, CancellationToken cancellationToken, Guid? accountId);
+    Task<IReadOnlyList<BillingAccount>> ReadAsync(Actor actor, bool management, CancellationToken cancellationToken, Guid? accountId, Guid? membershipId = null);
     Task<IReadOnlyList<RentCandidate>> CandidatesAsync(Actor actor, CancellationToken cancellationToken);
     Task<RentPreview?> PreviewRentAsync(Actor actor, Guid accountId, int year, int month, CancellationToken cancellationToken);
     Task<BillingResult> OpenAsync(Actor actor, OpenRentAccount command, string hash, CancellationToken cancellationToken);
@@ -43,6 +43,13 @@ public sealed class BillingActions(ICurrentActor current, IBillingStore store, T
         var actor = await current.GetAsync(cancellationToken);
         if (actor is null || (management && !actor.ChallengedMfa) || (actor.ManagedBuildings.Count > 0 && !actor.ChallengedMfa)) return [];
         return await store.ReadAsync(actor, management, cancellationToken, accountId);
+    }
+
+    public async Task<IReadOnlyList<BillingAccount>> ReadForMembershipAsync(Guid membershipId, CancellationToken cancellationToken = default)
+    {
+        var actor = await current.GetAsync(cancellationToken);
+        if (membershipId == Guid.Empty || actor is null || (actor.ManagedBuildings.Count > 0 && !actor.ChallengedMfa)) return [];
+        return await store.ReadAsync(actor, false, cancellationToken, null, membershipId);
     }
 
     public async Task<IReadOnlyList<RentCandidate>> CandidatesAsync(CancellationToken cancellationToken = default)

@@ -9,7 +9,7 @@ namespace AllenBuilding.Infrastructure.Assistant;
 public sealed class OpenAiAssistantModel(HttpClient client, string key) : IAssistantModel
 {
     public const string Model = "gpt-5.4-mini-2026-03-17";
-    public const string PromptVersion = "building-help-1";
+    public const string PromptVersion = "building-help-2";
     public const int MaxInputBytes = 12000;
     private const string Instructions = """
         You help people use Allen Xenia Office. Answer briefly using only the supplied published excerpts.
@@ -22,6 +22,9 @@ public sealed class OpenAiAssistantModel(HttpClient client, string key) : IAssis
         route is a fixed page identifier: help, login, requests, new_request, billing, autopay.
         For a guest, requests/new_request/billing/autopay require sign-in; prefer login.
         Financial questions always go to billing/autopay; never state an account amount yourself.
+        For a tenant asking about existing maintenance, choose requests. The server will show current record cards.
+        For tenant record lookups, explain that the record cards or secure page provide the authoritative values.
+        You do not receive those records; do not claim there are none or guess their values.
         """;
     private static readonly JsonElement Schema = JsonSerializer.Deserialize<JsonElement>("""
         {"type":"object","additionalProperties":false,"required":["answer","sources","route"],"properties":{

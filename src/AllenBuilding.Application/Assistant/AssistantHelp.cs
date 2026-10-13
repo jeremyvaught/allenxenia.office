@@ -1,15 +1,19 @@
+using AllenBuilding.Application.Billing;
 using AllenBuilding.Application.Knowledge;
+using AllenBuilding.Application.Maintenance;
 
 namespace AllenBuilding.Application.Assistant;
 
 public sealed record AssistantPolicy(bool Enabled, bool TenantHelpEnabled = false, bool BillingEnabled = false);
 public sealed record AssistantLink(string Label, string Path);
 public sealed record AssistantAnswer(AssistantModelCode Code, string Text = "", IReadOnlyList<HelpSource>? Sources = null,
-    AssistantLink? Next = null, AssistantTenantScope? Scope = null, IReadOnlyList<AssistantSource>? ContextualSources = null);
+    AssistantLink? Next = null, AssistantTenantScope? Scope = null, IReadOnlyList<AssistantSource>? ContextualSources = null,
+    IReadOnlyList<RequestSummary>? Requests = null, IReadOnlyList<BillingAccount>? Billing = null);
 
 // Stateless first milestone: never accepts or persists a client-supplied transcript.
 // Private questions explicitly select one original membership and carry it through output admission.
-public sealed class AssistantHelp(KnowledgeActions knowledge, IAssistantModel model, AssistantPolicy policy, IAssistantTenantAccess access)
+public sealed class AssistantHelp(KnowledgeActions knowledge, IAssistantModel model, AssistantPolicy policy, IAssistantTenantAccess access,
+    MaintenanceActions maintenance, BillingActions billing)
 {
     public async Task<AssistantAnswer> AskAsync(string? question, CancellationToken cancellationToken = default, Guid? membershipId = null)
     {
@@ -52,6 +56,12 @@ public sealed class AssistantHelp(KnowledgeActions knowledge, IAssistantModel mo
             _ => null
         };
         if (next is null) return new(AssistantModelCode.Invalid);
-        return new(AssistantModelCode.Success, reply.Answer, sources.Where(x => reply.Sources.Contains(x.ArticleId)).ToArray(), next, scope, contextual);
+        // Critical record values are retrieved after generation and never sent to the model in this stage.
+        // SQL scopes the original membership before projection and bounds, even for a manager/tenant account.
+        IReadOnlyList<RequestSummary>? requests = scope is not null && reply.Route == "requests"
+            ? (await maintenance.ListForMembershipAsync(scope.MembershipId, cancellationToken)).Take(5).ToArray() : null;
+        IReadOnlyList<BillingAccount>? accounts = scope is not null && policy.BillingEnabled && (reply.Route is "billing" or "autopay")
+            ? await billing.ReadForMembershipAsync(scope.MembershipId, cancellationToken) : null;
+        return new(AssistantModelCode.Success, reply.Answer, sources.Where(x => reply.Sources.Contains(x.ArticleId)).ToArray(), next, scope, contextual, requests, accounts);
     }
 }
