@@ -11,13 +11,22 @@
         @if (Model.Scope is not null) { <p class="mb-3 break-words text-sm text-muted">Tenant guidance · @Model.Scope.Suite</p> }
         <p class="whitespace-pre-wrap break-words leading-relaxed">@Model.Text</p>
         <p class="mt-4 text-sm text-muted">This answer hasn't submitted a request, comment or payment.</p>
+        @if (Model.Target is not null) { <p class="mt-4 break-words font-semibold">Selected request: @Model.Target.Title</p> }
+        @if (Model.Review is not null)
+        {
+            <section class="mt-6 border-t border-line pt-5" aria-label="Prepared maintenance draft">
+                <h3 class="mb-3 font-semibold">A draft is ready for your review</h3>
+                <p class="mb-4">Nothing has been submitted. Check the exact details, edit or cancel, and confirm on the review page.</p>
+                <a class="button" href="/Assistant/Review/@Model.Review.Review.Id?conversationId=@Model.Review.Review.ConversationId">Review @(Model.Review.Review.Kind == AllenBuilding.Domain.Maintenance.AssistantReviewKind.Request ? "maintenance request" : "comment")</a>
+            </section>
+        }
         @if (Model.Requests is not null)
         {
             <section aria-label="Your maintenance records" class="mt-6 border-t border-line pt-5">
                 <h3 class="mb-3 font-semibold">Your maintenance records</h3>
                 @if (Model.Requests.Count == 0) { <p>No requests are available for this membership.</p> }
                 <ul class="space-y-4">@foreach (var request in Model.Requests) {
-                    <li class="min-w-0 rounded-xl border border-line p-4"><h4 class="break-words font-semibold">@request.Title</h4><p class="mt-2">Status: @MaintenanceText.Status(request.Status)</p><p class="mt-2 text-sm text-muted">Submitted @request.CreatedAt.ToString("MMM d, yyyy HH:mm 'UTC'")</p><a href="/Maintenance/Details/@request.Id" class="quiet-button mt-3">View request</a></li>
+                    <li class="min-w-0 rounded-xl border border-line p-4"><h4 class="break-words font-semibold">@request.Title</h4><p class="mt-2">Status: @MaintenanceText.Status(request.Status)</p><p class="mt-2 text-sm text-muted">Submitted @request.CreatedAt.ToString("MMM d, yyyy HH:mm 'UTC'")</p><a href="/Maintenance/Details/@request.Id" class="quiet-button mt-3">View request</a>@if (ViewData["ActionsEnabled"] is true) { <a class="quiet-button mt-3" href="/Assistant?membershipId=@Model.Scope!.MembershipId&amp;requestId=@request.Id">Prepare a comment</a> }</li>
                 }</ul>
                 <p class="mt-3 text-sm text-muted">Showing up to five recent requests for this membership. Open a request for its history and current status.</p>
             </section>
@@ -45,7 +54,7 @@
                 <li><a href="/Knowledge/@(source.Audience == AllenBuilding.Domain.Knowledge.ArticleAudience.ActiveTenant ? "TenantArticle" : "Article")/@source.ArticleId" class="inline-flex min-h-11 items-center break-words text-brand underline">@source.Title</a><p class="text-sm text-muted">Review date: @source.ReviewOn.ToString("MMM d, yyyy")</p></li>
             }</ul>
         }
-        @if (Model.Next is not null) { <a href="@Model.Next.Path" class="quiet-button mt-5">@Model.Next.Label</a> }
+        @if (Model.Next is not null && Model.Review is null) { <a href="@Model.Next.Path" class="quiet-button mt-5">@Model.Next.Label</a> }
     }
     else if (ViewData["Limited"] is true) { <p>You've reached the assistant's current limit. Try again later, or open building help.</p> }
     else if (Model?.Code == AllenBuilding.Application.Assistant.AssistantModelCode.Invalid) { <p>Please ask a question of up to 4,000 characters. If an answer could not be verified, try rephrasing or open building help.</p> }
@@ -56,6 +65,8 @@
     @if (enabled)
     {
         <form asp-action="Ask" method="post" data-assistant-form class="rounded-2xl border border-line bg-panel p-5 sm:p-6">
+            <input type="hidden" name="conversationId" value="@ViewData["ConversationId"]" />
+            @if (Model?.Target is not null) { <input type="hidden" name="requestId" value="@Model.Target.Id" /> }
             <label for="membershipId" class="mb-2 block font-semibold">Guidance for</label>
             <select id="membershipId" name="membershipId" class="field mb-5">
                 <option value="">Public building help</option>
@@ -65,7 +76,7 @@
             </select>
             <label for="question" class="mb-2 block font-semibold">Your question</label>
             <textarea id="question" name="question" rows="4" maxlength="4000" required class="field" aria-describedby="assistant-privacy"></textarea>
-            <p id="assistant-privacy" class="mt-3 text-sm leading-relaxed text-muted">Your question and matching published guidance for the selected scope are sent to OpenAI. Don't include passwords, payment details or sensitive personal information. Each question starts fresh; this page does not save a chat transcript.</p>
+            <p id="assistant-privacy" class="mt-3 text-sm leading-relaxed text-muted">Your question and matching published guidance for the selected scope are sent to OpenAI. Don't include passwords, payment details or sensitive personal information. Each question starts fresh; this page does not save a chat transcript. Prepared drafts and confirmation records are stored securely in your account.</p>
             <div class="mt-5 flex flex-wrap items-center gap-3"><button class="button" data-assistant-send>Ask assistant</button><button type="button" class="quiet-button" data-assistant-stop hidden>Stop</button><p data-assistant-progress role="status" class="text-sm text-muted"></p></div>
         </form>
     }

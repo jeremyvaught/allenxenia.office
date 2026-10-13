@@ -23,7 +23,7 @@ public interface IMaintenanceStore
 {
     Task<IReadOnlyList<RequestSummary>> ListAsync(Actor actor, bool management, CancellationToken cancellationToken, Guid? membershipId = null);
     Task<MaintenanceQueuePage> QueueAsync(Actor actor, MaintenanceQueueQuery query, CancellationToken cancellationToken);
-    Task<RequestDetails?> ReadAsync(Actor actor, Guid id, bool management, CancellationToken cancellationToken);
+    Task<RequestDetails?> ReadAsync(Actor actor, Guid id, bool management, CancellationToken cancellationToken, Guid? membershipId = null);
     Task<IReadOnlyList<RequestMemberChoice>> MembersAsync(Actor actor, bool management, CancellationToken cancellationToken);
     Task<MaintenanceResult> SubmitAsync(Actor actor, SubmitRequest command, string hash, DateTimeOffset now, bool management, CancellationToken cancellationToken, AssistantReviewClaim? review = null);
     Task<MaintenanceResult> ChangeAsync(Actor actor, ChangeRequest command, string hash, DateTimeOffset now,

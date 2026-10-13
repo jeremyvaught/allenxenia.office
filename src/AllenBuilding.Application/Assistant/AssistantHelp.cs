@@ -4,18 +4,18 @@ using AllenBuilding.Application.Maintenance;
 
 namespace AllenBuilding.Application.Assistant;
 
-public sealed record AssistantPolicy(bool Enabled, bool TenantHelpEnabled = false, bool BillingEnabled = false);
+public sealed record AssistantPolicy(bool Enabled, bool TenantHelpEnabled = false, bool BillingEnabled = false, bool ActionsEnabled = false);
 public sealed record AssistantLink(string Label, string Path);
 public sealed record AssistantAnswer(AssistantModelCode Code, string Text = "", IReadOnlyList<HelpSource>? Sources = null,
     AssistantLink? Next = null, AssistantTenantScope? Scope = null, IReadOnlyList<AssistantSource>? ContextualSources = null,
-    IReadOnlyList<RequestSummary>? Requests = null, IReadOnlyList<BillingAccount>? Billing = null);
+    IReadOnlyList<RequestSummary>? Requests = null, IReadOnlyList<BillingAccount>? Billing = null, AssistantReviewView? Review = null, RequestDetails? Target = null);
 
 // Stateless first milestone: never accepts or persists a client-supplied transcript.
 // Private questions explicitly select one original membership and carry it through output admission.
 public sealed class AssistantHelp(KnowledgeActions knowledge, IAssistantModel model, AssistantPolicy policy, IAssistantTenantAccess access,
-    MaintenanceActions maintenance, BillingActions billing)
+    MaintenanceActions maintenance, BillingActions billing, AssistantMaintenance actions)
 {
-    public async Task<AssistantAnswer> AskAsync(string? question, CancellationToken cancellationToken = default, Guid? membershipId = null)
+    public async Task<AssistantAnswer> AskAsync(string? question, CancellationToken cancellationToken = default, Guid? membershipId = null, Guid? requestId = null, Guid conversationId = default)
     {
         if (!policy.Enabled) return new(AssistantModelCode.Unavailable);
         if (string.IsNullOrWhiteSpace(question) || question.Length > 4000) return new(AssistantModelCode.Invalid);
@@ -26,6 +26,13 @@ public sealed class AssistantHelp(KnowledgeActions knowledge, IAssistantModel mo
             scope = await access.CaptureAsync(member, cancellationToken);
             if (scope is null) return new(AssistantModelCode.Denied);
         }
+        RequestDetails? target = null;
+        if (requestId is { } request)
+        {
+            if (scope is null || !policy.ActionsEnabled) return new(AssistantModelCode.Denied);
+            target = await maintenance.ReadForMembershipAsync(request, scope.MembershipId, cancellationToken);
+            if (target is null) return new(AssistantModelCode.Denied);
+        }
         var terms = question.Split([' ', '\n', '\r', '.', ',', '?', '!', ':'], StringSplitOptions.RemoveEmptyEntries)
             .Where(x => x.Length > 2).Select(x => x.ToLowerInvariant()).Distinct().Take(20).ToArray();
         var available = scope is null ? await knowledge.FindAsync(KnowledgeScope.Public, cancellationToken: cancellationToken)
@@ -34,7 +41,7 @@ public sealed class AssistantHelp(KnowledgeActions knowledge, IAssistantModel mo
             .Where(x => x.Score > 0).OrderByDescending(x => x.Score).ThenBy(x => x.Source.ArticleId).Take(5).Select(x => x.Source).ToArray();
         var contextual = sources.Select(x => new AssistantSource(x.ArticleId, x.RevisionId,
             x.Title[..Math.Min(x.Title.Length, 180)], x.Body[..Math.Min(x.Body.Length, 800)])).ToArray();
-        var reply = await model.AnswerAsync(new(question.Trim(), contextual, scope is not null), cancellationToken);
+        var reply = await model.AnswerAsync(new(question.Trim(), contextual, scope is not null, scope is not null && policy.ActionsEnabled, target is not null), cancellationToken);
         if (reply.Code != AssistantModelCode.Success) return new(reply.Code);
         if (reply.Answer.Length is < 1 or > 3000 || reply.Sources is null || reply.Sources.Count > 5 ||
             reply.Sources.Any(id => !sources.Any(x => x.ArticleId == id))) return new(AssistantModelCode.Invalid);
@@ -62,6 +69,14 @@ public sealed class AssistantHelp(KnowledgeActions knowledge, IAssistantModel mo
             ? (await maintenance.ListForMembershipAsync(scope.MembershipId, cancellationToken)).Take(5).ToArray() : null;
         IReadOnlyList<BillingAccount>? accounts = scope is not null && policy.BillingEnabled && (reply.Route is "billing" or "autopay")
             ? await billing.ReadForMembershipAsync(scope.MembershipId, cancellationToken) : null;
-        return new(AssistantModelCode.Success, reply.Answer, sources.Where(x => reply.Sources.Contains(x.ArticleId)).ToArray(), next, scope, contextual, requests, accounts);
+        AssistantReviewView? review = null;
+        if (reply.Draft is not null)
+        {
+            if (scope is null || !policy.ActionsEnabled) return new(AssistantModelCode.Denied);
+            var prepared = await actions.PrepareAsync(conversationId, scope, reply.Draft, target, contextual, cancellationToken);
+            if (prepared.Code != MaintenanceCode.Success) return new(prepared.Code == MaintenanceCode.Unavailable ? AssistantModelCode.Denied : AssistantModelCode.Invalid);
+            review = prepared.View;
+        }
+        return new(AssistantModelCode.Success, reply.Answer, sources.Where(x => reply.Sources.Contains(x.ArticleId)).ToArray(), next, scope, contextual, requests, accounts, review, target);
     }
 }

@@ -1,9 +1,8 @@
 (() => {
   const form = document.querySelector('[data-assistant-form]');
-  if (!form) return;
-  const send = form.querySelector('[data-assistant-send]');
-  const stop = form.querySelector('[data-assistant-stop]');
-  const progress = form.querySelector('[data-assistant-progress]');
+  const send = form?.querySelector('[data-assistant-send]');
+  const stop = form?.querySelector('[data-assistant-stop]');
+  const progress = form?.querySelector('[data-assistant-progress]');
   let pending;
   let checking = false;
   async function checkAccess() {
@@ -18,10 +17,13 @@
         pending?.abort();
         result.textContent = 'Access changed. Start a new question using your current access.';
         delete result.dataset.assistantMembership;
-        const selection = form.querySelector('[name="membershipId"]');
-        selection.value = '';
-        for (const option of Array.from(selection.options)) if (option.value) option.remove();
-        form.querySelector('[name="question"]').value = '';
+        if (form) {
+          const selection = form.querySelector('[name="membershipId"]');
+          selection.value = '';
+          for (const option of Array.from(selection.options)) if (option.value) option.remove();
+          form.querySelector('[name="question"]').value = '';
+          form.querySelector('[name="requestId"]')?.remove();
+        }
       }
     } catch { result.textContent = 'Unable to verify access. Start a new question.'; }
     finally { checking = false; }
@@ -30,6 +32,7 @@
   window.addEventListener('pageshow', checkAccess);
   document.addEventListener('visibilitychange', checkAccess);
 
+  if (!form) return;
   stop.addEventListener('click', () => pending?.abort());
   form.addEventListener('submit', async event => {
     event.preventDefault();
@@ -46,6 +49,8 @@
       const result = documentResult.querySelector('[data-assistant-result]');
       if (!result) throw new Error('Unavailable');
       document.querySelector('[data-assistant-result]').replaceWith(document.importNode(result, true));
+      const conversation = documentResult.querySelector('[name="conversationId"]');
+      if (conversation) form.querySelector('[name="conversationId"]').value = conversation.value;
       progress.textContent = response.ok ? 'Answer ready.' : 'Try again or use building help.';
     } catch (error) {
       progress.textContent = error.name === 'AbortError' ? 'Stopped. No action was submitted.' : 'Unable to connect. Try again or use building help.';

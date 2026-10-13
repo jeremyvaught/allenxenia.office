@@ -1,5 +1,21 @@
 import { test, expect } from '@playwright/test';
 
+test('assistant native forms preserve origin without disclosing query paths at 320px', async ({ browser }) => {
+  const context = await browser.newContext({ baseURL: 'http://127.0.0.1:5088', javaScriptEnabled: false, viewport: { width: 320, height: 800 } });
+  try {
+    const page = await context.newPage();
+    const response = await page.goto('/Assistant?referrer_canary=private-path-marker');
+    expect(response?.headers()['referrer-policy']).toBe('strict-origin');
+    await page.getByLabel('Theme', { exact: true }).selectOption('light');
+    const submitted = page.waitForRequest(request => request.url().endsWith('/preferences/theme') && request.method() === 'POST');
+    await page.getByRole('button', { name: 'Apply theme', exact: true }).click();
+    const headers = await (await submitted).allHeaders();
+    expect(headers.origin).toBe('http://127.0.0.1:5088');
+    expect(headers.referer).toBe('http://127.0.0.1:5088/');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  } finally { await context.close(); }
+});
+
 test('theme preferences and system appearance work without JavaScript at 320px', async ({ browser }) => {
   const context = await browser.newContext({ baseURL: 'http://127.0.0.1:5088', javaScriptEnabled: false,
     viewport: { width: 320, height: 800 }, colorScheme: 'dark' });

@@ -92,9 +92,9 @@ public sealed class MaintenanceStore(OfficeDbContext db, ICurrentActor current, 
         return new(sorted.Take(MaintenanceQueueQuery.PageSize).ToList(), query, rows.Count > MaintenanceQueueQuery.PageSize && query.Page < 1000, now, managers.Concat(contractors).ToList());
     }
 
-    public async Task<RequestDetails?> ReadAsync(Actor actor, Guid id, bool management, CancellationToken cancellationToken)
+    public async Task<RequestDetails?> ReadAsync(Actor actor, Guid id, bool management, CancellationToken cancellationToken, Guid? membershipId = null)
     {
-        var order = await Scoped(actor, management).AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+        var order = await Scoped(actor, management).AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && (membershipId == null || x.RequesterMembershipId == membershipId), cancellationToken);
         if (order is null) return null;
         var suite = await db.Suites.AsNoTracking().Where(x => x.Id == order.SuiteId).Select(x => x.Name).SingleAsync(cancellationToken);
         var history = await db.WorkOrderHistory.AsNoTracking().Where(x => x.WorkOrderId == order.Id &&

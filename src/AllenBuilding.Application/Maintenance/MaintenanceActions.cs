@@ -33,6 +33,12 @@ public sealed class MaintenanceActions(ICurrentActor current, IMaintenanceStore 
         return CanUse(actor, management) ? await store.ReadAsync(actor!, id, management, cancellationToken) : null;
     }
 
+    public async Task<RequestDetails?> ReadForMembershipAsync(Guid id, Guid membershipId, CancellationToken cancellationToken = default)
+    {
+        var actor = await current.GetAsync(cancellationToken);
+        return membershipId != Guid.Empty && CanUse(actor, false) ? await store.ReadAsync(actor!, id, false, cancellationToken, membershipId) : null;
+    }
+
     public Task<MaintenanceResult> SubmitAsync(SubmitRequest command, CancellationToken cancellationToken = default) => Submit(command, false, cancellationToken);
     public Task<MaintenanceResult> SubmitOnBehalfAsync(SubmitRequest command, CancellationToken cancellationToken = default) => Submit(command, true, cancellationToken);
     public async Task<IReadOnlyList<RequestMemberChoice>> MembersAsync(bool management, CancellationToken cancellationToken = default)

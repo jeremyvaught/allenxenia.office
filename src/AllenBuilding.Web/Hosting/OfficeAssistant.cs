@@ -13,7 +13,8 @@ public static class OfficeAssistant
         if (enabled && (string.IsNullOrWhiteSpace(key) || key.Length is < 16 or > 1024 || key.Any(char.IsWhiteSpace)))
             throw new InvalidOperationException("An enabled assistant needs a server-side OpenAI credential.");
         var tenantHelp = builder.Configuration.GetValue<bool?>("Assistant:TenantHelpEnabled") ?? builder.Environment.IsDevelopment();
-        builder.Services.AddSingleton(new AssistantPolicy(enabled, enabled && tenantHelp, builder.Configuration.GetValue<bool>("Billing:PlanningEnabled")));
+        var actions = builder.Configuration.GetValue<bool?>("Assistant:ActionsEnabled") ?? builder.Environment.IsDevelopment();
+        builder.Services.AddSingleton(new AssistantPolicy(enabled, enabled && tenantHelp, builder.Configuration.GetValue<bool>("Billing:PlanningEnabled"), enabled && tenantHelp && actions));
         if (enabled)
         {
             builder.Services.AddHttpClient("OfficeAssistant", client => client.Timeout = TimeSpan.FromSeconds(55))

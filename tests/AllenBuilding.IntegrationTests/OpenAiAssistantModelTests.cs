@@ -7,6 +7,45 @@ namespace AllenBuilding.IntegrationTests;
 
 public sealed class OpenAiAssistantModelTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Private_preparation_schema_allows_only_the_selected_draft_kind_and_no_execution(bool comment)
+    {
+        using var client = new HttpClient(new Handler(async request =>
+        {
+            using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync()); var root = body.RootElement;
+            Assert.False(root.TryGetProperty("tools", out _));
+            var types = root.GetProperty("text").GetProperty("format").GetProperty("schema").GetProperty("properties").GetProperty("draft").GetProperty("anyOf")[1]
+                .GetProperty("properties").GetProperty("kind").GetProperty("enum");
+            Assert.Equal(comment ? "comment" : "request", Assert.Single(types.EnumerateArray()).GetString());
+            return Response(new
+            {
+                answer = "Open the review to confirm",
+                sources = Array.Empty<string>(),
+                route = comment ? "requests" : "new_request",
+                draft = new { kind = comment ? "comment" : "request", title = comment ? "" : "Sink leak", description = comment ? "" : "Water under the basin", location = comment ? "" : "Kitchen", comment = comment ? "Call first" : "" }
+            });
+        }));
+        var result = await new OpenAiAssistantModel(client, "synthetic-key").AnswerAsync(new("Prepare my maintenance action", [], true, true, comment), default);
+        Assert.Equal(AssistantModelCode.Success, result.Code); Assert.NotNull(result.Draft); Assert.Equal(comment ? "Call first" : "", result.Draft.Comment);
+    }
+    [Theory]
+    [InlineData("guest")]
+    [InlineData("wrong-kind")]
+    [InlineData("execute")]
+    public async Task Unregistered_or_executable_drafts_are_rejected(string failure)
+    {
+        using var client = new HttpClient(new Handler(_ => Task.FromResult(Response(new
+        {
+            answer = "untrusted",
+            sources = Array.Empty<string>(),
+            route = "new_request",
+            draft = new { kind = failure == "execute" ? "execute" : "comment", title = "", description = "", location = "", comment = "Call first" }
+        }))));
+        var result = await new OpenAiAssistantModel(client, "synthetic-key").AnswerAsync(new("Question", [], failure != "guest", failure != "guest"), default);
+        Assert.NotEqual(AssistantModelCode.Success, result.Code); Assert.Null(result.Draft);
+    }
     [Fact]
     public async Task Bounded_stateless_request_pins_model_schema_and_storage_without_executable_tools()
     {
@@ -23,6 +62,7 @@ public sealed class OpenAiAssistantModelTests
         using var body = JsonDocument.Parse(sent); var root = body.RootElement;
         Assert.Equal(OpenAiAssistantModel.Model, root.GetProperty("model").GetString()); Assert.False(root.GetProperty("store").GetBoolean()); Assert.False(root.GetProperty("stream").GetBoolean());
         Assert.False(root.TryGetProperty("tools", out _)); Assert.False(root.TryGetProperty("previous_response_id", out _));
+        Assert.False(root.GetProperty("text").GetProperty("format").GetProperty("schema").GetProperty("properties").TryGetProperty("draft", out _));
         Assert.True(root.GetProperty("text").GetProperty("format").GetProperty("strict").GetBoolean());
         Assert.False(root.GetProperty("text").GetProperty("format").GetProperty("schema").GetProperty("additionalProperties").GetBoolean());
         Assert.DoesNotContain("synthetic-key", sent);

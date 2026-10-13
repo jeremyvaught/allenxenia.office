@@ -1,0 +1,49 @@
+@model AllenBuilding.Application.Assistant.AssistantReviewView
+@using AllenBuilding.Domain.Maintenance
+@{ var review = Model.Review; var ready = ViewData["Ready"] is true; var isRequest = review.Kind == AssistantReviewKind.Request; ViewData["Title"] = "Review maintenance " + (isRequest ? "request" : "comment"); }
+<div class="page max-w-3xl">
+    <div data-assistant-result data-assistant-membership="@Model.Scope.MembershipId" class="rounded-2xl border border-line bg-panel p-5 sm:p-6">
+        <h1 class="mb-3 text-2xl font-semibold">Review maintenance @(isRequest ? "request" : "comment")</h1>
+        <p class="mb-5 break-words text-muted">@Model.Scope.Suite</p>
+        @if (review.State == AssistantReviewState.Completed)
+        {
+            <h2 class="mb-4 text-lg font-semibold">@(isRequest ? "Request submitted" : "Comment added")</h2>
+            <p class="mb-4">Saved @review.CompletedAt?.ToString("MMM d, yyyy HH:mm 'UTC'"). Confirmation reference: <span class="break-all">@review.OperationId</span></p>
+            <a class="button" href="/Maintenance/Details/@review.ResultId">View request and history</a>
+        }
+        else if (ready)
+        {
+            <p class="mb-4">Nothing has been submitted. Confirm only after checking these exact details. This review expires @review.ExpiresAt.ToString("MMM d, yyyy HH:mm 'UTC'").</p>
+            @if (isRequest)
+            {
+                <h2 class="mb-2 break-words text-lg font-semibold">@review.Title</h2>
+                <p class="mb-3 break-words">Location: @review.Location</p><p class="mb-5 whitespace-pre-wrap break-words">@review.Description</p>
+            }
+            else { <h2 class="mb-3 break-words font-semibold">@Model.TargetTitle</h2><p class="mb-5 whitespace-pre-wrap break-words">@review.Comment</p><p class="mb-4 text-sm text-muted">This is a tenant-visible comment. It cannot change the request's workflow.</p> }
+            <form asp-action="Confirm" method="post" class="mb-6">
+                <input type="hidden" name="id" value="@review.Id" /><input type="hidden" name="conversationId" value="@review.ConversationId" />
+                <input type="hidden" name="version" value="@review.Version" /><input type="hidden" name="operationId" value="@review.OperationId" />
+                <button class="button">Confirm and @(isRequest ? "submit request" : "add comment")</button>
+            </form>
+            <details class="mb-5 border-t border-line pt-5">
+                <summary class="cursor-pointer py-3 font-semibold">Edit this draft</summary>
+                <form asp-action="Edit" method="post" class="mt-4 space-y-4">
+                    <input type="hidden" name="id" value="@review.Id" /><input type="hidden" name="conversationId" value="@review.ConversationId" /><input type="hidden" name="version" value="@review.Version" />
+                    @if (isRequest) {
+                        <div><label for="title" class="mb-2 block font-semibold">Brief description</label><input id="title" name="title" value="@review.Title" class="field" maxlength="120" required /></div>
+                        <div><label for="location" class="mb-2 block font-semibold">Where is it?</label><input id="location" name="location" value="@review.Location" class="field" maxlength="160" required /></div>
+                        <div><label for="description" class="mb-2 block font-semibold">Details</label><textarea id="description" name="description" class="field" rows="5" maxlength="4000" required>@review.Description</textarea></div>
+                    } else { <div><label for="comment" class="mb-2 block font-semibold">Your comment</label><textarea id="comment" name="comment" class="field" rows="5" maxlength="2000" required>@review.Comment</textarea></div> }
+                    <button class="quiet-button">Save revised draft</button><p class="text-sm text-muted">Editing replaces the old review. You'll need to confirm the revised details separately.</p>
+                </form>
+            </details>
+            <form asp-action="Edit" method="post">
+                <input type="hidden" name="id" value="@review.Id" /><input type="hidden" name="conversationId" value="@review.ConversationId" /><input type="hidden" name="version" value="@review.Version" /><input type="hidden" name="cancel" value="true" />
+                <button class="quiet-button">Cancel this draft</button>
+            </form>
+        }
+        else { <h2 class="mb-3 text-lg font-semibold">@(review.State == AssistantReviewState.Cancelled ? "Draft cancelled" : "Review expired or unavailable")</h2><p>No action can be submitted from this review. Start fresh when you're ready.</p> }
+    </div>
+    <a class="quiet-button mt-6" href="/Assistant">Start a new question</a>
+</div>
+@section Scripts { <script src="~/js/assistant.js" asp-append-version="true" defer></script> }

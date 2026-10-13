@@ -81,6 +81,8 @@ public static class AssistantReviewContract
         Assert.Equal(MaintenanceCode.Unavailable, (await Confirm(withSource)).Code);
         // Comments use the same tenant-visible comment path and exact reviewed request version.
         var details = (await As(actor, sp => sp.GetRequiredService<MaintenanceActions>().ReadAsync(result.WorkOrderId!.Value, false)))!;
+        Assert.NotNull(await As(actor, sp => sp.GetRequiredService<MaintenanceActions>().ReadForMembershipAsync(details.Id, member.Id)));
+        Assert.Null(await As(actor, sp => sp.GetRequiredService<MaintenanceActions>().ReadForMembershipAsync(details.Id, second.Id)));
         var comment = (await As(actor, sp => sp.GetRequiredService<AssistantMaintenance>().PrepareAsync(Guid.NewGuid(), access, new(AssistantReviewKind.Comment, Comment: "Please call before arriving"), details, [], default))).View!;
         Assert.Equal(MaintenanceCode.Success, (await Confirm(comment)).Code); Assert.Equal(await Confirm(comment), await Confirm(comment));
         var stale = (await As(actor, sp => sp.GetRequiredService<AssistantMaintenance>().PrepareAsync(Guid.NewGuid(), access, new(AssistantReviewKind.Comment, Comment: "Old target"), details, [], default)));

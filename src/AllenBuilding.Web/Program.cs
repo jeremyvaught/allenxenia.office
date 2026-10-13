@@ -158,7 +158,8 @@ app.UseRouting();
 app.Use(OfficeObservability.RequestAsync);
 app.Use(async (context, next) =>
 {
-    context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    // Native forms need their real Origin; origin-only referrers never expose review IDs/query tokens.
+    context.Response.Headers["Referrer-Policy"] = context.Request.Path.StartsWithSegments("/Assistant") ? "strict-origin" : "no-referrer";
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     await next(context);
 });

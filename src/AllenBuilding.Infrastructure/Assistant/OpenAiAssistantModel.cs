@@ -2,14 +2,16 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using AllenBuilding.Application.Assistant;
+using AllenBuilding.Domain.Maintenance;
 
 namespace AllenBuilding.Infrastructure.Assistant;
 
 public sealed class OpenAiAssistantModel(HttpClient client, string key) : IAssistantModel
 {
     public const string Model = "gpt-5.4-mini-2026-03-17";
-    public const string PromptVersion = "building-help-2";
+    public const string PromptVersion = "building-help-3";
     public const int MaxInputBytes = 12000;
     private const string Instructions = """
         You help people use Allen Xenia Office. Answer briefly using only the supplied published excerpts.
@@ -26,18 +28,43 @@ public sealed class OpenAiAssistantModel(HttpClient client, string key) : IAssis
         For tenant record lookups, explain that the record cards or secure page provide the authoritative values.
         You do not receive those records; do not claim there are none or guess their values.
         """;
+    private const string Preparation = """
+        If CanPrepare is true, you may propose one draft for explicit human review, never execute or confirm it.
+        Use only facts and wording in the user's question. Never invent a location, problem detail or comment.
+        If CommentTarget is false, draft kind is request with title (1-120 chars), description (1-4000),
+        location (1-160) and empty comment; route is new_request. If required information is missing,
+        draft is null and you ask briefly for it. Each question starts fresh, so ask for a complete description.
+        If CommentTarget is true, draft kind is comment with comment (1-2000 chars) and empty title,
+        description and location; route is requests. The server has already selected the exact request.
+        A draft is not a submitted request/comment. Tell the user to open the server review and confirm there.
+        For help, record lookups, financial questions or emergencies, draft is null. Never prepare financial actions.
+        """;
     private static readonly JsonElement Schema = JsonSerializer.Deserialize<JsonElement>("""
         {"type":"object","additionalProperties":false,"required":["answer","sources","route"],"properties":{
           "answer":{"type":"string"},"sources":{"type":"array","items":{"type":"string"}},
           "route":{"type":"string","enum":["help","login","requests","new_request","billing","autopay"]}}}
         """);
+    private static JsonElement PreparationSchema(bool comment)
+    {
+        var schema = JsonNode.Parse(Schema.GetRawText())!;
+        schema["required"]!.AsArray().Add("draft");
+        var draft = JsonNode.Parse("""
+          {"type":"object","additionalProperties":false,"required":["kind","title","description","location","comment"],"properties":{
+            "kind":{"type":"string","enum":[]},"title":{"type":"string"},"description":{"type":"string"},"location":{"type":"string"},"comment":{"type":"string"}}}
+          """)!;
+        draft["properties"]!["kind"]!["enum"]!.AsArray().Add(comment ? "comment" : "request");
+        schema["properties"]!["draft"] = new JsonObject { ["anyOf"] = new JsonArray(new JsonObject { ["type"] = "null" }, draft) };
+        return JsonSerializer.SerializeToElement(schema);
+    }
 
     public async Task<AssistantModelReply> AnswerAsync(AssistantModelInput input, CancellationToken cancellationToken)
     {
         if (input.Question.Length is < 1 or > 4000 || input.Sources.Count > 5 ||
             input.Sources.Any(x => x.Title.Length > 180 || x.Excerpt.Length > 800)) return new(AssistantModelCode.Invalid);
         var payload = JsonSerializer.Serialize(input);
-        if (Encoding.UTF8.GetByteCount(payload) + Encoding.UTF8.GetByteCount(Instructions) > MaxInputBytes)
+        if (input.CanPrepare && !input.Tenant) return new(AssistantModelCode.Invalid);
+        var instructions = Instructions + (input.CanPrepare ? "\n" + Preparation : "");
+        if (Encoding.UTF8.GetByteCount(payload) + Encoding.UTF8.GetByteCount(instructions) > MaxInputBytes)
             return new(AssistantModelCode.Invalid);
         try
         {
@@ -50,9 +77,9 @@ public sealed class OpenAiAssistantModel(HttpClient client, string key) : IAssis
                 stream = false,
                 max_output_tokens = 2048,
                 reasoning = new { effort = "none" },
-                instructions = Instructions,
+                instructions,
                 input = payload,
-                text = new { format = new { type = "json_schema", name = "building_help", strict = true, schema = Schema } }
+                text = new { format = new { type = "json_schema", name = "building_help", strict = true, schema = input.CanPrepare ? PreparationSchema(input.CommentTarget) : Schema } }
             });
             // No automatic retries: a timeout must not multiply spend or resend private content.
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
@@ -72,7 +99,7 @@ public sealed class OpenAiAssistantModel(HttpClient client, string key) : IAssis
                 .Where(x => x.GetProperty("type").GetString() == "output_text").Select(x => x.GetProperty("text").GetString()).ToArray();
             if (texts.Length != 1 || texts[0] is null) return new(AssistantModelCode.Invalid);
             using var result = JsonDocument.Parse(texts[0]!); var value = result.RootElement;
-            if (value.EnumerateObject().Count() != 3) return new(AssistantModelCode.Invalid);
+            if (value.EnumerateObject().Count() != (input.CanPrepare ? 4 : 3)) return new(AssistantModelCode.Invalid);
             var answer = value.GetProperty("answer").GetString(); var route = value.GetProperty("route").GetString();
             var sources = value.GetProperty("sources").EnumerateArray().Select(x => Guid.Parse(x.GetString()!)).ToArray();
             if (string.IsNullOrWhiteSpace(answer) || answer.Length > 3000 || sources.Length > 5 ||
@@ -80,7 +107,19 @@ public sealed class OpenAiAssistantModel(HttpClient client, string key) : IAssis
                 route is not ("help" or "login" or "requests" or "new_request" or "billing" or "autopay")) return new(AssistantModelCode.Invalid);
             var usage = root.GetProperty("usage"); var inputTokens = usage.GetProperty("input_tokens").GetInt32(); var outputTokens = usage.GetProperty("output_tokens").GetInt32();
             if (inputTokens < 0 || outputTokens is < 0 or > 2048) return new(AssistantModelCode.Invalid);
-            return new(AssistantModelCode.Success, answer, sources.Distinct().ToArray(), route!, inputTokens, outputTokens);
+            AssistantDraft? proposed = null;
+            if (input.CanPrepare && value.GetProperty("draft") is { ValueKind: not JsonValueKind.Null } draft)
+            {
+                if (draft.EnumerateObject().Count() != 5 || draft.GetProperty("kind").GetString() != (input.CommentTarget ? "comment" : "request") ||
+                    route != (input.CommentTarget ? "requests" : "new_request")) return new(AssistantModelCode.Invalid);
+                proposed = new(input.CommentTarget ? AssistantReviewKind.Comment : AssistantReviewKind.Request,
+                    draft.GetProperty("title").GetString()!, draft.GetProperty("description").GetString()!,
+                    draft.GetProperty("location").GetString()!, draft.GetProperty("comment").GetString()!);
+                if (proposed.Title is null || proposed.Description is null || proposed.Location is null || proposed.Comment is null ||
+                    proposed.Title.Length > 120 || proposed.Description.Length > 4000 || proposed.Location.Length > 160 || proposed.Comment.Length > 2000)
+                    return new(AssistantModelCode.Invalid);
+            }
+            return new(AssistantModelCode.Success, answer, sources.Distinct().ToArray(), route!, inputTokens, outputTokens, proposed);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return new(AssistantModelCode.Unavailable); }
         catch (Exception exception) when (exception is HttpRequestException or IOException or JsonException or InvalidOperationException or FormatException or KeyNotFoundException or ArgumentException)
