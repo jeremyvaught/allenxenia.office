@@ -6,7 +6,7 @@ namespace AllenBuilding.Application.Billing;
 public enum CollectionCode { Success, Unavailable, ValidationFailed, Conflict }
 public sealed record CollectionResult(CollectionCode Code, Guid? AttemptId = null, PaymentAttemptState? State = null);
 public sealed record CollectReviewedBalances(Guid OperationId, Guid AccountId, IReadOnlyList<ReviewedCollectionBalance> Items);
-public sealed record CollectionPolicy(bool Enabled, string ProviderAccount, bool LiveMode);
+public sealed record CollectionPolicy(bool Enabled, string ProviderAccount, bool LiveMode, CheckoutProfile? Profile = null);
 
 public interface ICollectionStore
 {
@@ -37,7 +37,7 @@ public sealed class CollectionActions(ICurrentActor current, ICollectionStore st
 
     private async Task<Actor?> Payer(CancellationToken cancellationToken)
     {
-        if (!policy.Enabled || !PaymentReferences.Valid(policy.ProviderAccount, "acct_")) return null;
+        if (!policy.Enabled || policy.Profile is null || !PaymentReferences.Valid(policy.ProviderAccount, "acct_")) return null;
         var actor = await current.GetAsync(cancellationToken);
         return actor is null || (actor.ManagedBuildings.Count > 0 && !actor.ChallengedMfa) ? null : actor;
     }

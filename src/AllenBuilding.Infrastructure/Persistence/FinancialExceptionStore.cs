@@ -23,10 +23,12 @@ public sealed class FinancialExceptionStore(OfficeDbContext db, ICurrentActor cu
                           join suite in db.Suites on membership.SuiteId equals suite.Id
                           join payment in db.SettlementPayments on attempt.Id equals payment.AttemptId into payments
                           from payment in payments.DefaultIfEmpty()
+                          join work in db.CollectionWork on attempt.Id equals work.AttemptId into jobs
+                          from work in jobs.DefaultIfEmpty()
                           where actor.ManagedBuildings.Contains(suite.BuildingId) && db.BuildingManagers.Any(m => m.UserId == actor.UserId && m.BuildingId == suite.BuildingId) &&
                               (includeResolved || issue.State != FinancialExceptionState.Resolved)
                           orderby issue.FirstSeenAt, issue.Id
-                          select new { Issue = issue, Attempt = attempt, suite.BuildingId, Suite = suite.Name, LastCashAt = payment == null ? null : (DateTimeOffset?)payment.RecordedAt })
+                          select new { Issue = issue, Attempt = attempt, Work = work, suite.BuildingId, Suite = suite.Name, LastCashAt = payment == null ? null : (DateTimeOffset?)payment.RecordedAt })
             .Take(50).ToListAsync(cancellationToken);
         var result = new List<FinancialCaseView>();
         var ownersByBuilding = new Dictionary<Guid, IReadOnlyList<FinancialCaseOwner>>();
@@ -48,7 +50,7 @@ public sealed class FinancialExceptionStore(OfficeDbContext db, ICurrentActor cu
             result.Add(new(row.Issue.Id, row.Issue.Version, row.BuildingId, row.Issue.AccountId, row.Attempt.Id, row.Suite, row.Issue.State, row.Issue.Failure,
                 row.Issue.OwnerUserId, row.Attempt.ProviderAccount, row.Attempt.LiveMode, row.Attempt.CustomerId, row.Attempt.SessionId, row.Attempt.PaymentId,
                 row.Attempt.OperationId, row.Attempt.State, row.Issue.LastVerifiedState ?? (row.LastCashAt is null ? null : "Paid"), row.Issue.LastVerifiedAt ?? row.LastCashAt,
-                row.Issue.FirstSeenAt, items, owners, history));
+                row.Issue.FirstSeenAt, items, owners, history, row.Work?.Attempts, row.Work?.Failures, row.Work?.State, row.Work?.NextAttemptAt));
         }
         // Discard protected rows when either the ticket or the current management grant ended during the read.
         var fresh = await current.GetAsync(cancellationToken);

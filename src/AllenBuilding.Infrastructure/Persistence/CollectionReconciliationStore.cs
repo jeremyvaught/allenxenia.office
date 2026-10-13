@@ -10,7 +10,11 @@ public sealed class CollectionReconciliationStore(OfficeDbContext db, TimeProvid
     public Task<PaymentAttempt?> LoadAsync(Guid attemptId, CancellationToken cancellationToken) => db.PaymentAttempts.AsNoTracking().Include(x => x.Items)
         .SingleOrDefaultAsync(x => x.Id == attemptId, cancellationToken);
 
-    public async Task<ReconciliationResult> ApplyAsync(Guid attemptId, Guid version, ProviderCollectionObservation observation, CancellationToken cancellationToken)
+    public Task<ReconciliationResult> ApplyAsync(Guid attemptId, Guid version, ProviderCollectionObservation observation, CancellationToken cancellationToken)
+        => ApplyCore(attemptId, version, observation, null, cancellationToken);
+    internal Task<ReconciliationResult> ApplyLeasedAsync(CollectionLease lease, ProviderCollectionObservation observation, CancellationToken cancellationToken)
+        => ApplyCore(lease.Original.Id, lease.Original.Version, observation, lease, cancellationToken);
+    private async Task<ReconciliationResult> ApplyCore(Guid attemptId, Guid version, ProviderCollectionObservation observation, CollectionLease? lease, CancellationToken cancellationToken)
     {
         await using var transaction = await AuthorityLocks.BeginAsync(db, cancellationToken);
         var accountId = await db.PaymentAttempts.AsNoTracking().Where(x => x.Id == attemptId).Select(x => (Guid?)x.AccountId).SingleOrDefaultAsync(cancellationToken);
@@ -19,6 +23,12 @@ public sealed class CollectionReconciliationStore(OfficeDbContext db, TimeProvid
         {
             await db.Database.ExecuteSqlInterpolatedAsync($"SELECT id FROM rent_accounts WHERE id = {accountId.Value.ToString("D")} FOR UPDATE", cancellationToken);
             await db.Database.ExecuteSqlInterpolatedAsync($"SELECT id FROM payment_attempts WHERE id = {attemptId.ToString("D")} FOR UPDATE", cancellationToken);
+        }
+        if (lease is not null)
+        {
+            if (db is MySqlOfficeDbContext) await db.Database.ExecuteSqlInterpolatedAsync($"SELECT attempt_id FROM collection_work WHERE attempt_id = {attemptId.ToString("D")} FOR UPDATE", cancellationToken);
+            var fence = await db.CollectionWork.AsNoTracking().SingleOrDefaultAsync(x => x.AttemptId == attemptId, cancellationToken);
+            if (fence is null || !fence.Owns(lease.Token, time.GetUtcNow())) return new(ReconciliationCode.Unavailable);
         }
         // The same scope may already track a stale attempt; reload before the canonical projection.
         var attempt = await db.PaymentAttempts.Include(x => x.Items).SingleAsync(x => x.Id == attemptId, cancellationToken);
@@ -36,18 +46,18 @@ public sealed class CollectionReconciliationStore(OfficeDbContext db, TimeProvid
                     i.ObligationId == x.ObligationId && i.AccountId == x.AccountId && i.AmountMinorUnits == x.AmountMinorUnits));
             if (agrees) await ResolveIssue(attempt.Id, observation, cancellationToken);
             else await ObserveIssue(attempt, FinancialFailure.TerminalDisagreement, observation, cancellationToken);
-            return await Commit(agrees ? new(ReconciliationCode.AlreadyApplied, payment!.Id) : new(ReconciliationCode.NeedsReview), transaction, cancellationToken);
+            return await Commit(agrees ? new(ReconciliationCode.AlreadyApplied, payment!.Id) : new(ReconciliationCode.NeedsReview), transaction, cancellationToken, lease);
         }
         if (attempt.State == PaymentAttemptState.Uncollected && observation.State == ProviderCollectionState.Uncollected &&
             observation.SessionId is { } finalSession && finalSession == attempt.SessionId && payment is null)
         {
             await ResolveIssue(attempt.Id, observation, cancellationToken);
-            return await Commit(new(ReconciliationCode.AlreadyApplied), transaction, cancellationToken);
+            return await Commit(new(ReconciliationCode.AlreadyApplied), transaction, cancellationToken, lease);
         }
         if (attempt.State is PaymentAttemptState.Admitted or PaymentAttemptState.Uncollected || payment is not null)
         {
             await ObserveIssue(attempt, FinancialFailure.TerminalDisagreement, observation, cancellationToken);
-            return await Commit(new(ReconciliationCode.NeedsReview), transaction, cancellationToken);
+            return await Commit(new(ReconciliationCode.NeedsReview), transaction, cancellationToken, lease);
         }
         var obligations = new List<Obligation>();
         foreach (var item in attempt.Items.OrderBy(x => x.ObligationId.ToString("D"), StringComparer.Ordinal))
@@ -100,7 +110,7 @@ public sealed class CollectionReconciliationStore(OfficeDbContext db, TimeProvid
             await ObserveIssue(attempt, failure, observation, cancellationToken);
         }
         else await ResolveIssue(attempt.Id, observation, cancellationToken);
-        return await Commit(new(review ? ReconciliationCode.NeedsReview : ReconciliationCode.Applied, recorded?.Id), transaction, cancellationToken);
+        return await Commit(new(review ? ReconciliationCode.NeedsReview : ReconciliationCode.Applied, recorded?.Id), transaction, cancellationToken, lease);
     }
     private async Task ObserveIssue(PaymentAttempt attempt, FinancialFailure failure, ProviderCollectionObservation observation, CancellationToken token)
     {
@@ -131,10 +141,15 @@ public sealed class CollectionReconciliationStore(OfficeDbContext db, TimeProvid
         issue.ResolveVerified(time.GetUtcNow());
         db.FinancialExceptionHistory.Add(FinancialExceptionHistory.Record(issue.Id, "Resolved", null, "Original canonical outcome verified", time.GetUtcNow()));
     }
-    private async Task<ReconciliationResult> Commit(ReconciliationResult result, Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction, CancellationToken cancellationToken)
+    private async Task<ReconciliationResult> Commit(ReconciliationResult result, Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction, CancellationToken cancellationToken, CollectionLease? lease)
     {
         try
         {
+            if (lease is not null)
+            {
+                var fence = await db.CollectionWork.AsNoTracking().SingleOrDefaultAsync(x => x.AttemptId == lease.Original.Id, cancellationToken);
+                if (fence is null || !fence.Owns(lease.Token, time.GetUtcNow())) return new(ReconciliationCode.Unavailable);
+            }
             await db.SaveChangesAsync(cancellationToken); await transaction.CommitAsync(cancellationToken);
             return result;
         }

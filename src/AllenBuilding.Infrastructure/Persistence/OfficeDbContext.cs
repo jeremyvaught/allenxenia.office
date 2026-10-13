@@ -16,6 +16,7 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
     public DbSet<PaymentAllocation> PaymentAllocations => Set<PaymentAllocation>();
     public DbSet<BillingCustomerBinding> BillingCustomers => Set<BillingCustomerBinding>();
     public DbSet<PaymentAttempt> PaymentAttempts => Set<PaymentAttempt>();
+    public DbSet<CollectionWork> CollectionWork => Set<CollectionWork>();
     public DbSet<PaymentEventInbox> PaymentEvents => Set<PaymentEventInbox>();
     public DbSet<FinancialException> FinancialExceptions => Set<FinancialException>();
     public DbSet<FinancialExceptionHistory> FinancialExceptionHistory => Set<FinancialExceptionHistory>();
@@ -222,6 +223,16 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
             e.HasIndex(x => new { x.ExceptionId, x.OccurredAt, x.Id });
             e.HasOne<FinancialException>().WithMany().HasForeignKey(x => x.ExceptionId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.ActorUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<CollectionWork>(e =>
+        {
+            e.ToTable("collection_work"); e.HasKey(x => x.AttemptId); e.Ignore(x => x.Profile);
+            e.Property(x => x.LeaseToken).IsConcurrencyToken(); e.Property(x => x.State).HasConversion<string>().HasMaxLength(32);
+            e.Property(x => x.ApiVersion).HasMaxLength(64); e.Property(x => x.PublicOrigin).HasMaxLength(512);
+            e.Property(x => x.PaymentMethodConfiguration).HasMaxLength(255); e.Property(x => x.LastError).HasMaxLength(64);
+            e.Property(x => x.OriginTraceId).HasMaxLength(32); e.Property(x => x.OriginSpanId).HasMaxLength(16);
+            e.HasIndex(x => new { x.State, x.NextAttemptAt, x.CreatedAt, x.AttemptId });
+            e.HasOne<PaymentAttempt>().WithOne().HasForeignKey<CollectionWork>(x => x.AttemptId).OnDelete(DeleteBehavior.Restrict);
         });
         model.Entity<PaymentEventInbox>(e =>
         {

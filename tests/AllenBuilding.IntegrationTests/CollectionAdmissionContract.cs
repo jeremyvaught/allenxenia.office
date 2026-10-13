@@ -44,7 +44,7 @@ public static class CollectionAdmissionContract
         services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider()); services.AddSingleton(TimeProvider.System);
         services.AddScoped<OfficeDbContext>(_ => create());
         services.AddIdentityCore<OfficeUser>().AddEntityFrameworkStores<OfficeDbContext>().AddDefaultTokenProviders();
-        services.AddSingleton(new CollectionPolicy(true, "acct_admission", false));
+        services.AddSingleton(new CollectionPolicy(true, "acct_admission", false, new CheckoutProfile("https://office.example.test", "pmc_admission")));
         services.AddScoped<TestActor>(); services.AddScoped<ICurrentActor>(sp => sp.GetRequiredService<TestActor>());
         services.AddScoped<AccountInvitations>(); services.AddScoped<ICollectionStore, CollectionStore>(); services.AddScoped<CollectionActions>();
         await using var provider = services.BuildServiceProvider();
@@ -123,6 +123,9 @@ public static class CollectionAdmissionContract
         await using (var db = create())
         {
             var saved = await db.PaymentAttempts.Include(x => x.Items).SingleAsync(x => x.Id == admitted.AttemptId);
+            var work = await db.CollectionWork.SingleAsync(x => x.AttemptId == saved.Id);
+            Assert.Equal(CheckoutProfile.ApiContract, work.ApiVersion); Assert.Equal("pmc_admission", work.PaymentMethodConfiguration);
+            Assert.Equal(CollectionWorkState.Queued, work.State);
             Assert.Equal(1025, saved.TotalMinorUnits); Assert.Equal(2, saved.Items.Count);
             Assert.Equal(2, await db.CollectionGuards.CountAsync(x => x.AttemptId == saved.Id));
             Assert.Equal(0, await db.PaymentAttempts.CountAsync(x => x.AccountId == otherAccount.Id));

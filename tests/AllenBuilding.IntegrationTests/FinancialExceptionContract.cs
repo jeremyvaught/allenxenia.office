@@ -24,11 +24,12 @@ public static class FinancialExceptionContract
         var binding = BillingCustomerBinding.Create(account.Id, "acct_cases", false, "cus_" + Guid.NewGuid().ToString("N"), now);
         var hiddenBinding = BillingCustomerBinding.Create(hiddenAccount.Id, "acct_cases", false, "cus_" + Guid.NewGuid().ToString("N"), now);
         var debt = Obligation.Issue(account.Id, new Money(1000), "Reviewed case debt", new DateOnly(2026, 10, 1), payer.Id, now);
-        var attempt = PaymentAttempt.Admit(Guid.NewGuid(), payer.Id, binding, [new(debt.Id, account.Id, debt.Version, 1000)], now); attempt.BeginDispatch(now);
+        var attempt = PaymentAttempt.Admit(Guid.NewGuid(), payer.Id, binding, [new(debt.Id, account.Id, debt.Version, 1000)], now);
+        var work = CollectionWork.Enqueue(attempt, new("https://cases.example.test", "pmc_cases")); attempt.BeginDispatch(now);
         var issue = FinancialException.Open(attempt, FinancialFailure.ProviderUnknown, null, now);
         await using (var db = create())
         {
-            db.AddRange(manager, otherManager, outsider, payer, building, foreign, suite, hiddenSuite, membership, hiddenMembership, account, hiddenAccount, binding, hiddenBinding, debt, attempt, issue,
+            db.AddRange(manager, otherManager, outsider, payer, building, foreign, suite, hiddenSuite, membership, hiddenMembership, account, hiddenAccount, binding, hiddenBinding, debt, attempt, issue, work,
                 new CollectionGuard { AccountId = account.Id, AttemptId = attempt.Id, ObligationId = debt.Id },
                 new BuildingManager { UserId = manager.Id, BuildingId = building.Id }, new BuildingManager { UserId = otherManager.Id, BuildingId = building.Id },
                 new BuildingManager { UserId = outsider.Id, BuildingId = foreign.Id });
@@ -54,6 +55,7 @@ public static class FinancialExceptionContract
             return await action(scope.ServiceProvider.GetRequiredService<FinancialExceptionActions>());
         }
         var rows = await As(actor, x => x.ReadAsync()); Assert.Single(rows); Assert.Equal(issue.Id, rows.Single().Id);
+        Assert.Equal(CollectionWorkState.Queued, rows.Single().WorkState); Assert.Equal(0, rows.Single().AutomaticAttempts);
         Assert.Equal(2, rows.Single().Owners.Count); Assert.Equal(debt.Id, rows.Single().Items.Single().ObligationId);
         Assert.Empty(await As(tenant, x => x.ReadAsync())); Assert.Empty(await As(actor with { ChallengedMfa = false }, x => x.ReadAsync()));
         Assert.Single(await As(actor with { ManagedBuildings = new HashSet<Guid> { building.Id, foreign.Id } }, x => x.ReadAsync()));

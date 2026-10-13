@@ -190,6 +190,98 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                     b.ToTable("collection_guards", (string)null);
                 });
 
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.CollectionWork", b =>
+                {
+                    b.Property<string>("AttemptId")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("attempt_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("ApiVersion")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("api_version")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int")
+                        .HasColumnName("attempts");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("Failures")
+                        .HasColumnType("int")
+                        .HasColumnName("failures");
+
+                    b.Property<DateTime?>("FirstFailureAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("first_failure_at");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("last_error")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("LeaseToken")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("lease_token")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<DateTime?>("LeaseUntil")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("lease_until");
+
+                    b.Property<DateTime>("NextAttemptAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("next_attempt_at");
+
+                    b.Property<string>("OriginSpanId")
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)")
+                        .HasColumnName("origin_span_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("OriginTraceId")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("origin_trace_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("PaymentMethodConfiguration")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("payment_method_configuration")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("PublicOrigin")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)")
+                        .HasColumnName("public_origin")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("state");
+
+                    b.HasKey("AttemptId");
+
+                    b.HasIndex("State", "NextAttemptAt", "CreatedAt", "AttemptId");
+
+                    b.ToTable("collection_work", (string)null);
+                });
+
             modelBuilder.Entity("AllenBuilding.Domain.Billing.FinancialException", b =>
                 {
                     b.Property<string>("Id")
@@ -2055,6 +2147,15 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .WithMany()
                         .HasForeignKey("AttemptId", "ObligationId", "AccountId")
                         .HasPrincipalKey("AttemptId", "ObligationId", "AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.CollectionWork", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Billing.PaymentAttempt", null)
+                        .WithOne()
+                        .HasForeignKey("AllenBuilding.Domain.Billing.CollectionWork", "AttemptId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

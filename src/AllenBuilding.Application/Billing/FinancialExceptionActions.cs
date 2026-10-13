@@ -14,7 +14,8 @@ public sealed record FinancialCaseView(Guid Id, Guid Version, Guid BuildingId, G
     FinancialExceptionState State, FinancialFailure Failure, string? OwnerUserId, string ProviderAccount, bool LiveMode, string CustomerId,
     string? SessionId, string? PaymentId, Guid OriginalOperationId, PaymentAttemptState AttemptState, string? LastVerifiedState,
     DateTimeOffset? LastVerifiedAt, DateTimeOffset FirstSeenAt, IReadOnlyList<FinancialCaseItem> Items,
-    IReadOnlyList<FinancialCaseOwner> Owners, IReadOnlyList<FinancialCaseHistory> History);
+    IReadOnlyList<FinancialCaseOwner> Owners, IReadOnlyList<FinancialCaseHistory> History, int? AutomaticAttempts = null, int? Failures = null,
+    CollectionWorkState? WorkState = null, DateTimeOffset? NextAttemptAt = null);
 public interface IFinancialExceptionStore
 {
     Task<IReadOnlyList<FinancialCaseView>> ReadAsync(Actor actor, bool includeResolved, CancellationToken cancellationToken);

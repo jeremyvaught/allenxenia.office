@@ -1,5 +1,6 @@
 using AllenBuilding.Application.Access;
 using AllenBuilding.Application.Billing;
+using AllenBuilding.Application.Diagnostics;
 using AllenBuilding.Domain.Billing;
 using AllenBuilding.Infrastructure.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -40,6 +41,8 @@ public sealed class CollectionStore(OfficeDbContext db, ICurrentActor current, C
         catch (ArgumentException) { return new(CollectionCode.ValidationFailed); }
         catch (OverflowException) { return new(CollectionCode.ValidationFailed); }
         db.PaymentAttempts.Add(attempt);
+        var origin = OfficeTelemetry.Capture();
+        db.CollectionWork.Add(CollectionWork.Enqueue(attempt, policy.Profile!, origin?.TraceId, origin?.SpanId));
         foreach (var item in attempt.Items) db.CollectionGuards.Add(new CollectionGuard { AttemptId = attempt.Id, AccountId = attempt.AccountId, ObligationId = item.ObligationId });
         audit.Audit(actor.UserId, "CollectionAdmitted", command.AccountId.ToString("D"), "Attempt " + attempt.Id.ToString("D"));
         try
@@ -55,7 +58,7 @@ public sealed class CollectionStore(OfficeDbContext db, ICurrentActor current, C
 
     private async Task<bool> Authorize(Actor actor, Guid accountId, CancellationToken cancellationToken)
     {
-        if (!policy.Enabled || !PaymentReferences.Valid(policy.ProviderAccount, "acct_")) return false;
+        if (!policy.Enabled || policy.Profile is null || !PaymentReferences.Valid(policy.ProviderAccount, "acct_")) return false;
         await AuthorityLocks.UserAsync(db, actor.UserId, cancellationToken);
         var membershipId = await db.RentAccounts.AsNoTracking().Where(x => x.Id == accountId).Select(x => (Guid?)x.MembershipId).SingleOrDefaultAsync(cancellationToken);
         if (membershipId is null) return false;
