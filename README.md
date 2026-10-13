@@ -40,6 +40,8 @@ Read the invitation link from `src/AllenBuilding.Web/.data/mail`. Use separate b
 
 The optional development assistant reads `OPENAI_API_KEY` from ignored repository-root `.env.local`, restricted with `chmod 600 .env.local`. Never paste a key into chat or commit it. Restart the server after replacement. The ordinary portal works without it. Production does not load this developer file and defaults to disabled assistance.
 
+Local assistant limits use the signed-in person, or the visitor's IP when anonymous: five turns/minute, twenty admissions/hour and two concurrent review/help-page requests. The server-wide ceiling remains one hundred admissions/day. These are in-memory development limits; production still requires durable cost controls. Displayed timestamps use Eastern time with EST/EDT labels; stored instants remain UTC and calendar due dates are unchanged.
+
 ## Three engineering stories
 
 **Authorization and concurrency:** controllers call shared application use cases. SQL scopes records to their original tenant membership before loading them. Manager transitions require MFA and reviewed versions; ordinary tenant comments append safely despite intervening manager activity.
@@ -62,7 +64,7 @@ python3 -m unittest discover -s tests/scripts -v
 
 The MySQL script requires Docker and creates a disposable loopback database. Its shared contract is skipped by ordinary tests and runs separately. Browser fixtures use isolated synthetic accounts/data. Coverage: `./scripts/coverage.sh`; run it alone with the preview stopped because it instruments shared assemblies. Reports and screenshots remain under ignored `artifacts/`. Percentages are improvement goals; behavioral checks gate releases.
 
-Latest remediation evidence: 134 domain and 477 ordinary integration checks, separate actual MySQL contract, eighteen browser journeys and nine Python helper checks pass. Release has zero warnings/errors. Revision `046775d` supplies a verified 393-file self-contained Linux x64 package; the isolated Production/MySQL restore and wrapped-key continuity checks pass on an image without .NET installed. Browser emulation does not establish real-device acceptance. Coverage remains from the earlier assistant checkpoint.
+Latest follow-up evidence: 134 domain and 489 ordinary integration checks, twenty-one browser journeys and nine Python helper checks pass. Release has zero warnings/errors. The shared actual MySQL contract was verified in the earlier remediation; no SQL/schema changes occurred in this follow-up. Revision `a5a21b1` supplies a verified 393-file self-contained Linux x64 package; styled missing-page/article responses, isolated Production/MySQL restore and wrapped-key continuity pass on an image without .NET installed. Browser emulation does not establish real-device acceptance. Coverage remains from the earlier assistant checkpoint.
 
 ## Scope and launch limits
 
