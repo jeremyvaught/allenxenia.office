@@ -30,6 +30,10 @@ builder.Services.AddScoped<AllenBuilding.Application.Knowledge.IKnowledgeStore, 
 builder.Services.AddScoped<AllenBuilding.Application.Knowledge.KnowledgeActions>();
 builder.Services.AddScoped<AllenBuilding.Application.Billing.IBillingStore, BillingStore>();
 builder.Services.AddScoped<AllenBuilding.Application.Billing.BillingActions>();
+// Admission is wired but remains unavailable until provider dispatch and reconciliation are verified.
+builder.Services.AddSingleton(new AllenBuilding.Application.Billing.CollectionPolicy(false, "", false));
+builder.Services.AddScoped<AllenBuilding.Application.Billing.ICollectionStore, CollectionStore>();
+builder.Services.AddScoped<AllenBuilding.Application.Billing.CollectionActions>();
 builder.Services.AddScoped<BillingReviewTickets>();
 builder.Services.AddScoped<AllenBuilding.Application.Reporting.IManagementReportReader, ManagementReportReader>();
 builder.Services.AddScoped<AllenBuilding.Application.Reporting.ManagementReportQueries>();
