@@ -11,13 +11,14 @@ public sealed record FinancialCaseCommand(Guid OperationId, Guid Id, Guid Versio
 public sealed record FinancialCaseItem(Guid ObligationId, Guid ReviewedVersion, long AmountMinorUnits, string Currency);
 public sealed record FinancialCaseOwner(string UserId, string Label);
 public sealed record FinancialCashFact(Guid Id, CashMovementKind Kind, long SignedMinorUnits, string Currency, string SourceId, string TransactionId, DateTimeOffset ProviderAt, CashMovementReviewState? ReviewState, Guid? ReviewVersion);
+public sealed record FinancialSourceCheck(Guid Id, string SourceId, CollectionWorkState State, int Attempts, int Failures, DateTimeOffset NextAttemptAt, string? LastError);
 public sealed record FinancialCaseHistory(string Action, string? ActorUserId, string? Reason, DateTimeOffset OccurredAt);
 public sealed record FinancialCaseView(Guid Id, Guid Version, Guid BuildingId, Guid AccountId, Guid AttemptId, string Suite,
     FinancialExceptionState State, FinancialFailure Failure, string? OwnerUserId, string ProviderAccount, bool LiveMode, string CustomerId,
     string? SessionId, string? PaymentId, Guid OriginalOperationId, PaymentAttemptState AttemptState, string? LastVerifiedState,
     DateTimeOffset? LastVerifiedAt, DateTimeOffset FirstSeenAt, IReadOnlyList<FinancialCaseItem> Items,
     IReadOnlyList<FinancialCaseOwner> Owners, IReadOnlyList<FinancialCaseHistory> History, int? AutomaticAttempts = null, int? Failures = null,
-    CollectionWorkState? WorkState = null, DateTimeOffset? NextAttemptAt = null, bool CanReconcile = false, IReadOnlyList<FinancialCashFact>? CashFacts = null);
+    CollectionWorkState? WorkState = null, DateTimeOffset? NextAttemptAt = null, bool CanReconcile = false, IReadOnlyList<FinancialCashFact>? CashFacts = null, IReadOnlyList<FinancialSourceCheck>? SourceChecks = null);
 public interface IFinancialExceptionStore
 {
     Task<IReadOnlyList<FinancialCaseView>> ReadAsync(Actor actor, bool includeResolved, CancellationToken cancellationToken);

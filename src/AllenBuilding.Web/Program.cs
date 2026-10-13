@@ -41,6 +41,10 @@ builder.Services.AddScoped<AllenBuilding.Application.Billing.FinancialExceptionA
 builder.Services.AddSingleton(new AllenBuilding.Application.Billing.RefundDispositionPolicy(builder.Environment.IsEnvironment("Testing") && builder.Configuration.GetValue<bool>("Billing:RefundReviewEnabled")));
 builder.Services.AddScoped<AllenBuilding.Application.Billing.IRefundDispositionStore, RefundDispositionStore>();
 builder.Services.AddScoped<AllenBuilding.Application.Billing.RefundDispositionActions>();
+builder.Services.AddSingleton(new AllenBuilding.Application.Billing.CashSourceRecoveryPolicy(builder.Environment.IsEnvironment("Testing") && builder.Configuration.GetValue<bool>("Billing:CashSourceReviewEnabled")));
+builder.Services.AddScoped<AllenBuilding.Application.Billing.ICashSourceRecoveryStore, CashSourceRecoveryStore>();
+builder.Services.AddScoped<AllenBuilding.Application.Billing.CashSourceRecoveryActions>();
+// No hosted reader or Stripe credential is registered while full payment agreement is unfinished.
 builder.Services.AddScoped<AllenBuilding.Application.Billing.IPaymentWebhookReceiver, AllenBuilding.Application.Billing.DisabledPaymentWebhookReceiver>();
 builder.Services.AddScoped<BillingReviewTickets>();
 builder.Services.AddScoped<AllenBuilding.Application.Reporting.IManagementReportReader, ManagementReportReader>();

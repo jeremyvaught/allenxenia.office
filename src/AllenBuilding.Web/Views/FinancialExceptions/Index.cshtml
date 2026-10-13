@@ -42,6 +42,28 @@
                     @if (facts.Count == 50) { <p class="mt-4 text-sm text-muted">Showing the 50 most recent movements; this list is not an account total.</p> }
                 </section>
             }
+            @if (item.SourceChecks is { Count: > 0 } sources) {
+                <section class="mt-6 rounded-xl border border-line p-4">
+                    <h3 class="font-semibold">Cash-source verification</h3>
+                    <p class="mt-2 text-sm text-muted">A completed source check confirms recorded cash evidence. Collection still needs an agreed debt disposition and full payment verification.</p>
+                    <ul class="mt-4 space-y-3">@foreach (var source in sources) { <li class="min-w-0 text-sm">
+                        <p class="break-all font-semibold">@source.SourceId</p>
+                        <p class="mt-1 text-muted">@(source.State switch { CollectionWorkState.Completed => "Cash evidence recorded", CollectionWorkState.Leased => "Verification in progress", CollectionWorkState.NeedsReview => "Manager review required", _ => "Verification queued" }) · @source.Attempts checks · @source.Failures failures</p>
+                        @if (source.State == CollectionWorkState.Queued) { <p class="mt-1 text-muted">Next check @source.NextAttemptAt.ToString("yyyy-MM-dd HH:mm 'UTC'")</p> }
+                        @if (source.LastError is { } error) { <p class="mt-1 text-muted">@(error switch { "ProviderUnknown" => "The provider result could not be verified.", "LeaseExpired" => "A worker stopped before verification finished.", "RetryLimit" => "Automatic verification reached its time or retry limit.", _ => "Provider evidence requires investigation." })</p> }
+                    </li> }</ul>
+                    @if (sources.Count == 25) { <p class="mt-4 text-sm text-muted">Showing up to 25 source checks, unfinished checks first. This list is not a cash total.</p> }
+                </section>
+            }
+            @if (ViewData["CashSourcesEnabled"] is true && item.AttemptState == PaymentAttemptState.Settled) {
+                <form asp-action="InvestigateSource" method="post" class="mt-6 space-y-3">
+                    <input name="Id" value="@item.Id" type="hidden" /><input name="Version" value="@item.Version" type="hidden" /><input name="OperationId" value="@Guid.NewGuid()" type="hidden" />
+                    <p class="text-sm text-muted">Retrieve a refund or dispute from the original captured payment. The reference must be verified against this account and payment. This action keeps collection on hold; it cannot issue a refund or change the original payment.</p>
+                    <label for="source-@item.Id" class="block">Refund or dispute reference</label><input id="source-@item.Id" name="SourceId" required maxlength="255" class="field" autocapitalize="none" autocomplete="off" spellcheck="false" placeholder="re_… or dp_… or du_…" />
+                    <label for="source-reason-@item.Id" class="block">Verification reason</label><textarea id="source-reason-@item.Id" name="Reason" required maxlength="2000" class="field" rows="3"></textarea>
+                    <button class="quiet-button">Request cash-source verification</button>
+                </form>
+            }
             @if (item.State != FinancialExceptionState.Resolved) {
                 <div class="mt-6 grid gap-5 sm:grid-cols-2">
                     <form asp-action="Assign" method="post" class="space-y-3">

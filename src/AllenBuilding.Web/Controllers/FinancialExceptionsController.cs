@@ -11,13 +11,14 @@ namespace AllenBuilding.Web.Controllers;
 
 [Authorize(Policy = OfficeSecurity.ManagerPolicy), ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class FinancialExceptionsController(FinancialExceptionActions actions, RefundDispositionActions refunds, RefundDispositionPolicy refundPolicy,
-    ICurrentActor current, BillingReviewTickets tickets, TimeProvider time) : Controller
+    CashSourceRecoveryActions cashSources, CashSourceRecoveryPolicy cashPolicy, ICurrentActor current, BillingReviewTickets tickets, TimeProvider time) : Controller
 {
     [HttpGet]
     public async Task<IActionResult> Index(bool includeResolved = false)
     {
         ViewData["IncludeResolved"] = includeResolved;
         ViewData["RefundsEnabled"] = refundPolicy.Enabled;
+        ViewData["CashSourcesEnabled"] = cashPolicy.Enabled;
         try { return View(await actions.ReadAsync(includeResolved, HttpContext.RequestAborted)); }
         catch (OperationCanceledException) { return StatusCode(StatusCodes.Status503ServiceUnavailable, "Financial cases could not be loaded. Retry the queue."); }
         catch (System.Data.Common.DbException) { return StatusCode(StatusCodes.Status503ServiceUnavailable, "Financial cases could not be loaded. Retry the queue."); }
@@ -70,6 +71,19 @@ public sealed class FinancialExceptionsController(FinancialExceptionActions acti
         TempData["Notice"] = "Refund allocation and reviewed debt disposition recorded. Collection stays on hold pending provider agreement.";
         return RedirectToAction(nameof(Index));
     }
+    [Authorize(Policy = OfficeSecurity.RecentManagerPolicy), HttpPost, RequestSizeLimit(32768)]
+    public async Task<IActionResult> InvestigateSource(CashSourceForm form)
+    {
+        if (!cashPolicy.Enabled) return NotFound();
+        if (!ModelState.IsValid) return BadRequest();
+        var result = await cashSources.RequestAsync(new(form.OperationId, form.Id, form.Version, form.SourceId, form.Reason), HttpContext.RequestAborted);
+        if (result.Code == BillingCode.Success)
+        {
+            TempData["Notice"] = "Cash-source verification requested. Collection stays on hold until provider evidence and debt disposition agree.";
+            return RedirectToAction(nameof(Index));
+        }
+        return result.Code switch { BillingCode.Unavailable => NotFound(), BillingCode.Conflict => StatusCode(StatusCodes.Status409Conflict, "This case or source check changed. Reload the queue."), _ => BadRequest() };
+    }
     private IActionResult RefundConflict() => StatusCode(StatusCodes.Status409Conflict, "This refund or obligation changed. Reload and review it again.");
     [Authorize(Policy = OfficeSecurity.RecentManagerPolicy), HttpPost]
     public Task<IActionResult> Assign(FinancialCaseForm form) => Change(form, FinancialCaseAction.Assign);
@@ -97,4 +111,13 @@ public sealed class FinancialCaseForm
     public Guid OperationId { get; set; }
     [Required, StringLength(2000)] public string Reason { get; set; } = "";
     [StringLength(450)] public string? OwnerUserId { get; set; }
+}
+
+public sealed class CashSourceForm
+{
+    public Guid Id { get; set; }
+    public Guid Version { get; set; }
+    public Guid OperationId { get; set; }
+    [Required, StringLength(255)] public string SourceId { get; set; } = "";
+    [Required, StringLength(2000)] public string Reason { get; set; } = "";
 }

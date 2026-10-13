@@ -263,6 +263,14 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await expect(manager.getByText('Allocation / debt disposition recorded — provider agreement pending', { exact: true })).toBeVisible();
     await expect(manager.getByRole('link', { name: 'Review debt disposition', exact: true })).toHaveCount(0);
     expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await manager.getByLabel('Refund or dispute reference', { exact: true }).fill(`re_browser_${testInfo.project.name.replaceAll('-', '_')}`);
+    await manager.getByLabel('Verification reason', { exact: true }).fill('Recheck original refund evidence without issuing a refund.');
+    await manager.getByRole('button', { name: 'Request cash-source verification', exact: true }).click();
+    await expect(manager.getByRole('heading', { name: 'Cash-source verification', exact: true })).toBeVisible();
+    await expect(manager.getByText('Verification queued', { exact: false })).toBeVisible();
+    await expect(manager.getByText('Allocation / debt disposition recorded — provider agreement pending', { exact: true })).toBeVisible();
+    expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await manager.screenshot({ path: `artifacts/browser/cash-source-queue-${testInfo.project.name}.png`, fullPage: true });
     await page.goto(refundPath);
     await expect(page).toHaveURL(/\/Account\/Denied/);
 

@@ -55,10 +55,13 @@ public sealed class FinancialExceptionStore(OfficeDbContext db, ICurrentActor cu
                               select new FinancialCashFact(movement.Id, movement.Kind, movement.SignedMinorUnits, movement.Currency, movement.SourceId,
                                   movement.TransactionId, movement.ProviderAt, review == null ? null : (CashMovementReviewState?)review.State, review == null ? null : (Guid?)review.Version))
                 .Take(50).ToListAsync(cancellationToken);
+            var sources = await db.CashSourceWork.AsNoTracking().Where(x => x.AttemptId == row.Attempt.Id && x.AccountId == row.Issue.AccountId)
+                .OrderBy(x => x.State == CollectionWorkState.Completed).ThenByDescending(x => x.CreatedAt).ThenBy(x => x.Id)
+                .Take(25).Select(x => new FinancialSourceCheck(x.Id, x.SourceId, x.State, x.Attempts, x.Failures, x.NextAttemptAt, x.LastError)).ToListAsync(cancellationToken);
             result.Add(new(row.Issue.Id, row.Issue.Version, row.BuildingId, row.Issue.AccountId, row.Attempt.Id, row.Suite, row.Issue.State, row.Issue.Failure,
                 row.Issue.OwnerUserId, row.Attempt.ProviderAccount, row.Attempt.LiveMode, row.Attempt.CustomerId, row.Attempt.SessionId, row.Attempt.PaymentId,
                 row.Attempt.OperationId, row.Attempt.State, row.Issue.LastVerifiedState ?? (row.LastCashAt is null ? null : "Paid"), row.Issue.LastVerifiedAt ?? row.LastCashAt,
-                row.Issue.FirstSeenAt, items, owners, history, row.Work?.Attempts, row.Work?.Failures, row.Work?.State, row.Work?.NextAttemptAt, CashFacts: cash));
+                row.Issue.FirstSeenAt, items, owners, history, row.Work?.Attempts, row.Work?.Failures, row.Work?.State, row.Work?.NextAttemptAt, CashFacts: cash, SourceChecks: sources));
         }
         // Discard protected rows when either the ticket or the current management grant ended during the read.
         var fresh = await current.GetAsync(cancellationToken);
