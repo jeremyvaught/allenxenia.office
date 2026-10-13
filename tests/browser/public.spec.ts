@@ -25,6 +25,9 @@ test('public pages fit a 320px viewport and serve compiled CSS', async ({ page }
     await expect(page.locator('h1')).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(await page.evaluate(() => getComputedStyle(document.body).fontFamily)).toContain('sans-serif');
+    const theme = await page.getByLabel('Theme', { exact: true }).boundingBox();
+    expect(theme!.height).toBeGreaterThanOrEqual(44);
+    expect(theme!.width).toBeGreaterThanOrEqual(44);
     const css = await page.locator('link[rel="stylesheet"]').getAttribute('href');
     const response = await page.request.get(css!);
     expect(response.status()).toBe(200);

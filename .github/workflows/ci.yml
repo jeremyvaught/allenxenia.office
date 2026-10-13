@@ -32,7 +32,7 @@ jobs:
           retention-days: 14
       - run: dotnet format --verify-no-changes --no-restore
       - run: ./scripts/verify-mysql.sh
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium webkit
       - run: npm run test:browser
       - name: Preserve SQL report evidence
         if: always()

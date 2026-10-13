@@ -123,13 +123,13 @@ This measures application C# and source-mapped Razor exercised by the ordinary d
 
 ## Frontend and browser verification
 
-The shared MVC layout uses compiled Tailwind v4 and semantic light/dark tokens. System is the initial preference; explicit Light/Dark is retained on the browser and System removes the override. Live enrollment remains pending while delivery and pilot operations are completed.
+The shared MVC layout uses compiled Tailwind v4 and semantic light/dark tokens. System is the initial preference; explicit Light/Dark is retained on the browser and System removes the override. Shared dropdown styling keeps native HTML select semantics while normalizing WebKit's compact menu rendering, with a theme-aware decorative indicator and space for its selected text. Browser checks require at least 44px height/width for theme and report selectors. Live enrollment remains pending while delivery and pilot operations are completed.
 
 ```sh
-npx playwright install chromium
+npx playwright install chromium webkit
 npm run test:browser
 ```
 
-Browser tests cover System/OS changes, explicit preference across reloads, CSS delivery and a full tenant/manager maintenance workflow, requests recorded on a tenant’s behalf, filtered open/finished management queues, contractor deactivation and draft/public/private/withdrawn help flows, existing-account suite grants and invitation reissue/revocation and reviewed rent-account/terms/charge/period workflows at 320px in both themes. They create their own synthetic SQLite database, protected keys and accounts under ignored `artifacts/browser-fixture`, and start an isolated server on loopback port 5088. No test-only enrollment route exists in the application. Screenshots live under `artifacts/browser`. Emulation is not evidence of a real iPhone/Android acceptance run. `npm run dev:css` watches styles during development; rebuild CSS before .NET build/publish so static-asset manifests include it.
+Browser tests cover System/OS changes, explicit preference across reloads, CSS delivery and a full tenant/manager maintenance workflow, requests recorded on a tenant’s behalf, filtered open/finished management queues, contractor deactivation and draft/public/private/withdrawn help flows, existing-account suite grants and invitation reissue/revocation and reviewed rent-account/terms/charge/period workflows at 320px in both themes. Projects cover desktop Chromium, mobile Chromium and mobile WebKit. The npm command runs WebKit against its own fresh fixture server so the combined sign-in traffic does not exhaust the shared loopback IP account limit. Production rate limits remain unchanged. They create their own synthetic SQLite database, protected keys and accounts under ignored `artifacts/browser-fixture`, and start an isolated server on loopback port 5088. No test-only enrollment route exists in the application. Screenshots live under `artifacts/browser`. Emulation is not evidence of a real iPhone/Android acceptance run. `npm run dev:css` watches styles during development; rebuild CSS before .NET build/publish so static-asset manifests include it.
 
 The build pins `@parcel/watcher` 2.6.0 through an npm override to remove the unpatched `braces` dependency found during the initial audit. Recheck CSS compilation and watch behavior when changing that pin.

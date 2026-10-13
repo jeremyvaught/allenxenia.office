@@ -42,7 +42,7 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
   const managerContext = await browser.newContext({ baseURL: 'http://127.0.0.1:5088', viewport: { width: 320, height: 800 },
-    colorScheme: 'light', isMobile: testInfo.project.name === 'mobile', hasTouch: testInfo.project.name === 'mobile' });
+    colorScheme: 'light', isMobile: Boolean(testInfo.project.use.isMobile), hasTouch: Boolean(testInfo.project.use.hasTouch) });
   const manager = await managerContext.newPage();
   try {
     await login(manager, account.managerEmail, account.password);
@@ -223,6 +223,11 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await expect(manager.getByRole('link', { name: new RegExp(behalfTitle) })).toHaveCount(0);
     expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await manager.getByRole('link', { name: 'Reset report', exact: true }).click();
+    for (const select of await manager.locator('select').all()) {
+      const bounds = await select.boundingBox();
+      expect(bounds!.height).toBeGreaterThanOrEqual(44);
+      expect(bounds!.width).toBeGreaterThanOrEqual(44);
+    }
     await manager.screenshot({ path: `artifacts/browser/report-${testInfo.project.name}.png`, fullPage: true });
     await page.goto('/Reports/Maintenance');
     await expect(page).toHaveURL(/\/Account\/Denied/);

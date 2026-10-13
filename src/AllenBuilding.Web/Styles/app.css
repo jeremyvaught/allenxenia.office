@@ -30,6 +30,7 @@
   --line: #d9e0d8;
   --brand: #25664b;
   --brand-soft: #e4efe7;
+  --select-indicator: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%2353645b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -40,6 +41,7 @@
   --line: #34483a;
   --brand: #96d6af;
   --brand-soft: #233d2e;
+  --select-indicator: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%23b7c8ba' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -51,7 +53,17 @@
     --line: #34483a;
     --brand: #96d6af;
     --brand-soft: #233d2e;
+    --select-indicator: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%23b7c8ba' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   }
+}
+/* Normalize native WebKit menus while keeping the accessible HTML select control. */
+select {
+  appearance: none;
+  padding-right: 2.5rem;
+  background-image: var(--select-indicator);
+  background-position: right 0.75rem center;
+  background-repeat: no-repeat;
+  background-size: 1rem;
 }
 @layer base {
   body { @apply bg-surface font-sans text-ink antialiased; }

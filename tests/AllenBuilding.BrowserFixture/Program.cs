@@ -27,7 +27,7 @@ var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); var users 
 await db.Database.MigrateAsync();
 const string password = "Synthetic-browser-2026!";
 var fixtures = new Dictionary<string, object>();
-foreach (var project in new[] { "chromium", "mobile" })
+foreach (var project in new[] { "chromium", "mobile", "webkit-mobile" })
 {
     var building = new Building { Name = $"Browser test {project}" }; var suite = new Suite { BuildingId = building.Id, Name = "Synthetic office" };
     db.AddRange(building, suite); await db.SaveChangesAsync();
