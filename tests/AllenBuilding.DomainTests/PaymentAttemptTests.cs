@@ -103,6 +103,21 @@ public sealed class PaymentAttemptTests
     }
 
     [Fact]
+    public void Lost_handoff_can_reconcile_processing_or_verified_expiration_without_replacement()
+    {
+        var binding = Binding(); var item = Item(binding.AccountId, 1000);
+        var processing = PaymentAttempt.Admit(Guid.NewGuid(), "payer", binding, new[] { item }, Now);
+        processing.BeginDispatch(Now);
+        Assert.Throws<InvalidOperationException>(() => processing.ObserveVerifiedProcessing("acct_other", false, binding.CustomerId, "cs_original"));
+        processing.ObserveVerifiedProcessing(binding.ProviderAccount, false, binding.CustomerId, "cs_original");
+        Assert.Equal("cs_original", processing.SessionId); Assert.Equal(PaymentAttemptState.Processing, processing.State);
+        Assert.Throws<InvalidOperationException>(() => processing.ObserveVerifiedProcessing(binding.ProviderAccount, false, binding.CustomerId, "cs_other"));
+        var expired = PaymentAttempt.Admit(Guid.NewGuid(), "payer", binding, new[] { item }, Now); expired.BeginDispatch(Now);
+        expired.ConfirmVerifiedUncollected(binding.ProviderAccount, false, binding.CustomerId, "cs_expired");
+        Assert.Equal(PaymentAttemptState.Uncollected, expired.State); Assert.Equal("cs_expired", expired.SessionId);
+    }
+
+    [Fact]
     public void Invalid_customer_scope_and_missing_payer_operation_are_rejected_before_admission()
     {
         Assert.Throws<ArgumentException>(() => BillingCustomerBinding.Create(Guid.NewGuid(), "acct_", false, "cus_synthetic", Now));

@@ -121,6 +121,14 @@ public sealed class PaymentAttempt
             throw new InvalidOperationException("Processing requires the original canonical session.");
         Set(PaymentAttemptState.Processing);
     }
+    public void ObserveVerifiedProcessing(string providerAccount, bool liveMode, string customerId, string sessionId)
+    {
+        if (State is not (PaymentAttemptState.Dispatching or PaymentAttemptState.HandoffReady or PaymentAttemptState.Processing or PaymentAttemptState.NeedsReview) ||
+            providerAccount != ProviderAccount || liveMode != LiveMode || customerId != CustomerId ||
+            !PaymentReferences.Valid(sessionId, "cs_") || (SessionId is not null && SessionId != sessionId))
+            throw new InvalidOperationException("Processing requires verified original provider ownership.");
+        SessionId = sessionId; Set(PaymentAttemptState.Processing);
+    }
     public void RequireReview()
     {
         if (State is PaymentAttemptState.Settled or PaymentAttemptState.Uncollected) throw new InvalidOperationException("Terminal collection history cannot be replaced.");
@@ -142,7 +150,7 @@ public sealed class PaymentAttempt
     }
     public void ConfirmVerifiedUncollected(string providerAccount, bool liveMode, string customerId, string sessionId)
     {
-        if (State is not (PaymentAttemptState.HandoffReady or PaymentAttemptState.Processing or PaymentAttemptState.NeedsReview) ||
+        if (State is not (PaymentAttemptState.Dispatching or PaymentAttemptState.HandoffReady or PaymentAttemptState.Processing or PaymentAttemptState.NeedsReview) ||
             providerAccount != ProviderAccount || liveMode != LiveMode || customerId != CustomerId ||
             !PaymentReferences.Valid(sessionId, "cs_") || (SessionId is not null && sessionId != SessionId))
             throw new InvalidOperationException("Releasing a collection requires verified original provider state.");

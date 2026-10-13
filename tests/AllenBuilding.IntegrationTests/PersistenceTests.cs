@@ -131,6 +131,7 @@ public sealed class PersistenceTests
         await SettlementPaymentContract.VerifyAsync(create);
         await CollectionAdmissionContract.VerifyAsync(create);
         await PaymentWebhookContract.VerifyAsync(create);
+        await CollectionReconciliationContract.VerifyAsync(create);
     }
 
     private static async Task VerifyProtectedIdentity(Func<OfficeDbContext> create)

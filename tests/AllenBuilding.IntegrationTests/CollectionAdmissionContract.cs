@@ -80,6 +80,15 @@ public static class CollectionAdmissionContract
         var concurrent = new CollectReviewedBalances(Guid.NewGuid(), account.Id, await Review(fresh.Id));
         var results = await Task.WhenAll(Task.Run(() => Admit(concurrent)), Task.Run(() => Admit(concurrent with { OperationId = Guid.NewGuid() })));
         Assert.Single(results, x => x.Code == CollectionCode.Success); Assert.Single(results, x => x.Code == CollectionCode.Conflict);
+        var winningAttemptId = results.Single(x => x.Code == CollectionCode.Success).AttemptId;
+        await using (var db = create())
+        {
+            var unresolved = await db.PaymentAttempts.SingleAsync(x => x.Id == winningAttemptId);
+            unresolved.RequireReview(); db.CollectionGuards.Remove(await db.CollectionGuards.SingleAsync(x => x.ObligationId == fresh.Id));
+            await db.SaveChangesAsync();
+        }
+        var held = (await Review(fresh.Id)).Single(); Assert.True(held.Held); Assert.False(held.HasProviderInstruction);
+        Assert.Equal(CollectionCode.Conflict, (await Admit(concurrent with { OperationId = Guid.NewGuid() })).Code);
         // A long-lived context cannot reuse a tracked obligation after a concurrent ledger change.
         using (var scope = provider.CreateScope())
         {
