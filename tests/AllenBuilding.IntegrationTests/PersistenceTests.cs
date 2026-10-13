@@ -68,7 +68,10 @@ public sealed class PersistenceTests
             var oldBinding = BillingCustomerBinding.Create(oldAccount.Id, "acct_upgrade", false, "cus_upgrade", now);
             var oldDebt = Obligation.Issue(oldAccount.Id, new Money(1000), "Legacy dispatch debt", new DateOnly(2026, 10, 1), legacyUser.Id, now);
             var oldAttempt = PaymentAttempt.Admit(Guid.NewGuid(), legacyUser.Id, oldBinding, [new(oldDebt.Id, oldAccount.Id, oldDebt.Version, 1000)], now);
-            db.AddRange(oldBuilding, oldSuite, oldMembership, oldAccount, oldBinding, oldDebt, oldAttempt); await db.SaveChangesAsync();
+            db.AddRange(oldBuilding, oldSuite, oldMembership); await db.SaveChangesAsync();
+            // Seed the actual old schema, rather than inserting a new-model nullable column before its migration.
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO rent_accounts (id, membership_id, version) VALUES ({oldAccount.Id.ToString("D")}, {oldMembership.Id.ToString("D")}, {oldAccount.Version.ToString("D")})");
+            db.AddRange(oldBinding, oldDebt, oldAttempt); await db.SaveChangesAsync();
             await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO collection_work (attempt_id, api_version, public_origin, payment_method_configuration, state, lease_token, next_attempt_at, created_at, attempts, failures) VALUES ({oldAttempt.Id.ToString("D")}, {CheckoutProfile.ApiContract}, {"https://upgrade.example.test"}, {"pmc_upgrade"}, {"Queued"}, {Guid.Empty.ToString("D")}, {now.UtcDateTime}, {now.UtcDateTime}, {0}, {0})");
             await db.GetService<IMigrator>().MigrateAsync("CanonicalCashMovements");
             // Populated upgrade: original capture, pending returned-cash review and a pre-existing local credit survive the new composite relations.
@@ -81,7 +84,9 @@ public sealed class PersistenceTests
             var cashCapture = SettlementPayment.Record(cashAttempt, new(cashBinding.ProviderAccount, false, cashBinding.CustomerId, "cs_upgrade_cash", "pi_upgrade_cash", 1000, "USD"), now);
             var movement = CashMovement.Record(cashCapture, cashAttempt, new(cashBinding.ProviderAccount, false, cashAccount.Id, cashAttempt.Id, cashBinding.CustomerId, cashAttempt.PaymentId!, "re_upgrade_cash", "txn_upgrade_cash", CashMovementKind.Refund, -100, "USD", now), now);
             var cashReview = CashMovementReview.Open(movement);
-            db.AddRange(cashSuite, cashMembership, cashAccount, cashBinding, cashDebt, creditedDebt, cashAttempt, cashCapture, movement); await db.SaveChangesAsync();
+            db.AddRange(cashSuite, cashMembership); await db.SaveChangesAsync();
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO rent_accounts (id, membership_id, version) VALUES ({cashAccount.Id.ToString("D")}, {cashMembership.Id.ToString("D")}, {cashAccount.Version.ToString("D")})");
+            db.AddRange(cashBinding, cashDebt, creditedDebt, cashAttempt, cashCapture, movement); await db.SaveChangesAsync();
             await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO cash_movement_reviews (movement_id, account_id, state, version, created_at) VALUES ({movement.Id.ToString("D")}, {cashAccount.Id.ToString("D")}, {"Pending"}, {cashReview.Version.ToString("D")}, {now.UtcDateTime})");
             await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO obligation_credits (id, account_id, obligation_id, reviewed_version, operation_id, actor_id, kind, amount_minor_units, currency, reason, recorded_at) VALUES ({credit.Id.ToString("D")}, {cashAccount.Id.ToString("D")}, {creditedDebt.Id.ToString("D")}, {credit.ReviewedVersion.ToString("D")}, {credit.OperationId.ToString("D")}, {legacyUser.Id}, {"Credit"}, {1L}, {"USD"}, {credit.Reason}, {now.UtcDateTime})");
             await db.Database.MigrateAsync();
@@ -99,6 +104,7 @@ public sealed class PersistenceTests
             Assert.Equal(MessageState.Queued, upgraded.State); Assert.Equal(Guid.Empty, upgraded.LeaseToken);
             Assert.Equal(upgraded.CreatedAt, upgraded.NextAttemptAt);
             Assert.Null(upgraded.OriginTraceId); Assert.Null(upgraded.OriginSpanId); Assert.Null(upgraded.OriginOperationId);
+            Assert.Null((await db.RentAccounts.SingleAsync(x => x.Id == oldAccount.Id)).EndedAt);
             Assert.Empty(await db.Database.GetPendingMigrationsAsync());
             db.AddRange(user, building, suite, membership, request,
                 new ActiveGrant { UserId = user.Id, SuiteId = suite.Id, MembershipId = membership.Id });
@@ -160,6 +166,7 @@ public sealed class PersistenceTests
         await NotificationContract.VerifyAsync(create);
         await KnowledgeContract.VerifyAsync(create);
         await BillingContract.VerifyAsync(create);
+        await TenancyClosureContract.VerifyAsync(create);
         await AccessContract.VerifyAsync(create);
         await OperatorRecoveryContract.VerifyAsync(create);
         await MaintenanceQueueContract.VerifyAsync(create);

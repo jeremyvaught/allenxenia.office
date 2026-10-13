@@ -16,11 +16,17 @@ public sealed class RentAccount
     private RentAccount() { }
     public Guid Id { get; private set; }
     public Guid MembershipId { get; private set; }
+    public DateTimeOffset? EndedAt { get; private set; }
     public Guid Version { get; private set; }
     public static RentAccount Open(Guid id, Guid membershipId)
     {
         if (id == Guid.Empty || membershipId == Guid.Empty) throw new ArgumentException("A rent account and original membership are required.");
         return new RentAccount { Id = id, MembershipId = membershipId, Version = Guid.NewGuid() };
+    }
+    public void EndTenancy(DateTimeOffset now)
+    {
+        if (EndedAt is not null || now == default) throw new InvalidOperationException("The tenancy has already ended or the end time is invalid.");
+        EndedAt = now.ToUniversalTime(); Version = Guid.NewGuid();
     }
     public void TermsChanged() => Version = Guid.NewGuid();
 }

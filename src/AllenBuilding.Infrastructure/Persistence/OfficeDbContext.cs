@@ -28,6 +28,7 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
     public DbSet<FinancialExceptionHistory> FinancialExceptionHistory => Set<FinancialExceptionHistory>();
     public DbSet<PaymentAttemptItem> PaymentAttemptItems => Set<PaymentAttemptItem>();
     public DbSet<CollectionGuard> CollectionGuards => Set<CollectionGuard>();
+    public DbSet<TenancyClosure> TenancyClosures => Set<TenancyClosure>();
     public DbSet<RentAccount> RentAccounts => Set<RentAccount>();
     public DbSet<RentAgreement> RentAgreements => Set<RentAgreement>();
     public DbSet<BillingPeriod> BillingPeriods => Set<BillingPeriod>();
@@ -173,6 +174,15 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
             e.ToTable("rent_accounts"); e.HasKey(x => x.Id); e.Property(x => x.Version).IsConcurrencyToken();
             e.HasIndex(x => x.MembershipId).IsUnique();
             e.HasOne<Membership>().WithMany().HasForeignKey(x => x.MembershipId).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<TenancyClosure>(e =>
+        {
+            e.ToTable("tenancy_closures"); e.HasKey(x => x.AccountId); e.Property(x => x.Version).IsConcurrencyToken();
+            e.Property(x => x.ActorId).HasMaxLength(450); e.Property(x => x.Reason).HasMaxLength(2000); e.Property(x => x.State).HasConversion<string>().HasMaxLength(32);
+            e.HasIndex(x => new { x.ActorId, x.OperationId }).IsUnique(); e.HasIndex(x => new { x.State, x.RequestedAt, x.AccountId });
+            e.HasOne<RentAccount>().WithOne().HasForeignKey<TenancyClosure>(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Membership>().WithMany().HasForeignKey(x => x.MembershipId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.ActorId).OnDelete(DeleteBehavior.Restrict);
         });
         model.Entity<RentAgreement>(e =>
         {

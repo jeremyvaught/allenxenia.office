@@ -85,6 +85,7 @@ internal static class RentBalanceSql
         ), balances AS (
           SELECT o.*, o.amount_minor_units - COALESCE(c.amount,0) - COALESCE(p.amount,0) - COALESCE(r.amount,0) AS balance,
             CASE WHEN EXISTS (SELECT 1 FROM collection_guards g WHERE g.obligation_id = o.id)
+              OR EXISTS (SELECT 1 FROM tenancy_closures c WHERE c.account_id = o.account_id AND c.state <> 'Verified')
               OR EXISTS (SELECT 1 FROM financial_exceptions e WHERE e.account_id = o.account_id AND e.state <> 'Resolved')
               OR EXISTS (SELECT 1 FROM cash_movements m WHERE m.account_id = o.account_id AND NOT EXISTS
                          (SELECT 1 FROM cash_movement_reviews v WHERE v.movement_id = m.id AND v.state = 'Classified'

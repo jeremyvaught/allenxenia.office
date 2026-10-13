@@ -15,7 +15,13 @@
         <ul class="grid gap-4 md:grid-cols-2">@foreach (var obligation in Model.Obligations) { <li class="min-w-0 rounded-2xl border border-line bg-panel p-5"><h3 class="break-words font-semibold">@obligation.Description</h3><p class="my-2 text-2xl font-semibold">@BillingDisplay.Usd(obligation.IssuedMinorUnits) <span class="text-sm font-normal">USD issued</span></p><p class="text-muted">Due @obligation.DueOn.ToString("yyyy-MM-dd")</p>@if (obligation.PeriodStartsOn is { } start) { <p class="mt-2 text-sm text-muted">Period @start.ToString("yyyy-MM-dd") to @obligation.PeriodEndsOn?.ToString("yyyy-MM-dd") (end exclusive).</p> }@if (obligation.CreditedMinorUnits > 0) { <p class="mt-3">Recorded credits: @BillingDisplay.Usd(obligation.CreditedMinorUnits) USD</p><p>Charge after credits: @BillingDisplay.Usd(obligation.NetChargeMinorUnits) USD</p>@if (obligation.NetChargeMinorUnits is > 0 and < 50) { <p class="mt-2 text-sm text-muted">This small balance remains owed. It needs an eligible combined payment or an approved write-off.</p> } }<p class="mt-3 text-sm text-muted">@(Model.CollectionAvailable ? "View verified balances before paying" : "Payment status unavailable")</p></li> }</ul>
         <p class="mt-3 text-sm text-muted">Showing up to 100 obligations, ordered by due date.</p>
     </section>
-    @if (manager)
+    @if (manager && Model.Closure is { } closure)
+    {
+        <section aria-label="Pending billing closure" class="mb-6 rounded-2xl border border-line bg-panel p-6"><h2 class="mb-3 text-xl font-semibold">Tenancy access ended · Billing closure pending</h2>
+            <p class="mb-3">Access ended @Model.EndedAt?.ToString("yyyy-MM-dd HH:mm 'UTC'"). Provider cleanup and already-dispatched payments still require canonical reconciliation. Existing debt and credits remain.</p>
+            <p class="mb-4 break-words text-muted">Reason: @closure.Reason</p><a asp-controller="FinancialExceptions" asp-action="Index" class="quiet-button">Review financial exceptions</a></section>
+    }
+    @if (manager && Model.EndedAt is null)
     {
         <div class="grid items-start gap-6 lg:grid-cols-2">
             <section class="rounded-2xl border border-line bg-panel p-6"><h2 class="mb-3 text-xl font-semibold">Set or replace rent terms</h2><p class="mb-5 text-muted">Changes require a separate review. A replacement starts on the first of a month; existing charges stay unchanged.</p>
@@ -44,6 +50,10 @@
                 </section>
             </div>
         </div>
+        <section class="mt-6 rounded-2xl border border-line bg-panel p-6"><h2 class="mb-3 text-xl font-semibold">End this tenancy</h2>
+            <p class="mb-4 text-muted">This ends tenancy access and new ordinary billing immediately, while provider cleanup remains pending. Access-only revocation is separately available in building management.</p>
+            <form asp-action="PrepareEnd" method="post" class="space-y-4"><input type="hidden" name="OperationId" value="@Guid.NewGuid()" /><input type="hidden" name="AccountId" value="@Model.Id" /><input type="hidden" name="Version" value="@Model.Version" /><input type="hidden" name="MembershipVersion" value="@Model.MembershipVersion" />
+                <label for="end-reason" class="block">Reason for ending tenancy</label><textarea id="end-reason" name="Reason" required maxlength="2000" class="field"></textarea><button class="quiet-button">Review tenancy end</button></form></section>
         <a asp-controller="Account" asp-action="Reauthenticate" class="mt-6 flex min-h-11 items-center underline">Verify sign-in for sensitive changes</a>
     }
     <a asp-action="@(manager ? "Manage" : "Index")" class="mt-6 flex min-h-11 items-center underline">Return to billing accounts</a>

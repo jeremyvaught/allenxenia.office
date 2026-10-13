@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 
 namespace AllenBuilding.Infrastructure.Persistence;
 
-public sealed class BillingStore(OfficeDbContext db, ICurrentActor current, AccountInvitations audit, TimeProvider time) : IBillingStore
+public sealed partial class BillingStore(OfficeDbContext db, ICurrentActor current, AccountInvitations audit, TimeProvider time) : IBillingStore
 {
     public async Task<IReadOnlyList<BillingAccount>> ReadAsync(Actor actor, bool management, CancellationToken cancellationToken, Guid? accountId)
     {
@@ -18,7 +18,7 @@ public sealed class BillingStore(OfficeDbContext db, ICurrentActor current, Acco
                     join user in db.Users on membership.UserId equals user.Id
                     where accountId == null || account.Id == accountId
                     orderby suite.Name, account.Id
-                    select new { Account = account, Suite = suite.Name, user.Email };
+                    select new { Account = account, Suite = suite.Name, user.Email, MembershipVersion = membership.Version };
         var rows = await query.Take(50).ToListAsync(cancellationToken);
         var result = new List<BillingAccount>();
         foreach (var row in rows)
@@ -35,7 +35,9 @@ public sealed class BillingStore(OfficeDbContext db, ICurrentActor current, Acco
                                      charge.Currency, charge.DueOn, period == null ? null : (DateOnly?)period.StartsOn, period == null ? null : (DateOnly?)period.EndsOn,
                                      db.ObligationCredits.Where(c => c.ObligationId == charge.Id).Sum(c => (long?)c.AmountMinorUnits) ?? 0))
                 .Take(100).ToListAsync(cancellationToken);
-            result.Add(new(row.Account.Id, row.Account.Version, row.Suite, terms, charges, false, row.Account.MembershipId, management ? row.Email : null));
+            var closure = management ? await db.TenancyClosures.AsNoTracking().Where(x => x.AccountId == row.Account.Id)
+                .Select(x => new BillingClosureView(x.State, x.RequestedAt, x.Reason)).SingleOrDefaultAsync(cancellationToken) : null;
+            result.Add(new(row.Account.Id, row.Account.Version, row.Suite, terms, charges, false, row.Account.MembershipId, management ? row.Email : null, row.MembershipVersion, row.Account.EndedAt, closure));
         }
         if (result.Count == 0) return [];
         var fresh = await FreshReader(actor, management, cancellationToken); if (fresh is null) return [];
@@ -107,7 +109,7 @@ public sealed class BillingStore(OfficeDbContext db, ICurrentActor current, Acco
                               select charge).SingleOrDefaultAsync(cancellationToken);
         if (existing is not null) return await ReleasePreview(actor, new(account.Id, account.Version, existing.AmountMinorUnits, existing.DueOn, monthPeriod.StartsOn, monthPeriod.EndsOn, true), cancellationToken);
         var terms = await db.RentAgreements.AsNoTracking().SingleOrDefaultAsync(x => x.AccountId == account.Id && x.StartsOn <= monthPeriod.StartsOn && (x.EndsOn == null || x.EndsOn >= monthPeriod.EndsOn), cancellationToken);
-        if (terms is null) return null;
+        if (terms is null || account.EndedAt is not null) return null;
         var calendar = RentCalendar.ForMonth(account.Id, year, month, terms.DueDay);
         return await ReleasePreview(actor, new(account.Id, account.Version, terms.AmountMinorUnits, calendar.DueOn, calendar.StartsOn, calendar.EndsOn, false), cancellationToken);
     }
@@ -141,7 +143,7 @@ public sealed class BillingStore(OfficeDbContext db, ICurrentActor current, Acco
         var account = await Admit(actor, command.AccountId, cancellationToken);
         if (account is null) return new(BillingCode.Unavailable);
         var replay = await Replay(actor.UserId, command.OperationId, hash, cancellationToken); if (replay is not null) return replay;
-        if (account.Version != command.Version) return new(BillingCode.Conflict);
+        if (account.Version != command.Version || account.EndedAt is not null) return new(BillingCode.Conflict);
         var agreements = await db.RentAgreements.Where(x => x.AccountId == account.Id).ToListAsync(cancellationToken);
         foreach (var agreement in agreements) await db.Entry(agreement).ReloadAsync(cancellationToken);
         var replacement = RentAgreement.Create(account.Id, new Money(command.AmountMinorUnits), command.DueDay, command.StartsOn, command.EndsOn, actor.UserId, time.GetUtcNow());
@@ -160,7 +162,7 @@ public sealed class BillingStore(OfficeDbContext db, ICurrentActor current, Acco
         var account = await Admit(actor, command.AccountId, cancellationToken);
         if (account is null) return new(BillingCode.Unavailable);
         var replay = await Replay(actor.UserId, command.OperationId, hash, cancellationToken); if (replay is not null) return replay;
-        if (account.Version != command.Version) return new(BillingCode.Conflict);
+        if (account.Version != command.Version || account.EndedAt is not null) return new(BillingCode.Conflict);
         var charge = Obligation.Issue(account.Id, new Money(command.AmountMinorUnits), command.Description, command.DueOn, actor.UserId, time.GetUtcNow());
         db.Obligations.Add(charge);
         return await Commit(transaction, actor, command.OperationId, hash, account, charge.Id, "ChargeIssued", cancellationToken);
@@ -172,7 +174,7 @@ public sealed class BillingStore(OfficeDbContext db, ICurrentActor current, Acco
         var account = await Admit(actor, command.AccountId, cancellationToken);
         if (account is null) return new(BillingCode.Unavailable);
         var replay = await Replay(actor.UserId, command.OperationId, hash, cancellationToken); if (replay is not null) return replay;
-        if (account.Version != command.Version) return new(BillingCode.Conflict);
+        if (account.Version != command.Version || account.EndedAt is not null) return new(BillingCode.Conflict);
         var month = RentCalendar.ForMonth(account.Id, command.Year, command.Month, 1);
         var existing = await (from period in db.BillingPeriods
                               join charge in db.Obligations on period.Id equals charge.PeriodId

@@ -335,5 +335,24 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await expect(page).toHaveURL(/\/Account\/Denied/);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Access unavailable');
 
+    await manager.goto(`/Billing/ManageAccount/${account.paymentAccountId}`);
+    await manager.getByLabel('Reason for ending tenancy', { exact: true }).fill('Tenant has left this suite. Reconcile existing provider instructions.');
+    await manager.getByRole('button', { name: 'Review tenancy end', exact: true }).click();
+    await expect(manager.getByRole('heading', { level: 1 })).toHaveText('End tenancy and revoke access');
+    expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await manager.getByRole('button', { name: 'Confirm reviewed change', exact: true }).click();
+    await expect(manager.getByRole('region', { name: 'Pending billing closure' })).toBeVisible();
+    await expect(manager.getByRole('button', { name: 'Review tenancy end', exact: true })).toHaveCount(0);
+    await expect(manager.getByRole('button', { name: 'Review calendar rent', exact: true })).toHaveCount(0);
+    const endedPayment = await page.goto(paymentPath); expect(endedPayment!.status()).toBe(404);
+    await manager.goto('/Billing/Closures');
+    await expect(manager.getByRole('heading', { level: 1 })).toHaveText('Pending billing closures');
+    await expect(manager.getByText('Tenant has left this suite. Reconcile existing provider instructions.', { exact: true })).toBeVisible();
+    expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    for (const link of await manager.locator('main .quiet-button').all()) {
+      const bounds = await link.boundingBox(); expect(bounds!.height).toBeGreaterThanOrEqual(44);
+    }
+    await manager.screenshot({ path: `artifacts/browser/billing-closure-${testInfo.project.name}.png`, fullPage: true });
+
   } finally { await managerContext.close(); }
 });

@@ -27,6 +27,8 @@ public sealed class BillingController(BillingActions actions, ICurrentActor curr
     [Authorize(Policy = OfficeSecurity.ManagerPolicy), HttpGet]
     public async Task<IActionResult> Manage() => Enabled ? View(new BillingManagement(await actions.ReadAsync(true), await actions.CandidatesAsync())) : NotFound();
     [Authorize(Policy = OfficeSecurity.ManagerPolicy), HttpGet]
+    public async Task<IActionResult> Closures() => Enabled ? View(await actions.ClosuresAsync()) : NotFound();
+    [Authorize(Policy = OfficeSecurity.ManagerPolicy), HttpGet]
     public async Task<IActionResult> ManageAccount(Guid id) => await AccountView(id, true);
 
     [Authorize(Policy = OfficeSecurity.RecentManagerPolicy), HttpPost]
@@ -102,6 +104,22 @@ public sealed class BillingController(BillingActions actions, ICurrentActor curr
     }
 
     [Authorize(Policy = OfficeSecurity.RecentManagerPolicy), HttpPost]
+    public async Task<IActionResult> PrepareEnd(EndTenancy command)
+    {
+        if (!Enabled) return NotFound();
+        if (!ModelState.IsValid || command.OperationId == Guid.Empty || !TenancyClosure.ValidReason(command.Reason)) return Failure(BillingCode.ValidationFailed);
+        var account = (await actions.ReadAsync(true, accountId: command.AccountId)).SingleOrDefault();
+        if (account is null) return NotFound();
+        if (account.Version != command.Version || account.MembershipVersion != command.MembershipVersion || account.EndedAt is not null) return Failure(BillingCode.Conflict);
+        var actor = await current.GetAsync(); if (actor is not { ChallengedMfa: true, RecentMfa: true }) return Forbid();
+        return View("Review", tickets.Create(new(actor.UserId, time.GetUtcNow(), BillingDisplay.Label(account), "End tenancy and revoke access",
+            [new("Access", "Revoke this original membership immediately upon confirmation. Other memberships are unchanged."),
+             new("Billing", "Prevent new ordinary charges and rent terms for this account. Keep existing debt, credits, payments and provider instructions for reconciliation."),
+             new("Provider cleanup", "Billing closure remains pending. This action does not verify a Stripe cancellation or recall an already-dispatched payment."),
+             new("Reason", command.Reason.Trim())], End: command with { Reason = command.Reason.Trim() })));
+    }
+
+    [Authorize(Policy = OfficeSecurity.RecentManagerPolicy), HttpPost]
     public async Task<IActionResult> Confirm(string? ticket)
     {
         if (!Enabled) return NotFound();
@@ -111,6 +129,7 @@ public sealed class BillingController(BillingActions actions, ICurrentActor curr
         if (review is null) return Failure(BillingCode.ValidationFailed);
         var result = review switch
         {
+            { End: { } command } => await actions.EndAsync(command),
             { Open: { } command } => await actions.OpenAsync(command),
             { Terms: { } command } => await actions.TermsAsync(command),
             { Charge: { } command } => await actions.ChargeAsync(command),
@@ -118,7 +137,7 @@ public sealed class BillingController(BillingActions actions, ICurrentActor curr
             _ => new(BillingCode.ValidationFailed)
         };
         if (result.Code != BillingCode.Success) return Failure(result.Code);
-        TempData["Notice"] = "Reviewed billing change recorded. Payment collection remains unavailable.";
+        TempData["Notice"] = review.End is not null ? "Tenancy access ended. Billing closure is pending provider reconciliation." : "Reviewed billing change recorded. Payment collection remains unavailable.";
         return RedirectToAction(nameof(ManageAccount), new { id = result.AccountId });
     }
 

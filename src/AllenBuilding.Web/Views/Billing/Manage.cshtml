@@ -12,8 +12,9 @@
             <p class="mt-3 text-sm text-muted">Showing up to 100 eligible memberships.</p>
         }
     </section>
+    <a asp-action="Closures" class="quiet-button mb-6">Pending billing closures</a>
     <h2 class="mb-4 text-2xl font-semibold">Rent accounts</h2><ul class="grid gap-4 md:grid-cols-2">
-        @foreach (var account in Model.Accounts) { <li class="min-w-0 rounded-2xl border border-line bg-panel p-6"><h3 class="mb-2 text-xl font-semibold">@account.Suite</h3><p class="break-words text-muted">@account.PayerEmail</p><p class="my-3 break-all text-sm text-muted">Original membership @account.MembershipId</p><a asp-action="ManageAccount" asp-route-id="@account.Id" class="quiet-button">Manage @account.Suite billing</a></li> }
+        @foreach (var account in Model.Accounts) { <li class="min-w-0 rounded-2xl border border-line bg-panel p-6"><h3 class="mb-2 text-xl font-semibold">@account.Suite</h3><p class="break-words text-muted">@account.PayerEmail</p>@if (account.Closure is not null) { <p class="mt-2 font-semibold">Tenancy access ended · Billing closure pending</p> }<p class="my-3 break-all text-sm text-muted">Original membership @account.MembershipId</p><a asp-action="ManageAccount" asp-route-id="@account.Id" class="quiet-button">Manage @account.Suite billing</a></li> }
     </ul><p class="mt-4 text-sm text-muted">Showing up to 50 accounts. Account records remain available to management after portal access ends.</p>
     <a asp-controller="Account" asp-action="Reauthenticate" class="mt-6 flex min-h-11 items-center underline">Verify sign-in for sensitive changes</a>
 </div>

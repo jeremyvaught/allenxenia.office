@@ -1479,6 +1479,10 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .HasColumnName("id")
                         .UseCollation("utf8mb4_bin");
 
+                    b.Property<DateTime?>("EndedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("ended_at");
+
                     b.Property<string>("MembershipId")
                         .IsRequired()
                         .HasMaxLength(36)
@@ -1655,6 +1659,86 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         {
                             t.HasCheckConstraint("CK_settlement_amount", "amount_minor_units > 0");
                         });
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.TenancyClosure", b =>
+                {
+                    b.Property<string>("AccountId")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("account_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("ActorId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("varchar(450)")
+                        .HasColumnName("actor_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("MembershipId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("membership_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("OperationId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("operation_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("varchar(2000)")
+                        .HasColumnName("reason")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<DateTime>("RequestedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("requested_at");
+
+                    b.Property<string>("ReviewedAccountVersion")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("reviewed_account_version")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("ReviewedMembershipVersion")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("reviewed_membership_version")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("state");
+
+                    b.Property<string>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("version")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.HasKey("AccountId");
+
+                    b.HasIndex("MembershipId");
+
+                    b.HasIndex("ActorId", "OperationId")
+                        .IsUnique();
+
+                    b.HasIndex("State", "RequestedAt", "AccountId");
+
+                    b.ToTable("tenancy_closures", (string)null);
                 });
 
             modelBuilder.Entity("AllenBuilding.Domain.Knowledge.HelpArticle", b =>
@@ -3062,6 +3146,27 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .WithMany()
                         .HasForeignKey("AttemptId", "AccountId", "ProviderAccount", "LiveMode")
                         .HasPrincipalKey("Id", "AccountId", "ProviderAccount", "LiveMode")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.TenancyClosure", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Billing.RentAccount", null)
+                        .WithOne()
+                        .HasForeignKey("AllenBuilding.Domain.Billing.TenancyClosure", "AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AllenBuilding.Infrastructure.Identity.OfficeUser", null)
+                        .WithMany()
+                        .HasForeignKey("ActorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AllenBuilding.Domain.Tenancy.Membership", null)
+                        .WithMany()
+                        .HasForeignKey("MembershipId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
