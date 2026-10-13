@@ -60,6 +60,16 @@
           "MySql.Data": "26.7.0"
         }
       },
+      "Stripe.net": {
+        "type": "Direct",
+        "requested": "[53.0.0, )",
+        "resolved": "53.0.0",
+        "contentHash": "7wU3l5G9iG9xfKcEg3BBrItwdM3R6B1Ril906n8uhO8iakf7Afp5XUw0KZjRoJJgj9lmZ7Oyi8lo6U4FkYemug==",
+        "dependencies": {
+          "Newtonsoft.Json": "13.0.3",
+          "System.Configuration.ConfigurationManager": "10.0.0"
+        }
+      },
       "BouncyCastle.Cryptography": {
         "type": "Transitive",
         "resolved": "2.7.0",

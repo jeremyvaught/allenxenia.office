@@ -177,6 +177,11 @@
           "MySql.Data": "26.7.0"
         }
       },
+      "Newtonsoft.Json": {
+        "type": "Transitive",
+        "resolved": "13.0.3",
+        "contentHash": "HrC5BXdl00IP9zeV+0Z848QWPAoCr9P3bDEZguI+gkLcBKAOxix/tLEAAHC+UvDNPv4a2d18lOReHMOagPa+zQ=="
+      },
       "OpenTelemetry": {
         "type": "Transitive",
         "resolved": "1.19.1",
@@ -223,6 +228,15 @@
         "contentHash": "W3oH4XIfCzFrgUSDKHhN6N+dgzA5YHOR2VxX8GB6Qy7CyrJJgxPEG8NirgYWlPQC5P2jz2knSsexWu4tDUL33g==",
         "dependencies": {
           "SQLitePCLRaw.core": "2.1.12"
+        }
+      },
+      "Stripe.net": {
+        "type": "Transitive",
+        "resolved": "53.0.0",
+        "contentHash": "7wU3l5G9iG9xfKcEg3BBrItwdM3R6B1Ril906n8uhO8iakf7Afp5XUw0KZjRoJJgj9lmZ7Oyi8lo6U4FkYemug==",
+        "dependencies": {
+          "Newtonsoft.Json": "13.0.3",
+          "System.Configuration.ConfigurationManager": "10.0.0"
         }
       },
       "System.Configuration.ConfigurationManager": {
@@ -277,7 +291,8 @@
           "MailKit": "[4.18.1, )",
           "Microsoft.AspNetCore.Identity.EntityFrameworkCore": "[10.0.12, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.12, )",
-          "MySql.EntityFrameworkCore": "[10.0.9, )"
+          "MySql.EntityFrameworkCore": "[10.0.9, )",
+          "Stripe.net": "[53.0.0, )"
         }
       }
     }
