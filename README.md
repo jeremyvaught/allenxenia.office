@@ -62,7 +62,7 @@ python3 -m unittest discover -s tests/scripts -v
 
 The MySQL script requires Docker and creates a disposable loopback database. Its shared contract is skipped by ordinary tests and runs separately. Browser fixtures use isolated synthetic accounts/data. Coverage: `./scripts/coverage.sh`; run it alone with the preview stopped because it instruments shared assemblies. Reports and screenshots remain under ignored `artifacts/`. Percentages are improvement goals; behavioral checks gate releases.
 
-Latest remediation evidence: 134 domain and 477 ordinary integration checks, separate actual MySQL contract, and eighteen browser journeys pass. Release has zero warnings/errors. Browser emulation does not establish real-device acceptance. Previous coverage/package results predate these fixes.
+Latest remediation evidence: 134 domain and 477 ordinary integration checks, separate actual MySQL contract, eighteen browser journeys and nine Python helper checks pass. Release has zero warnings/errors. Revision `046775d` supplies a verified 393-file self-contained Linux x64 package; the isolated Production/MySQL restore and wrapped-key continuity checks pass on an image without .NET installed. Browser emulation does not establish real-device acceptance. Coverage remains from the earlier assistant checkpoint.
 
 ## Scope and launch limits
 
