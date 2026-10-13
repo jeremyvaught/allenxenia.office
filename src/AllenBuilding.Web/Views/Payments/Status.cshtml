@@ -17,5 +17,5 @@
     <p class="mt-4 text-sm text-muted">Returned money and debt credits are separate records. These item allocations do not by themselves establish the account’s current balance.</p>
     @if (Model.CanContinue) { <form asp-action="Continue" method="post" class="mt-6"><input name="id" value="@Model.AttemptId" type="hidden" /><button class="button">Continue to secure checkout</button></form> }
     <div class="mt-5 flex flex-wrap gap-4"><a asp-action="Status" asp-route-id="@Model.AttemptId" class="quiet-button">Refresh payment status</a><a asp-action="Index" asp-route-accountId="@Model.AccountId" class="quiet-button">View account balances</a></div>
-    <p class="mt-6 text-xs text-muted">Payment reference <span class="block break-all">@Model.AttemptId</span><span class="mt-2 block">Prepared @Model.CreatedAt.ToString("yyyy-MM-dd HH:mm 'UTC'")</span></p>
+    <p class="mt-6 text-xs text-muted">Payment reference <span class="block break-all">@Model.AttemptId</span><span class="mt-2 block">Prepared @Model.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'")</span><span class="mt-2 block">App records read @Model.RecordsReadAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'")</span></p>
 </div>

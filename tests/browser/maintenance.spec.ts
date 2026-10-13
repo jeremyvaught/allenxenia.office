@@ -276,6 +276,20 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
 
     await page.goto(`/Payments?accountId=${account.paymentAccountId}`);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Choose what to pay');
+    await page.getByRole('button', { name: 'Review selected payment', exact: true }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Choose an eligible payment');
+    await expect(page.getByRole('alert')).toContainText('Check recent requests');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    for (const link of await page.locator('main .button, main .quiet-button').all()) {
+      const bounds = await link.boundingBox(); expect(bounds!.height).toBeGreaterThanOrEqual(44);
+    }
+    await page.screenshot({ path: `artifacts/browser/payment-problem-${testInfo.project.name}.png`, fullPage: true });
+    await page.getByRole('link', { name: 'View billing and payment requests', exact: true }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Your billing records');
+    await expect(page.getByText('Payment collection is unavailable.', { exact: false })).toHaveCount(0);
+    await page.goto(`/Payments?accountId=${account.paymentAccountId}`);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Choose what to pay');
+    await expect(page.getByRole('checkbox')).toHaveCount(2);
     for (const checkbox of await page.getByRole('checkbox').all()) await checkbox.check();
     await page.getByRole('button', { name: 'Review selected payment', exact: true }).click();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Review your payment');
@@ -292,6 +306,7 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await page.getByRole('button', { name: 'Confirm and prepare checkout', exact: true }).click();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Preparing checkout');
     const paymentPath = new URL(page.url()).pathname;
+    await expect(page.getByText('App records read', { exact: false })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Continue to secure checkout', exact: true })).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: `artifacts/browser/payment-status-${testInfo.project.name}.png`, fullPage: true });

@@ -41,7 +41,7 @@ public sealed class PayerHandoffTests
         public Task<Actor?> GetAsync(CancellationToken token = default) => Task.FromResult<Actor?>(Reads > 0 && _mutation == "revoked" ? null : new("payer", new HashSet<Guid>(), false, false));
         public Task<PayerCollectionSnapshot?> ReadAsync(Actor actor, Guid attemptId, CancellationToken token)
         {
-            var view = new PayerPaymentView(Original.Id, Original.AccountId, "Office", Original.State, 1000, Original.CreatedAt, 0, 0, 0, Reads > 0 && _mutation == "held", !(Reads > 0 && _mutation == "held"), []);
+            var view = new PayerPaymentView(Original.Id, Original.AccountId, "Office", Original.State, 1000, Original.CreatedAt, 0, 0, 0, Reads > 0 && _mutation == "held", !(Reads > 0 && _mutation == "held"), [], Original.CreatedAt);
             return Task.FromResult<PayerCollectionSnapshot?>(new(view, Original, Policy.Profile!));
         }
         public Task<IReadOnlyList<PayerPaymentSummary>> RecentAsync(Actor actor, Guid accountId, CancellationToken token) => Task.FromResult<IReadOnlyList<PayerPaymentSummary>>([]);

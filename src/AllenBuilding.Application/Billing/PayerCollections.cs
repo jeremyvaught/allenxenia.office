@@ -7,7 +7,7 @@ public sealed record PayerPaymentSummary(Guid AttemptId, PaymentAttemptState Sta
 public sealed record PayerPaymentItem(Guid ObligationId, string Description, long ReviewedMinorUnits, long CapturedMinorUnits, long ReturnedMinorUnits);
 public sealed record PayerPaymentView(Guid AttemptId, Guid AccountId, string Suite, PaymentAttemptState State, long TotalMinorUnits,
     DateTimeOffset CreatedAt, long CapturedMinorUnits, long RefundedMinorUnits, long DisputeNetMinorUnits, bool AgreementPending,
-    bool CanContinue, IReadOnlyList<PayerPaymentItem> Items);
+    bool CanContinue, IReadOnlyList<PayerPaymentItem> Items, DateTimeOffset RecordsReadAt);
 // Provider references remain inside the application boundary; the HTTP view only receives View.
 public sealed record PayerCollectionSnapshot(PayerPaymentView View, PaymentAttempt Original, CheckoutProfile Profile);
 public interface IPayerCollectionReader

@@ -38,11 +38,17 @@ public sealed class PaymentsHttpTests
             expired = tickets.Create(review with { PreparedAt = host.Clock.GetUtcNow().AddMinutes(-6) }).Ticket; wrong = tickets.Create(review with { ActorId = "another-payer" }).Ticket;
         }
         using var old = await Confirm(tenant, expired); Assert.Equal(HttpStatusCode.BadRequest, old.StatusCode);
+        var recovery = await old.Content.ReadAsStringAsync(); Assert.Contains("Review the payment again", recovery); Assert.Contains("recent payment requests", recovery); Assert.Contains("View billing and payment requests", recovery); Assert.DoesNotContain("Private payment office", recovery); Assert.Contains("no-store", old.Headers.CacheControl!.ToString());
         using var other = await Confirm(tenant, wrong); Assert.Equal(HttpStatusCode.BadRequest, other.StatusCode);
         using var admitted = await AccountTestHost.PostAsync(tenant, page, "/Payments/Confirm", ("ticket", ticket), ("accountId", Guid.NewGuid().ToString()), ("amount", "100000.00"));
         Assert.Equal(HttpStatusCode.Redirect, admitted.StatusCode); var route = admitted.Headers.Location!.OriginalString;
         using var replay = await Confirm(tenant, ticket); Assert.Equal(route, replay.Headers.Location?.OriginalString);
-        var status = await tenant.GetStringAsync(route); Assert.Contains("Preparing checkout", status); Assert.Contains("$10.25 USD", status); Assert.DoesNotContain("cus_", status); Assert.DoesNotContain("acct_", status);
+        var beforeRead = host.Clock.GetUtcNow().AddSeconds(-1);
+        var status = await tenant.GetStringAsync(route); Assert.Contains("Preparing checkout", status);
+        var encodedRead = Regex.Match(status, @"App records read (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) UTC").Groups[1].Value;
+        Assert.NotEmpty(encodedRead);
+        var readAt = DateTimeOffset.ParseExact(encodedRead, "yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal);
+        Assert.InRange(readAt, beforeRead, host.Clock.GetUtcNow()); Assert.Contains("$10.25 USD", status); Assert.DoesNotContain("cus_", status); Assert.DoesNotContain("acct_", status);
         Guid attemptId;
         using (var scope = host.Services.CreateScope())
         {
@@ -65,10 +71,10 @@ public sealed class PaymentsHttpTests
         await using var host = new AccountTestHost(); await host.InitializeAsync(); var fixture = await Seed(host);
         await using var enabled = host.WithWebHostBuilder(b => b.ConfigureServices(s => s.Replace(ServiceDescriptor.Singleton(Policy))));
         using var tenant = enabled.CreateClient(new() { AllowAutoRedirect = false }); await Login(tenant); var page = "/Payments?accountId=" + fixture.Account.Id;
-        using var tooSmall = await AccountTestHost.PostAsync(tenant, page, "/Payments/Prepare", ("accountId", fixture.Account.Id.ToString()), ("operationId", Guid.NewGuid().ToString()), ("obligationIds", fixture.Small.Id.ToString())); Assert.Equal(HttpStatusCode.BadRequest, tooSmall.StatusCode);
+        using var tooSmall = await AccountTestHost.PostAsync(tenant, page, "/Payments/Prepare", ("accountId", fixture.Account.Id.ToString()), ("operationId", Guid.NewGuid().ToString()), ("obligationIds", fixture.Small.Id.ToString())); Assert.Equal(HttpStatusCode.BadRequest, tooSmall.StatusCode); Assert.Contains("Choose an eligible payment", await tooSmall.Content.ReadAsStringAsync());
         using var prepared = await AccountTestHost.PostAsync(tenant, page, "/Payments/Prepare", ("accountId", fixture.Account.Id.ToString()), ("operationId", Guid.NewGuid().ToString()), ("obligationIds", fixture.Debt.Id.ToString())); var ticket = Ticket(await prepared.Content.ReadAsStringAsync());
         using (var scope = host.Services.CreateScope()) { var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); (await db.Obligations.SingleAsync(x => x.Id == fixture.Debt.Id)).FinancialStateChanged(); await db.SaveChangesAsync(); }
-        using var stale = await Confirm(tenant, ticket); Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        using var stale = await Confirm(tenant, ticket); Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode); Assert.Contains("Check the current balance", await stale.Content.ReadAsStringAsync());
         using var verify = host.Services.CreateScope(); Assert.False(await verify.ServiceProvider.GetRequiredService<OfficeDbContext>().PaymentAttempts.AnyAsync());
     }
     private static Task<HttpResponseMessage> Confirm(HttpClient client, string ticket) => AccountTestHost.PostAsync(client, "/Portal", "/Payments/Confirm", ("ticket", ticket));

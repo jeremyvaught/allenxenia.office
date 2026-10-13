@@ -1,0 +1,9 @@
+@model AllenBuilding.Web.Controllers.PaymentReviewProblem
+@{ ViewData["Title"] = Model.Heading; }
+<div class="page max-w-2xl">
+    <p class="mb-2 text-sm text-muted">PAYMENT REVIEW</p>
+    <h1 class="mb-5 text-4xl font-semibold">@Model.Heading</h1>
+    <p role="alert" class="mb-6 rounded-2xl border border-line bg-panel p-5">@Model.Message</p>
+    <p class="mb-6 text-muted">A review message does not confirm whether a payment was collected. Check your payment requests for the recorded status.</p>
+    <div class="flex flex-wrap gap-4"><a asp-controller="Billing" asp-action="Index" class="button">View billing and payment requests</a><a asp-controller="Portal" asp-action="Index" class="quiet-button">Return to your portal</a></div>
+</div>

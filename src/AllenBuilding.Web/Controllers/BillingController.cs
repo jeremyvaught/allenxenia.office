@@ -13,7 +13,12 @@ public sealed class BillingController(BillingActions actions, ICurrentActor curr
 {
     private bool Enabled => configuration.GetValue<bool>("Billing:PlanningEnabled");
     [HttpGet]
-    public async Task<IActionResult> Index() => Enabled ? View(await actions.ReadAsync(false)) : NotFound();
+    public async Task<IActionResult> Index()
+    {
+        if (!Enabled) return NotFound();
+        ViewData["CollectionAvailable"] = collection.Enabled;
+        return View(await actions.ReadAsync(false));
+    }
     // Stripe success and cancel share a status-only return; query parameters never settle money.
     [HttpGet]
     public IActionResult Return(Guid attemptId) => RedirectToAction("Status", "Payments", new { id = attemptId });

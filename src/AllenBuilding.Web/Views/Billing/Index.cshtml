@@ -1,7 +1,7 @@
 @model IReadOnlyList<AllenBuilding.Application.Billing.BillingAccount>
 @{ ViewData["Title"] = "Your billing records"; }
 <div class="page"><p class="mb-2 text-sm text-muted">YOUR OFFICE</p><h1 class="mb-4 text-4xl font-semibold">Your billing records</h1>
-    <p class="mb-6 max-w-3xl text-muted">View the rent terms and charges recorded for your current membership. Payment collection is unavailable. These issued amounts do not establish an outstanding balance or payment status.</p>
+    <p class="mb-6 max-w-3xl text-muted">View the rent terms and charges recorded for your current membership. @(ViewData["CollectionAvailable"] is true ? "Open an account to review current balances and recent payment requests." : "Payment collection is unavailable.") These issued amounts do not establish an outstanding balance or payment status.</p>
     @if (Model.Count == 0) { <p class="rounded-xl border border-line bg-panel p-6">No rent account is available for your current membership. Contact your building manager with billing questions.</p> }
     <ul class="grid gap-4 md:grid-cols-2">@foreach (var account in Model) { <li class="rounded-2xl border border-line bg-panel p-6"><h2 class="mb-4 text-xl font-semibold">@account.Suite</h2><a asp-action="Account" asp-route-id="@account.Id" class="quiet-button">View @account.Suite billing</a></li> }</ul>
 </div>

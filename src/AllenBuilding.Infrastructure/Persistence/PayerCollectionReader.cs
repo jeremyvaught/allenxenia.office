@@ -46,7 +46,7 @@ public sealed class PayerCollectionReader(OfficeDbContext db, ICurrentActor curr
         }
         if (!await Authorized(actor, owner.memberId, token)) return null;
         var canContinue = !pending && attempt.State == PaymentAttemptState.HandoffReady && attempt.ExpiresAt > time.GetUtcNow() && attempt.SessionId is not null;
-        return new(new(attempt.Id, attempt.AccountId, owner.Name, attempt.State, attempt.TotalMinorUnits, attempt.CreatedAt, receipt?.AmountMinorUnits ?? 0, refunded, disputed, pending, canContinue, items), attempt, work.Profile);
+        return new(new(attempt.Id, attempt.AccountId, owner.Name, attempt.State, attempt.TotalMinorUnits, attempt.CreatedAt, receipt?.AmountMinorUnits ?? 0, refunded, disputed, pending, canContinue, items, time.GetUtcNow()), attempt, work.Profile);
     }
     public async Task<IReadOnlyList<PayerPaymentSummary>> RecentAsync(Actor actor, Guid accountId, CancellationToken token)
     {
