@@ -1,0 +1,11 @@
+{
+  "Database": { "Provider": "MySql" },
+  "AllowedHosts": "office.allenxenia.com",
+  "Proxy": { "Enabled": true, "TrustedAddresses": ["127.0.0.1"] },
+  "Protection": {
+    "KeyDirectory": "/srv/allen-office/private/keys",
+    "CertificatePath": "/srv/allen-office/private/wrapping.pfx"
+  },
+  "Notifications": { "Enabled": false },
+  "Billing": { "PlanningEnabled": false, "CollectionReviewEnabled": false }
+}

@@ -1,0 +1,21 @@
+; Review ownership, paths, port and the installed .NET 10 runtime on the actual Forge host.
+; Configure this program through Forge's daemon facility; do not replace its global Supervisor configuration.
+[program:allen-office]
+command=/usr/bin/dotnet /srv/allen-office/current/AllenBuilding.Web.dll --urls http://127.0.0.1:5081
+directory=/srv/allen-office/current
+user=allen-office
+numprocs=1
+autostart=true
+autorestart=true
+startsecs=10
+startretries=3
+stopsignal=TERM
+stopwaitsecs=40
+stopasgroup=true
+killasgroup=true
+umask=0077
+environment=ASPNETCORE_ENVIRONMENT="Production",Office__RuntimeConfigFile="/srv/allen-office/private/runtime.json"
+redirect_stderr=true
+stdout_logfile=/srv/allen-office/logs/application.log
+stdout_logfile_maxbytes=10MB
+stdout_logfile_backups=5

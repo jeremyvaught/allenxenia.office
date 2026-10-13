@@ -24,5 +24,6 @@ test-results/
 
 !scripts/coverage.sh
 !scripts/backup-sqlite.py
+!scripts/package-release.py
 **/__pycache__/
 *.pyc
