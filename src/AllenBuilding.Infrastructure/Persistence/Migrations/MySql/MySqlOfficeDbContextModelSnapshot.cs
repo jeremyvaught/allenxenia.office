@@ -161,6 +161,165 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                     b.ToTable("billing_receipts", (string)null);
                 });
 
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.CashMovement", b =>
+                {
+                    b.Property<string>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("account_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("AttemptId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("attempt_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("CaptureId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("capture_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("varchar(3)")
+                        .HasColumnName("currency")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("CustomerId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("customer_id")
+                        .UseCollation("utf8mb4_bin")
+                        .HasAnnotation("MySQL:Collation", "utf8mb4_bin");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<bool>("LiveMode")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("live_mode");
+
+                    b.Property<string>("PaymentId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("payment_id")
+                        .UseCollation("utf8mb4_bin")
+                        .HasAnnotation("MySQL:Collation", "utf8mb4_bin");
+
+                    b.Property<string>("ProviderAccount")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("provider_account")
+                        .UseCollation("utf8mb4_bin")
+                        .HasAnnotation("MySQL:Collation", "utf8mb4_bin");
+
+                    b.Property<DateTime>("ProviderAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("provider_at");
+
+                    b.Property<DateTime>("RecordedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("recorded_at");
+
+                    b.Property<long>("SignedMinorUnits")
+                        .HasColumnType("bigint")
+                        .HasColumnName("signed_minor_units");
+
+                    b.Property<string>("SourceId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("source_id")
+                        .UseCollation("utf8mb4_bin")
+                        .HasAnnotation("MySQL:Collation", "utf8mb4_bin");
+
+                    b.Property<string>("TransactionId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("transaction_id")
+                        .UseCollation("utf8mb4_bin")
+                        .HasAnnotation("MySQL:Collation", "utf8mb4_bin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId", "RecordedAt", "Id");
+
+                    b.HasIndex("CaptureId", "AccountId", "AttemptId");
+
+                    b.HasIndex("ProviderAccount", "LiveMode", "TransactionId")
+                        .IsUnique();
+
+                    b.HasIndex("AttemptId", "AccountId", "ProviderAccount", "LiveMode");
+
+                    b.ToTable("cash_movements", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_cash_movement_amount", "signed_minor_units != 0 AND signed_minor_units >= -99999999 AND signed_minor_units <= 99999999 AND currency = 'USD' AND ((kind = 'DisputeReinstatement' AND signed_minor_units > 0) OR (kind IN ('Refund', 'DisputeWithdrawal') AND signed_minor_units < 0))");
+                        });
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.CashMovementReview", b =>
+                {
+                    b.Property<string>("MovementId")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("movement_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("account_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("state");
+
+                    b.Property<string>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("version")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.HasKey("MovementId");
+
+                    b.HasIndex("MovementId", "AccountId")
+                        .IsUnique();
+
+                    b.HasIndex("AccountId", "State", "CreatedAt");
+
+                    b.ToTable("cash_movement_reviews", (string)null);
+                });
+
             modelBuilder.Entity("AllenBuilding.Domain.Billing.CollectionGuard", b =>
                 {
                     b.Property<string>("ObligationId")
@@ -2387,6 +2546,33 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                     b.HasOne("AllenBuilding.Domain.Billing.RentAccount", null)
                         .WithMany()
                         .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.CashMovement", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Billing.SettlementPayment", null)
+                        .WithMany()
+                        .HasForeignKey("CaptureId", "AccountId", "AttemptId")
+                        .HasPrincipalKey("Id", "AccountId", "AttemptId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AllenBuilding.Domain.Billing.PaymentAttempt", null)
+                        .WithMany()
+                        .HasForeignKey("AttemptId", "AccountId", "ProviderAccount", "LiveMode")
+                        .HasPrincipalKey("Id", "AccountId", "ProviderAccount", "LiveMode")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.CashMovementReview", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Billing.CashMovement", null)
+                        .WithOne()
+                        .HasForeignKey("AllenBuilding.Domain.Billing.CashMovementReview", "MovementId", "AccountId")
+                        .HasPrincipalKey("AllenBuilding.Domain.Billing.CashMovement", "Id", "AccountId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

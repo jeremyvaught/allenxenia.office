@@ -41,8 +41,10 @@ public sealed class CollectionReconciliationStore(OfficeDbContext db, TimeProvid
                 fact.AmountMinorUnits == attempt.TotalMinorUnits && fact.AmountMinorUnits == payment.AmountMinorUnits && fact.Currency == payment.Currency &&
                 payment.Allocations.Count == attempt.Items.Count && payment.Allocations.All(x => attempt.Items.Any(i =>
                     i.ObligationId == x.ObligationId && i.AccountId == x.AccountId && i.AmountMinorUnits == x.AmountMinorUnits));
+            var pendingCash = await db.CashMovements.AnyAsync(m => m.AttemptId == attempt.Id && !db.CashMovementReviews.Any(r => r.MovementId == m.Id && r.State == CashMovementReviewState.Classified), cancellationToken);
+            agrees &= !pendingCash;
             if (agrees) await ResolveIssue(attempt.Id, observation, cancellationToken);
-            else await ObserveIssue(attempt, FinancialFailure.TerminalDisagreement, observation, cancellationToken);
+            else await ObserveIssue(attempt, pendingCash ? FinancialFailure.ExternalCashMovement : FinancialFailure.TerminalDisagreement, observation, cancellationToken);
             return await Commit(agrees ? new(ReconciliationCode.AlreadyApplied, payment!.Id) : new(ReconciliationCode.NeedsReview), transaction, cancellationToken, lease, eventLease);
         }
         if (attempt.State == PaymentAttemptState.Uncollected && observation.State == ProviderCollectionState.Uncollected &&

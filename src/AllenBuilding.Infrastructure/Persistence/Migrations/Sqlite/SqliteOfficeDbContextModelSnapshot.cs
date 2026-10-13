@@ -145,6 +145,147 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                     b.ToTable("billing_receipts", (string)null);
                 });
 
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.CashMovement", b =>
+                {
+                    b.Property<string>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("account_id");
+
+                    b.Property<string>("AttemptId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("attempt_id");
+
+                    b.Property<string>("CaptureId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("capture_id");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("currency");
+
+                    b.Property<string>("CustomerId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("customer_id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("kind");
+
+                    b.Property<bool>("LiveMode")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("live_mode");
+
+                    b.Property<string>("PaymentId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("payment_id");
+
+                    b.Property<string>("ProviderAccount")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("provider_account");
+
+                    b.Property<DateTime>("ProviderAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("provider_at");
+
+                    b.Property<DateTime>("RecordedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("recorded_at");
+
+                    b.Property<long>("SignedMinorUnits")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("signed_minor_units");
+
+                    b.Property<string>("SourceId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("source_id");
+
+                    b.Property<string>("TransactionId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("transaction_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId", "RecordedAt", "Id");
+
+                    b.HasIndex("CaptureId", "AccountId", "AttemptId");
+
+                    b.HasIndex("ProviderAccount", "LiveMode", "TransactionId")
+                        .IsUnique();
+
+                    b.HasIndex("AttemptId", "AccountId", "ProviderAccount", "LiveMode");
+
+                    b.ToTable("cash_movements", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_cash_movement_amount", "signed_minor_units != 0 AND signed_minor_units >= -99999999 AND signed_minor_units <= 99999999 AND currency = 'USD' AND ((kind = 'DisputeReinstatement' AND signed_minor_units > 0) OR (kind IN ('Refund', 'DisputeWithdrawal') AND signed_minor_units < 0))");
+                        });
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.CashMovementReview", b =>
+                {
+                    b.Property<string>("MovementId")
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("movement_id");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("account_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("state");
+
+                    b.Property<string>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("version");
+
+                    b.HasKey("MovementId");
+
+                    b.HasIndex("MovementId", "AccountId")
+                        .IsUnique();
+
+                    b.HasIndex("AccountId", "State", "CreatedAt");
+
+                    b.ToTable("cash_movement_reviews", (string)null);
+                });
+
             modelBuilder.Entity("AllenBuilding.Domain.Billing.CollectionGuard", b =>
                 {
                     b.Property<string>("ObligationId")
@@ -2156,6 +2297,33 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                     b.HasOne("AllenBuilding.Domain.Billing.RentAccount", null)
                         .WithMany()
                         .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.CashMovement", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Billing.SettlementPayment", null)
+                        .WithMany()
+                        .HasForeignKey("CaptureId", "AccountId", "AttemptId")
+                        .HasPrincipalKey("Id", "AccountId", "AttemptId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AllenBuilding.Domain.Billing.PaymentAttempt", null)
+                        .WithMany()
+                        .HasForeignKey("AttemptId", "AccountId", "ProviderAccount", "LiveMode")
+                        .HasPrincipalKey("Id", "AccountId", "ProviderAccount", "LiveMode")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AllenBuilding.Domain.Billing.CashMovementReview", b =>
+                {
+                    b.HasOne("AllenBuilding.Domain.Billing.CashMovement", null)
+                        .WithOne()
+                        .HasForeignKey("AllenBuilding.Domain.Billing.CashMovementReview", "MovementId", "AccountId")
+                        .HasPrincipalKey("AllenBuilding.Domain.Billing.CashMovement", "Id", "AccountId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

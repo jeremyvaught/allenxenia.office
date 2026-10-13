@@ -1,7 +1,7 @@
 namespace AllenBuilding.Domain.Billing;
 
 public enum FinancialExceptionState { Open, Escalated, Resolved }
-public enum FinancialFailure { ProviderUnknown, ProviderMismatch, LedgerChanged, ClaimsIncomplete, TerminalDisagreement }
+public enum FinancialFailure { ProviderUnknown, ProviderMismatch, LedgerChanged, ClaimsIncomplete, TerminalDisagreement, ExternalCashMovement }
 
 // One durable recovery case for an original attempt. Separate from immutable cash/history.
 public sealed class FinancialException

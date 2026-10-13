@@ -12,6 +12,8 @@ namespace AllenBuilding.Infrastructure.Persistence;
 
 public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbContext<OfficeUser>(options)
 {
+    public DbSet<CashMovement> CashMovements => Set<CashMovement>();
+    public DbSet<CashMovementReview> CashMovementReviews => Set<CashMovementReview>();
     public DbSet<ObligationCredit> ObligationCredits => Set<ObligationCredit>();
     public DbSet<SettlementPayment> SettlementPayments => Set<SettlementPayment>();
     public DbSet<PaymentAllocation> PaymentAllocations => Set<PaymentAllocation>();
@@ -290,6 +292,22 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
             e.HasOne<Obligation>().WithMany().HasForeignKey(x => new { x.ObligationId, x.AccountId })
                 .HasPrincipalKey(x => new { x.Id, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
         });
+        model.Entity<CashMovement>(e =>
+        {
+            e.ToTable("cash_movements", table => table.HasCheckConstraint("CK_cash_movement_amount", "signed_minor_units != 0 AND signed_minor_units >= -99999999 AND signed_minor_units <= 99999999 AND currency = 'USD' AND ((kind = 'DisputeReinstatement' AND signed_minor_units > 0) OR (kind IN ('Refund', 'DisputeWithdrawal') AND signed_minor_units < 0))"));
+            e.HasKey(x => x.Id); e.HasAlternateKey(x => new { x.Id, x.AccountId });
+            e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(32); e.Property(x => x.Currency).HasMaxLength(3);
+            foreach (var name in new[] { "ProviderAccount", "CustomerId", "PaymentId", "SourceId", "TransactionId" }) e.Property<string>(name).HasMaxLength(255);
+            e.HasIndex(x => new { x.ProviderAccount, x.LiveMode, x.TransactionId }).IsUnique(); e.HasIndex(x => new { x.AccountId, x.RecordedAt, x.Id });
+            e.HasOne<SettlementPayment>().WithMany().HasForeignKey(x => new { x.CaptureId, x.AccountId, x.AttemptId }).HasPrincipalKey(x => new { x.Id, x.AccountId, x.AttemptId }).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<PaymentAttempt>().WithMany().HasForeignKey(x => new { x.AttemptId, x.AccountId, x.ProviderAccount, x.LiveMode }).HasPrincipalKey(x => new { x.Id, x.AccountId, x.ProviderAccount, x.LiveMode }).OnDelete(DeleteBehavior.Restrict);
+        });
+        model.Entity<CashMovementReview>(e =>
+        {
+            e.ToTable("cash_movement_reviews"); e.HasKey(x => x.MovementId); e.Property(x => x.Version).IsConcurrencyToken(); e.Property(x => x.State).HasConversion<string>().HasMaxLength(32);
+            e.HasIndex(x => new { x.AccountId, x.State, x.CreatedAt });
+            e.HasOne<CashMovement>().WithOne().HasForeignKey<CashMovementReview>(x => new { x.MovementId, x.AccountId }).HasPrincipalKey<CashMovement>(x => new { x.Id, x.AccountId }).OnDelete(DeleteBehavior.Restrict);
+        });
         model.Entity<ObligationCredit>(e =>
         {
             e.ToTable("obligation_credits", table => table.HasCheckConstraint("CK_credit_amount", "amount_minor_units > 0 AND amount_minor_units <= 99999999 AND currency = 'USD'"));
@@ -415,7 +433,7 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
                 }
                 if (mysql && (property.ClrType == typeof(string) || property.GetValueConverter()?.ProviderClrType == typeof(string)))
                     property.SetCollation("utf8mb4_bin");
-                if (mysql && property.ClrType == typeof(string) && property.Name is "ProviderAccount" or "CustomerId" or "SessionId" or "PaymentId" or "CollectionReference" or "EventId" or "ResourceId")
+                if (mysql && property.ClrType == typeof(string) && property.Name is "ProviderAccount" or "CustomerId" or "SessionId" or "PaymentId" or "CollectionReference" or "EventId" or "ResourceId" or "SourceId" or "TransactionId")
                     MySql.EntityFrameworkCore.Extensions.MySQLPropertyBuilderExtensions.ForMySQLHasCollation(model.Entity(entity.ClrType).Property(property.Name), "utf8mb4_bin");
             }
         }
