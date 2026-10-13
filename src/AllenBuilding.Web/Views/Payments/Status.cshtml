@@ -1,0 +1,21 @@
+@model AllenBuilding.Application.Billing.PayerPaymentView
+@{ ViewData["Title"] = "Payment status"; var label = Model.AgreementPending ? "Checking payment" : Model.State switch { AllenBuilding.Domain.Billing.PaymentAttemptState.Settled => "Payment captured", AllenBuilding.Domain.Billing.PaymentAttemptState.Uncollected => "No payment collected", AllenBuilding.Domain.Billing.PaymentAttemptState.HandoffReady => "Ready for checkout", AllenBuilding.Domain.Billing.PaymentAttemptState.NeedsReview => "Checking payment", AllenBuilding.Domain.Billing.PaymentAttemptState.Processing => "Payment processing", _ => "Preparing checkout" }; }
+<div class="page max-w-3xl">
+    <p class="mb-2 text-sm text-muted">@Model.Suite · PAYMENT</p><h1 class="mb-4 text-4xl font-semibold">@label</h1>
+    @if (TempData["Notice"] is string notice) { <p role="status" class="mb-5 rounded-xl border border-line bg-panel p-4">@notice</p> }
+    <p class="mb-6 text-muted">A checkout return does not confirm payment. This page shows the app’s verified records. Refresh to see later results.</p>
+    <dl class="grid gap-5 rounded-2xl border border-line bg-panel p-6 sm:grid-cols-2">
+        <div><dt class="text-muted">Reviewed total</dt><dd class="mt-1 text-2xl font-semibold">@BillingDisplay.Usd(Model.TotalMinorUnits) USD</dd></div>
+        <div><dt class="text-muted">Original captured amount</dt><dd class="mt-1 text-2xl font-semibold">@BillingDisplay.Usd(Model.CapturedMinorUnits) USD</dd></div>
+        <div><dt class="text-muted">Verified refunds</dt><dd class="mt-1 font-semibold">@BillingDisplay.Usd(Model.RefundedMinorUnits) USD</dd></div>
+        <div><dt class="text-muted">Net dispute cash movements</dt><dd class="mt-1 font-semibold">@BillingDisplay.Usd(Model.DisputeNetMinorUnits) USD</dd></div>
+    </dl>
+    @if (Model.AgreementPending) { <p role="status" class="mt-5 rounded-xl border border-line p-5">Your manager is checking provider records and how returned funds affect the debt. Original capture history stays unchanged. Please do not submit another payment for these items.</p> }
+    <h2 class="mb-3 mt-8 text-2xl font-semibold">Payment items</h2><ul class="space-y-3">
+        @foreach (var item in Model.Items) { <li class="rounded-xl border border-line bg-panel p-5"><h3 class="break-words font-semibold">@item.Description</h3><p class="mt-2">Reviewed: @BillingDisplay.Usd(item.ReviewedMinorUnits) USD</p><p>Captured allocation: @BillingDisplay.Usd(item.CapturedMinorUnits) USD</p><p>Reviewed returned allocation: @BillingDisplay.Usd(item.ReturnedMinorUnits) USD</p></li> }
+    </ul>
+    <p class="mt-4 text-sm text-muted">Returned money and debt credits are separate records. These item allocations do not by themselves establish the account’s current balance.</p>
+    @if (Model.CanContinue) { <form asp-action="Continue" method="post" class="mt-6"><input name="id" value="@Model.AttemptId" type="hidden" /><button class="button">Continue to secure checkout</button></form> }
+    <div class="mt-5 flex flex-wrap gap-4"><a asp-action="Status" asp-route-id="@Model.AttemptId" class="quiet-button">Refresh payment status</a><a asp-action="Index" asp-route-accountId="@Model.AccountId" class="quiet-button">View account balances</a></div>
+    <p class="mt-6 text-xs text-muted">Payment reference <span class="block break-all">@Model.AttemptId</span><span class="mt-2 block">Prepared @Model.CreatedAt.ToString("yyyy-MM-dd HH:mm 'UTC'")</span></p>
+</div>

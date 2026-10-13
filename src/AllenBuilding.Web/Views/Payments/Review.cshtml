@@ -1,0 +1,13 @@
+@model AllenBuilding.Web.Security.PaymentReviewPage
+@{ ViewData["Title"] = "Review payment"; }
+<div class="page max-w-2xl">
+    <p class="mb-2 text-sm text-muted">@Model.Review.Suite · PAYMENT REVIEW</p><h1 class="mb-4 text-4xl font-semibold">Review your payment</h1>
+    <p class="mb-6 text-muted">Confirming reserves these exact balances and prepares secure checkout. The payment is recorded only after the provider verifies it.</p>
+    <dl class="space-y-4 rounded-2xl border border-line bg-panel p-6">
+        @foreach (var line in Model.Review.Lines) { <div><dt class="break-words text-muted">@line.Label</dt><dd class="mt-1 font-semibold">@line.Value</dd></div> }
+        <div class="border-t border-line pt-4"><dt>Total</dt><dd class="mt-1 text-2xl font-semibold">@BillingDisplay.Usd(Model.Review.Command.Items.Sum(x => x.RemainingMinorUnits)) USD</dd></div>
+    </dl>
+    <p class="my-6 text-sm text-muted">This review expires in five minutes. Changed balances or account access require a new review. Autopay is not enrolled by this payment.</p>
+    <form asp-action="Confirm" method="post"><input name="ticket" type="hidden" value="@Model.Ticket" /><button class="button">Confirm and prepare checkout</button></form>
+    <a asp-action="Index" asp-route-accountId="@Model.Review.Command.AccountId" class="mt-4 flex min-h-11 items-center underline">Cancel and return to balances</a>
+</div>

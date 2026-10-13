@@ -176,7 +176,7 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     const accountId = billingPath.split('/').pop();
     await page.goto(`/Billing/Account/${accountId}`);
     await expect(page.getByText('Approved opening charge', { exact: true })).toBeVisible();
-    await expect(page.getByText('Payment status unavailable', { exact: true })).toHaveCount(2);
+    await expect(page.getByText('View verified balances before paying', { exact: true })).toHaveCount(2);
     await expect(page.locator('form[action*="Prepare"]')).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -273,6 +273,32 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await manager.screenshot({ path: `artifacts/browser/cash-source-queue-${testInfo.project.name}.png`, fullPage: true });
     await page.goto(refundPath);
     await expect(page).toHaveURL(/\/Account\/Denied/);
+
+    await page.goto(`/Payments?accountId=${account.paymentAccountId}`);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Choose what to pay');
+    for (const checkbox of await page.getByRole('checkbox').all()) await checkbox.check();
+    await page.getByRole('button', { name: 'Review selected payment', exact: true }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Review your payment');
+    await expect(page.getByText('$10.25 USD', { exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `artifacts/browser/payment-review-${testInfo.project.name}.png`, fullPage: true });
+    await page.getByRole('link', { name: 'Cancel and return to balances', exact: true }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Choose what to pay');
+    await expect(page.getByRole('checkbox')).toHaveCount(2);
+    await expect(page.getByRole('heading', { name: 'Recent payment requests', exact: true })).toHaveCount(0);
+    for (const checkbox of await page.getByRole('checkbox').all()) await checkbox.check();
+    await page.getByRole('button', { name: 'Review selected payment', exact: true }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Review your payment');
+    await page.getByRole('button', { name: 'Confirm and prepare checkout', exact: true }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Preparing checkout');
+    const paymentPath = new URL(page.url()).pathname;
+    await expect(page.getByRole('button', { name: 'Continue to secure checkout', exact: true })).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `artifacts/browser/payment-status-${testInfo.project.name}.png`, fullPage: true });
+    await page.getByRole('link', { name: 'View account balances', exact: true }).click();
+    await expect(page.getByRole('checkbox', { disabled: true })).toHaveCount(2);
+    await page.getByRole('link', { name: /^View payment / }).click();
+    await expect(page).toHaveURL(new RegExp(paymentPath + '$'));
 
     await page.goto('/FinancialExceptions');
     await expect(page).toHaveURL(/\/Account\/Denied/);

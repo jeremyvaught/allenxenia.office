@@ -31,9 +31,16 @@ builder.Services.AddScoped<AllenBuilding.Application.Knowledge.KnowledgeActions>
 builder.Services.AddScoped<AllenBuilding.Application.Billing.IBillingStore, BillingStore>();
 builder.Services.AddScoped<AllenBuilding.Application.Billing.BillingActions>();
 // Admission is wired but remains unavailable until provider dispatch and reconciliation are verified.
-builder.Services.AddSingleton(new AllenBuilding.Application.Billing.CollectionPolicy(false, "", false));
+var isolatedPayments = builder.Environment.IsEnvironment("Testing") && builder.Configuration.GetValue<bool>("Billing:CollectionReviewEnabled");
+builder.Services.AddSingleton(isolatedPayments ? new AllenBuilding.Application.Billing.CollectionPolicy(true,
+    builder.Configuration["Stripe:ProviderAccount"] ?? "", false,
+    new AllenBuilding.Domain.Billing.CheckoutProfile(builder.Configuration["Stripe:PublicOrigin"] ?? "", builder.Configuration["Stripe:PaymentMethodConfiguration"] ?? ""))
+    : new AllenBuilding.Application.Billing.CollectionPolicy(false, "", false));
 builder.Services.AddScoped<AllenBuilding.Application.Billing.ICollectionStore, CollectionStore>();
 builder.Services.AddScoped<AllenBuilding.Application.Billing.CollectionActions>();
+builder.Services.AddScoped<AllenBuilding.Application.Billing.IPayerCollectionReader, PayerCollectionReader>();
+builder.Services.AddScoped<AllenBuilding.Application.Billing.PayerCollections>();
+builder.Services.AddScoped<PaymentReviewTickets>();
 builder.Services.AddSingleton(new AllenBuilding.Application.Billing.FinancialRecoveryPolicy(false));
 builder.Services.AddScoped<AllenBuilding.Application.Billing.IFinancialExceptionStore, FinancialExceptionStore>();
 builder.Services.AddScoped<AllenBuilding.Application.Billing.FinancialExceptionActions>();
@@ -53,6 +60,7 @@ builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.AddConcurrencyLimiter("Readiness", limiter => { limiter.PermitLimit = 2; limiter.QueueLimit = 0; });
+    options.AddConcurrencyLimiter("PaymentActions", limiter => { limiter.PermitLimit = 2; limiter.QueueLimit = 0; });
     options.AddConcurrencyLimiter("PaymentWebhook", limiter => { limiter.PermitLimit = 2; limiter.QueueLimit = 0; });
     options.AddPolicy("Accounts", context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "local", _ => new FixedWindowRateLimiterOptions

@@ -13,7 +13,8 @@ public sealed class CollectionStore(OfficeDbContext db, ICurrentActor current, C
     {
         await using var transaction = await AuthorityLocks.BeginAsync(db, cancellationToken);
         if (!await Authorize(actor, accountId, cancellationToken)) return [];
-        return await Balances(accountId, obligations, cancellationToken);
+        var result = await Balances(accountId, obligations, cancellationToken);
+        return await Authorize(actor, accountId, cancellationToken) ? result : [];
     }
 
     public async Task<CollectionResult> AdmitAsync(Actor actor, CollectReviewedBalances command, CancellationToken cancellationToken)
@@ -28,6 +29,7 @@ public sealed class CollectionStore(OfficeDbContext db, ICurrentActor current, C
             var matches = original.AccountId == command.AccountId && original.ProviderAccount == policy.ProviderAccount && original.LiveMode == policy.LiveMode &&
                 original.Items.Count == command.Items.Count && original.Items.All(x => command.Items.Any(y =>
                     y.ObligationId == x.ObligationId && y.Version == x.ReviewedVersion && y.RemainingMinorUnits == x.AmountMinorUnits && y.AccountId == x.AccountId && y.Currency == original.Currency));
+            if (!await Authorize(actor, command.AccountId, cancellationToken)) return new(CollectionCode.Unavailable);
             return matches ? new(CollectionCode.Success, original.Id, original.State) : new(CollectionCode.Conflict);
         }
         var binding = await db.BillingCustomers.AsNoTracking().SingleOrDefaultAsync(x => x.AccountId == command.AccountId &&
@@ -40,6 +42,7 @@ public sealed class CollectionStore(OfficeDbContext db, ICurrentActor current, C
         try { attempt = PaymentAttempt.Admit(command.OperationId, actor.UserId, binding, balances, time.GetUtcNow()); }
         catch (ArgumentException) { return new(CollectionCode.ValidationFailed); }
         catch (OverflowException) { return new(CollectionCode.ValidationFailed); }
+        if (!await Authorize(actor, command.AccountId, cancellationToken)) return new(CollectionCode.Unavailable);
         db.PaymentAttempts.Add(attempt);
         var origin = OfficeTelemetry.Capture();
         db.CollectionWork.Add(CollectionWork.Enqueue(attempt, policy.Profile!, origin?.TraceId, origin?.SpanId));

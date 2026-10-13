@@ -9,11 +9,14 @@ using Microsoft.AspNetCore.Mvc;
 namespace AllenBuilding.Web.Controllers;
 
 [Authorize, ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-public sealed class BillingController(BillingActions actions, ICurrentActor current, BillingReviewTickets tickets, IConfiguration configuration, TimeProvider time) : Controller
+public sealed class BillingController(BillingActions actions, ICurrentActor current, BillingReviewTickets tickets, IConfiguration configuration, TimeProvider time, CollectionPolicy collection) : Controller
 {
     private bool Enabled => configuration.GetValue<bool>("Billing:PlanningEnabled");
     [HttpGet]
     public async Task<IActionResult> Index() => Enabled ? View(await actions.ReadAsync(false)) : NotFound();
+    // Stripe success and cancel share a status-only return; query parameters never settle money.
+    [HttpGet]
+    public IActionResult Return(Guid attemptId) => RedirectToAction("Status", "Payments", new { id = attemptId });
     [HttpGet]
     public async Task<IActionResult> Account(Guid id) => await AccountView(id, false);
     [Authorize(Policy = OfficeSecurity.ManagerPolicy), HttpGet]
@@ -121,7 +124,7 @@ public sealed class BillingController(BillingActions actions, ICurrentActor curr
         if (account is null) return NotFound();
         ViewData["Manager"] = management;
         ViewData["Today"] = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
-        return View("Account", account);
+        return View("Account", account with { CollectionAvailable = !management && collection.Enabled });
     }
     private async Task<IActionResult> Review(string account, string heading, IReadOnlyList<BillingReviewLine> lines,
         OpenRentAccount? open = null, SetRentTerms? terms = null, IssueCharge? charge = null, IssueRent? rent = null)
