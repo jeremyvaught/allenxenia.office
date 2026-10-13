@@ -14,6 +14,8 @@ public static class OfficeProxy
             string.Equals(Environment.GetEnvironmentVariable("DOTNET_FORWARDEDHEADERS_ENABLED"), "true", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Configure explicit trusted proxy addresses; unrestricted automatic forwarding is not supported.");
         var enabled = builder.Configuration.GetValue<bool>("Proxy:Enabled");
+        if (!builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Testing") && !enabled)
+            throw new InvalidOperationException("Hosted deployments require Proxy:Enabled and explicit trusted proxy addresses.");
         var addresses = builder.Configuration.GetSection("Proxy:TrustedAddresses").Get<string[]>() ?? [];
         var trusted = new List<IPAddress>();
         if (enabled)

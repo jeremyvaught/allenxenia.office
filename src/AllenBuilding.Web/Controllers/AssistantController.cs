@@ -45,7 +45,7 @@ public sealed class AssistantController(AssistantHelp help, AssistantPolicy poli
         return View();
     }
 
-    [HttpGet, EnableRateLimiting("Readiness")]
+    [HttpGet, EnableRateLimiting("AssistantPages")]
     public async Task<IActionResult> Access(Guid membershipId, Guid? conversationId, Guid? reviewId)
     {
         if (!policy.TenantHelpEnabled) return NotFound();
@@ -138,7 +138,7 @@ public sealed class AssistantController(AssistantHelp help, AssistantPolicy poli
         }
         HttpContext.Items["AssistantBrowser"] = token; return token;
     }
-    [HttpGet, EnableRateLimiting("Readiness")]
+    [HttpGet, EnableRateLimiting("AssistantPages")]
     public async Task<IActionResult> Guest(Guid id)
     {
         if (!GuestEnabled) return NotFound();
@@ -155,7 +155,7 @@ public sealed class AssistantController(AssistantHelp help, AssistantPolicy poli
         else ViewData["Memberships"] = User.Identity?.IsAuthenticated == true ? await maintenance.MembersAsync(false, HttpContext.RequestAborted) : Array.Empty<RequestMemberChoice>();
         return draft.ImportedScope is { } bound ? await ProtectedView("Guest", draft, bound, draft.Sources) : View(draft);
     }
-    [HttpPost, RequestSizeLimit(20000), EnableRateLimiting("Readiness")]
+    [HttpPost, RequestSizeLimit(20000), EnableRateLimiting("AssistantPages")]
     public async Task<IActionResult> EditGuest(Guid id, Guid version, string? title, string? description, string? location, bool cancel)
     {
         if (!GuestEnabled) return NotFound(); if (!ModelState.IsValid || !SameOrigin()) return BadRequest();
@@ -197,7 +197,7 @@ public sealed class AssistantController(AssistantHelp help, AssistantPolicy poli
         catch (Exception exception) when (exception is System.Data.Common.DbException or Microsoft.EntityFrameworkCore.DbUpdateException or OperationCanceledException)
         { if (HttpContext.RequestAborted.IsCancellationRequested) throw; return StatusCode(503); }
     }
-    [Authorize, HttpPost, RequestSizeLimit(10000), EnableRateLimiting("Readiness")]
+    [Authorize, HttpPost, RequestSizeLimit(10000), EnableRateLimiting("AssistantPages")]
     public async Task<IActionResult> Find(Guid membershipId, string? search)
     {
         // Read-only search shares portal authorization/SQL. It does not call the model or submit a draft.
@@ -217,7 +217,7 @@ public sealed class AssistantController(AssistantHelp help, AssistantPolicy poli
         catch (Exception exception) when (exception is System.Data.Common.DbException or OperationCanceledException)
         { if (HttpContext.RequestAborted.IsCancellationRequested) throw; return Answer(new(AssistantModelCode.Unavailable)); }
     }
-    [Authorize, HttpGet, EnableRateLimiting("Readiness")]
+    [Authorize, HttpGet, EnableRateLimiting("AssistantPages")]
     public async Task<IActionResult> Review(Guid id, Guid conversationId)
     {
         if (!policy.ActionsEnabled) return NotFound();

@@ -51,7 +51,9 @@ public static class OfficeSecurity
             {
                 var signIn = context.HttpContext.RequestServices.GetRequiredService<SignInManager<OfficeUser>>();
                 var user = await signIn.ValidateSecurityStampAsync(context.Principal);
-                if (user is null || !user.EmailConfirmed || await signIn.UserManager.IsLockedOutAsync(user) ||
+                // Password lockout prevents new sign-ins; revocation uses the security stamp.
+                // Unauthenticated guesses must not terminate an already verified session.
+                if (user is null || !user.EmailConfirmed ||
                     (context.Principal!.HasClaim("amr", "mfa") && !user.TwoFactorEnabled))
                 {
                     context.RejectPrincipal();
@@ -111,8 +113,7 @@ public sealed class CurrentActor(IHttpContextAccessor http, SignInManager<Office
         var userId = signIn.UserManager.GetUserId(principal);
         var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
         var stamp = principal.FindFirstValue(signIn.UserManager.Options.ClaimsIdentity.SecurityStampClaimType);
-        if (user is null || stamp != user.SecurityStamp || !user.EmailConfirmed ||
-            (user.LockoutEnabled && user.LockoutEnd > time.GetUtcNow())) return null;
+        if (user is null || stamp != user.SecurityStamp || !user.EmailConfirmed) return null;
         var buildings = (await db.BuildingManagers.AsNoTracking().Where(x => x.UserId == user.Id)
             .Select(x => x.BuildingId).ToListAsync(cancellationToken)).ToHashSet();
         var mfa = principal.HasClaim("amr", "mfa") && user.TwoFactorEnabled && !user.MustReplaceRecoveryCodes;

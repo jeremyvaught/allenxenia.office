@@ -76,6 +76,7 @@ builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.AddConcurrencyLimiter("Readiness", limiter => { limiter.PermitLimit = 2; limiter.QueueLimit = 0; });
+    options.AddConcurrencyLimiter("AssistantPages", limiter => { limiter.PermitLimit = 2; limiter.QueueLimit = 0; });
     options.AddConcurrencyLimiter("PaymentActions", limiter => { limiter.PermitLimit = 2; limiter.QueueLimit = 0; });
     options.AddConcurrencyLimiter("PaymentWebhook", limiter => { limiter.PermitLimit = 2; limiter.QueueLimit = 0; });
     options.AddPolicy("AssistantTurns", context => RateLimitPartition.GetFixedWindowLimiter(
