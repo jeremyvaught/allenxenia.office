@@ -43,6 +43,8 @@ public sealed partial class BillingStore
         var now = time.GetUtcNow();
         var closure = TenancyClosure.Request(command.OperationId, accountToEnd, memberToEnd.Version, actor.UserId, command.Reason, now);
         accountToEnd.EndTenancy(now); memberToEnd.Revoke(actor.UserId, command.Reason, now);
+        await db.AssistantMaintenanceReviews.Where(x => x.MembershipId == owner.MembershipId && x.State == AllenBuilding.Domain.Maintenance.AssistantReviewState.Ready)
+            .ExecuteUpdateAsync(x => x.SetProperty(r => r.State, AllenBuilding.Domain.Maintenance.AssistantReviewState.Revoked), cancellationToken);
         var grant = await db.ActiveGrants.SingleOrDefaultAsync(x => x.MembershipId == owner.MembershipId, cancellationToken); if (grant is not null) db.ActiveGrants.Remove(grant);
         db.TenancyClosures.Add(closure);
         // Existing dispatched attempts, original references, guards and balances remain for canonical reconciliation.

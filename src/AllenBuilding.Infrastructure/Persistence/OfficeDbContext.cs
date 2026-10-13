@@ -12,6 +12,7 @@ namespace AllenBuilding.Infrastructure.Persistence;
 
 public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbContext<OfficeUser>(options)
 {
+    public DbSet<AssistantMaintenanceReview> AssistantMaintenanceReviews => Set<AssistantMaintenanceReview>();
     public DbSet<CashMovement> CashMovements => Set<CashMovement>();
     public DbSet<CashMovementReview> CashMovementReviews => Set<CashMovementReview>();
     public DbSet<CashSourceWork> CashSourceWork => Set<CashSourceWork>();
@@ -70,6 +71,21 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
     protected override void OnModelCreating(ModelBuilder model)
     {
         base.OnModelCreating(model);
+        model.Entity<AssistantMaintenanceReview>(e =>
+        {
+            e.ToTable("assistant_maintenance_reviews"); e.HasKey(x => x.Id);
+            e.Property(x => x.OwnerId).HasMaxLength(450); e.Property(x => x.SecurityStamp).HasMaxLength(256);
+            e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(32); e.Property(x => x.State).HasConversion<string>().HasMaxLength(32);
+            e.Property(x => x.Title).HasMaxLength(120); e.Property(x => x.Description).HasMaxLength(4000); e.Property(x => x.Location).HasMaxLength(160);
+            e.Property(x => x.Comment).HasMaxLength(2000); e.Property(x => x.SourcesJson).HasMaxLength(4096); e.Property(x => x.PayloadHash).HasMaxLength(64);
+            e.Property(x => x.Version).IsConcurrencyToken(); e.Property(x => x.ResultStatus).HasConversion<string>().HasMaxLength(32);
+            e.HasIndex(x => x.ConversationId).IsUnique(); e.HasIndex(x => new { x.OwnerId, x.OperationId }).IsUnique();
+            e.HasIndex(x => new { x.MembershipId, x.State }); e.HasIndex(x => new { x.State, x.ExpiresAt });
+            e.HasOne<OfficeUser>().WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Membership>().WithMany().HasForeignKey(x => x.MembershipId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<WorkOrder>().WithMany().HasForeignKey(x => x.WorkOrderId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<WorkOrder>().WithMany().HasForeignKey(x => x.ResultId).OnDelete(DeleteBehavior.Restrict);
+        });
         model.Entity<OfficeUser>().Property(x => x.DisplayName).HasMaxLength(120);
         model.Entity<WorkOrderHistory>(e =>
         {

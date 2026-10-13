@@ -28,6 +28,8 @@ public sealed class AccessRevocation(OfficeDbContext db, ICurrentActor current, 
         if (membershipToRevoke.RevokedAt is not null) return MaintenanceCode.Success;
         if (membershipToRevoke.Version != version) return MaintenanceCode.Conflict;
         membershipToRevoke.Revoke(actor.UserId, reason, time.GetUtcNow());
+        await db.AssistantMaintenanceReviews.Where(x => x.MembershipId == membershipId && x.State == AllenBuilding.Domain.Maintenance.AssistantReviewState.Ready)
+            .ExecuteUpdateAsync(x => x.SetProperty(r => r.State, AllenBuilding.Domain.Maintenance.AssistantReviewState.Revoked), cancellationToken);
         var grant = await db.ActiveGrants.SingleOrDefaultAsync(x => x.MembershipId == membershipId, cancellationToken);
         if (grant is not null) db.ActiveGrants.Remove(grant);
         audit.Audit(actor.UserId, "AccessRevoked", membershipId.ToString());

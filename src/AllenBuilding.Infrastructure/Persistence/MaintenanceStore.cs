@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AllenBuilding.Application.Access;
+using AllenBuilding.Application.Assistant;
 using AllenBuilding.Application.Maintenance;
 using AllenBuilding.Domain.Maintenance;
 using AllenBuilding.Infrastructure.Identity;
@@ -7,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AllenBuilding.Infrastructure.Persistence;
 
-public sealed class MaintenanceStore(OfficeDbContext db, ICurrentActor current, AccountInvitations notifications, TimeProvider time) : IMaintenanceStore
+public sealed class MaintenanceStore(OfficeDbContext db, ICurrentActor current, AccountInvitations notifications, TimeProvider time, AssistantReviewStore? reviews = null) : IMaintenanceStore
 {
     private IQueryable<WorkOrder> Scoped(Actor actor, bool management)
     {
@@ -136,7 +137,7 @@ public sealed class MaintenanceStore(OfficeDbContext db, ICurrentActor current, 
                       select new RequestMemberChoice(membership.Id, suite.Name, management ? user.Email : null)).Take(100).ToListAsync(cancellationToken);
     }
 
-    public async Task<MaintenanceResult> SubmitAsync(Actor actor, SubmitRequest command, string hash, DateTimeOffset now, bool management, CancellationToken cancellationToken)
+    public async Task<MaintenanceResult> SubmitAsync(Actor actor, SubmitRequest command, string hash, DateTimeOffset now, bool management, CancellationToken cancellationToken, AssistantReviewClaim? review = null)
     {
         await using var transaction = await AuthorityLocks.BeginAsync(db, cancellationToken);
         await AuthorityLocks.UserAsync(db, actor.UserId, cancellationToken);
@@ -162,13 +163,24 @@ public sealed class MaintenanceStore(OfficeDbContext db, ICurrentActor current, 
             if (replay is not null) return replay;
         }
         if (!membership.IsActive(time.GetUtcNow()) || !await db.ActiveGrants.AnyAsync(x => x.MembershipId == membership.Id, cancellationToken)) return new(MaintenanceCode.Unavailable);
+        AssistantMaintenanceReview? pending = null;
+        if (review is not null)
+        {
+            if (management || reviews is null) return new(MaintenanceCode.Unavailable);
+            pending = await reviews.AdmitAsync(actor, review, membership.Id, command.OperationId, hash, AssistantReviewKind.Request, cancellationToken);
+            if (pending is null) return new(MaintenanceCode.Conflict);
+        }
+        else if (await db.AssistantMaintenanceReviews.AnyAsync(x => x.OwnerId == actor.UserId && x.OperationId == command.OperationId, cancellationToken))
+            return new(MaintenanceCode.Unavailable);
         if (!management)
         {
             var replay = await Replay(actor.UserId, command.OperationId, hash, cancellationToken);
             if (replay is not null) return replay;
         }
+        if (pending?.State == AssistantReviewState.Completed) return new(MaintenanceCode.Conflict);
         var order = WorkOrder.Submit(membership.SuiteId, membership.Id, membership.UserId, command.Title, command.Description, command.Location, now);
         db.WorkOrders.Add(order);
+        pending?.Complete(order.Id, order.Version, order.Status, time.GetUtcNow());
         await Record(actor.UserId, command.OperationId, hash, order, management ? "SubmittedOnBehalf" : "Submitted", null, false, now, cancellationToken);
         try
         {
@@ -179,7 +191,7 @@ public sealed class MaintenanceStore(OfficeDbContext db, ICurrentActor current, 
     }
 
     public async Task<MaintenanceResult> ChangeAsync(Actor actor, ChangeRequest command, string hash, DateTimeOffset now,
-        bool management, Action<WorkOrder> mutation, CancellationToken cancellationToken)
+        bool management, Action<WorkOrder> mutation, CancellationToken cancellationToken, AssistantReviewClaim? review = null)
     {
         await using var transaction = await AuthorityLocks.BeginAsync(db, cancellationToken);
         await AuthorityLocks.UserAsync(db, actor.UserId, cancellationToken);
@@ -200,9 +212,18 @@ public sealed class MaintenanceStore(OfficeDbContext db, ICurrentActor current, 
         if (!MaintenanceActions.CanUse(fresh, management)) return new(MaintenanceCode.Unavailable);
         var order = await Scoped(fresh!, management).SingleOrDefaultAsync(x => x.Id == command.WorkOrderId, cancellationToken);
         if (order is null) return new(MaintenanceCode.Unavailable);
+        AssistantMaintenanceReview? pending = null;
+        if (review is not null)
+        {
+            if (management || command.Action != MaintenanceAction.Comment || command.Internal || reviews is null) return new(MaintenanceCode.Unavailable);
+            pending = await reviews.AdmitAsync(actor, review, order.RequesterMembershipId, command.OperationId, hash, AssistantReviewKind.Comment, cancellationToken);
+            if (pending is null) return new(MaintenanceCode.Conflict);
+        }
+        else if (await db.AssistantMaintenanceReviews.AnyAsync(x => x.OwnerId == actor.UserId && x.OperationId == command.OperationId, cancellationToken))
+            return new(MaintenanceCode.Unavailable);
         var replay = await Replay(actor.UserId, command.OperationId, hash, cancellationToken);
         if (replay is not null) return replay;
-        if (order.Version != command.Version) return new(MaintenanceCode.Conflict);
+        if (pending?.State == AssistantReviewState.Completed || order.Version != command.Version) return new(MaintenanceCode.Conflict);
         string? assignmentNote = null;
         if (command.Action is MaintenanceAction.Assign or MaintenanceAction.AssignSelf)
         {
@@ -228,6 +249,7 @@ public sealed class MaintenanceStore(OfficeDbContext db, ICurrentActor current, 
         try { mutation(order); }
         catch (ArgumentException) { return new(MaintenanceCode.ValidationFailed); }
         catch (InvalidOperationException) { return new(MaintenanceCode.Conflict); }
+        pending?.Complete(order.Id, order.Version, order.Status, time.GetUtcNow());
         await Record(actor.UserId, command.OperationId, hash, order, command.Action.ToString(), assignmentNote ?? command.Note?.Trim(), command.Internal, now, cancellationToken);
         try
         {

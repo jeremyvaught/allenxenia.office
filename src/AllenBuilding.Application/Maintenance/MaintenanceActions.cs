@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using AllenBuilding.Application.Access;
+using AllenBuilding.Application.Assistant;
 using AllenBuilding.Application.Diagnostics;
 using AllenBuilding.Domain.Maintenance;
 
@@ -39,13 +40,15 @@ public sealed class MaintenanceActions(ICurrentActor current, IMaintenanceStore 
         var actor = await current.GetAsync(cancellationToken);
         return CanUse(actor, management) ? await store.MembersAsync(actor!, management, cancellationToken) : [];
     }
-    private async Task<MaintenanceResult> Submit(SubmitRequest command, bool management, CancellationToken cancellationToken)
+    public Task<MaintenanceResult> SubmitReviewedAsync(SubmitRequest command, AssistantReviewClaim claim, CancellationToken cancellationToken) => Submit(command, false, cancellationToken, claim);
+    public Task<MaintenanceResult> CommentReviewedAsync(ChangeRequest command, AssistantReviewClaim claim, CancellationToken cancellationToken) => ChangeAsync(command, false, cancellationToken, claim);
+    private async Task<MaintenanceResult> Submit(SubmitRequest command, bool management, CancellationToken cancellationToken, AssistantReviewClaim? review = null)
     {
         using var operation = OfficeTelemetry.Begin(OfficeOperationKind.MaintenanceSubmit, command.OperationId);
-        try { var result = await SubmitCore(command, management, cancellationToken); operation.Result = Outcome(result.Code); return result; }
+        try { var result = await SubmitCore(command, management, cancellationToken, review); operation.Result = Outcome(result.Code); return result; }
         catch (OperationCanceledException) { operation.Result = OfficeOutcome.Cancelled; throw; }
     }
-    private async Task<MaintenanceResult> SubmitCore(SubmitRequest command, bool management, CancellationToken cancellationToken)
+    private async Task<MaintenanceResult> SubmitCore(SubmitRequest command, bool management, CancellationToken cancellationToken, AssistantReviewClaim? review)
     {
         var actor = await current.GetAsync(cancellationToken);
         if (actor is null) return new(MaintenanceCode.AuthenticationRequired);
@@ -54,16 +57,16 @@ public sealed class MaintenanceActions(ICurrentActor current, IMaintenanceStore 
         // Validate using the same domain constructor before opening the persistence transaction.
         try { WorkOrder.Submit(Guid.NewGuid(), command.MembershipId, actor.UserId, command.Title, command.Description, command.Location, time.GetUtcNow()); }
         catch (ArgumentException) { return new(MaintenanceCode.ValidationFailed); }
-        return await store.SubmitAsync(actor, command, management ? Hash(new { command, management }) : Hash(command), time.GetUtcNow(), management, cancellationToken);
+        return await store.SubmitAsync(actor, command, management ? Hash(new { command, management }) : Hash(command), time.GetUtcNow(), management, cancellationToken, review);
     }
 
-    public async Task<MaintenanceResult> ChangeAsync(ChangeRequest command, bool management, CancellationToken cancellationToken = default)
+    public async Task<MaintenanceResult> ChangeAsync(ChangeRequest command, bool management, CancellationToken cancellationToken = default, AssistantReviewClaim? review = null)
     {
         using var operation = OfficeTelemetry.Begin(OfficeOperationKind.MaintenanceChange, command.OperationId);
-        try { var result = await ChangeCore(command, management, cancellationToken); operation.Result = Outcome(result.Code); return result; }
+        try { var result = await ChangeCore(command, management, cancellationToken, review); operation.Result = Outcome(result.Code); return result; }
         catch (OperationCanceledException) { operation.Result = OfficeOutcome.Cancelled; throw; }
     }
-    private async Task<MaintenanceResult> ChangeCore(ChangeRequest command, bool management, CancellationToken cancellationToken)
+    private async Task<MaintenanceResult> ChangeCore(ChangeRequest command, bool management, CancellationToken cancellationToken, AssistantReviewClaim? review)
     {
         var actor = await current.GetAsync(cancellationToken);
         if (actor is null) return new(MaintenanceCode.AuthenticationRequired);
@@ -90,7 +93,7 @@ public sealed class MaintenanceActions(ICurrentActor current, IMaintenanceStore 
                 case MaintenanceAction.Comment: order.RecordComment(command.Note ?? "", now); break;
             }
         }
-        return await store.ChangeAsync(actor, command, Hash(new { command, management }), now, management, Mutate, cancellationToken);
+        return await store.ChangeAsync(actor, command, Hash(new { command, management }), now, management, Mutate, cancellationToken, review);
     }
 
     public static bool CanUse(Actor? actor, bool management) => actor is not null && (management
@@ -104,5 +107,6 @@ public sealed class MaintenanceActions(ICurrentActor current, IMaintenanceStore 
         MaintenanceCode.ValidationFailed => OfficeOutcome.Invalid,
         _ => OfficeOutcome.Denied
     };
-    private static string Hash<T>(T value) => Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(value)));
+    private static string Hash<T>(T value) => Fingerprint(value);
+    public static string Fingerprint<T>(T value) => Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(value)));
 }

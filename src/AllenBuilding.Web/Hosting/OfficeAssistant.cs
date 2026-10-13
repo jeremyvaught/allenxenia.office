@@ -23,7 +23,11 @@ public static class OfficeAssistant
         }
         else builder.Services.AddScoped<IAssistantModel, DisabledAssistantModel>();
         builder.Services.AddScoped<AssistantHelp>();
-        builder.Services.AddScoped<IAssistantTenantAccess, AllenBuilding.Infrastructure.Persistence.AssistantTenantAccess>();
+        builder.Services.AddScoped<AllenBuilding.Infrastructure.Persistence.AssistantTenantAccess>();
+        builder.Services.AddScoped<IAssistantTenantAccess>(sp => sp.GetRequiredService<AllenBuilding.Infrastructure.Persistence.AssistantTenantAccess>());
+        builder.Services.AddScoped<AllenBuilding.Infrastructure.Persistence.AssistantReviewStore>();
+        builder.Services.AddScoped<IAssistantReviewStore>(sp => sp.GetRequiredService<AllenBuilding.Infrastructure.Persistence.AssistantReviewStore>());
+        builder.Services.AddScoped<AssistantMaintenance>();
         builder.Services.AddSingleton<AssistantBudget>();
     }
 }
