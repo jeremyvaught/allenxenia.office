@@ -6,9 +6,10 @@ namespace AllenBuilding.Infrastructure.Persistence;
 // Shared current admission for durable setup work and the private browser handoff.
 internal static class AutopaySetupAdmission
 {
-    public static async Task<bool> AllowsAsync(OfficeDbContext db, AutopayAuthorization auth, DateTimeOffset now, CancellationToken token)
+    public static async Task<bool> AllowsAsync(OfficeDbContext db, AutopayAuthorization auth, DateTimeOffset now, CancellationToken token, AutopayState expected = AutopayState.AwaitingMethod)
     {
-        if (auth.State != AutopayState.AwaitingMethod || auth.StopOperationId is not null || now >= auth.FirstAnchorUtc) return false;
+        if (expected is not (AutopayState.AwaitingMethod or AutopayState.AwaitingProvider) || auth.State != expected || auth.StopOperationId is not null || now >= auth.FirstAnchorUtc ||
+            expected == AutopayState.AwaitingProvider && (auth.SetupState != AutopaySetupState.Ready || auth.PaymentMethodId is null)) return false;
         var current = await (from account in db.RentAccounts.AsNoTracking()
                              join member in db.Memberships on account.MembershipId equals member.Id
                              join user in db.Users on member.UserId equals user.Id

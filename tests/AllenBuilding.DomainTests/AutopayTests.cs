@@ -4,6 +4,25 @@ namespace AllenBuilding.DomainTests;
 
 public sealed class AutopayTests
 {
+    [Fact]
+    public void An_original_activation_response_can_be_retained_before_the_later_cleanup_request_without_verifying_stop()
+    {
+        var (account, binding, terms, now) = Fixture(); var authorization = AutopayAuthorization.Consent(Guid.NewGuid(), "payer", account, binding, AutopaySchedule.Select(terms, now, []), true, now);
+        authorization.ApplyVerifiedMethod(binding.ProviderAccount, false, binding.CustomerId, "pm_saved", authorization.ConsentHash);
+        var fact = new VerifiedAutopaySubscription(binding.ProviderAccount, false, account.Id, binding.CustomerId, "sub_original", "pm_saved", authorization.ConsentHash, 100000, "USD", 31, 17, authorization.FirstAnchorUtc, true, now.AddSeconds(1));
+        var cleanup = Guid.NewGuid(); authorization.RequestCleanupStop(cleanup, now.AddSeconds(2)); Assert.Null(authorization.StopActorId);
+        var requested = authorization.StopRequestedAt; var cleanupVersion = authorization.Version;
+        authorization.RequestCleanupStop(cleanup, now.AddSeconds(3)); Assert.Equal(cleanupVersion, authorization.Version); Assert.Equal(requested, authorization.StopRequestedAt);
+        Assert.Throws<ArgumentException>(() => authorization.RequestCleanupStop(Guid.Empty, now));
+        Assert.Throws<InvalidOperationException>(() => authorization.RequestStop(cleanup, "payer", AutopayStopTiming.Immediately, now.AddSeconds(3)));
+        Assert.Throws<InvalidOperationException>(() => authorization.ObserveOriginalSubscriptionForStop(fact));
+        Assert.Throws<InvalidOperationException>(() => authorization.ObserveDispatchedSubscriptionForCleanup(fact with { CustomerId = "cus_other" }, now));
+        Assert.Throws<InvalidOperationException>(() => authorization.ObserveDispatchedSubscriptionForCleanup(fact, now.AddSeconds(2)));
+        authorization.ObserveDispatchedSubscriptionForCleanup(fact, now);
+        Assert.Equal("sub_original", authorization.SubscriptionId); Assert.Equal(AutopayState.StopPending, authorization.State); Assert.False(authorization.AdmitsNewAutomaticWork);
+        var version = authorization.Version; authorization.ObserveDispatchedSubscriptionForCleanup(fact, now); Assert.Equal(version, authorization.Version);
+        Assert.Throws<InvalidOperationException>(() => authorization.VerifyStop(new(binding.ProviderAccount, false, account.Id, binding.CustomerId, "sub_original", true, true, fact.CheckedAt)));
+    }
     [Theory]
     [InlineData(2026, 1, 31, 2026, 2, 28)]
     [InlineData(2028, 1, 31, 2028, 2, 29)]

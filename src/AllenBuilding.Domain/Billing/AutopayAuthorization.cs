@@ -198,6 +198,15 @@ public sealed class AutopayAuthorization
         if (SubscriptionId == fact.SubscriptionId && LastVerifiedAt == fact.CheckedAt) return;
         SubscriptionId = fact.SubscriptionId; LastVerifiedAt = fact.CheckedAt.ToUniversalTime(); Version = Guid.NewGuid();
     }
+    public void ObserveDispatchedSubscriptionForCleanup(VerifiedAutopaySubscription fact, DateTimeOffset dispatchedAt)
+    {
+        // An activation response can precede the cleanup request made by its completion transaction.
+        // Retain that original reference without claiming the later stop has been verified.
+        if (State != AutopayState.StopPending || dispatchedAt < ConsentedAt || !MatchesSubscription(fact) || fact.CheckedAt < dispatchedAt)
+            throw new InvalidOperationException("Cleanup requires evidence from the dispatched original subscription.");
+        if (SubscriptionId == fact.SubscriptionId && LastVerifiedAt == fact.CheckedAt) return;
+        SubscriptionId = fact.SubscriptionId; LastVerifiedAt = fact.CheckedAt.ToUniversalTime(); Version = Guid.NewGuid();
+    }
     private bool MatchesSubscription(VerifiedAutopaySubscription? fact)
     {
         if (fact is null || fact.ProviderAccount != ProviderAccount || fact.LiveMode != LiveMode || fact.AccountId != AccountId || fact.CustomerId != CustomerId ||
@@ -214,6 +223,16 @@ public sealed class AutopayAuthorization
     public void RequestStop(Guid operation, string actor, AutopayStopTiming timing, DateTimeOffset now)
     {
         if (operation == Guid.Empty || string.IsNullOrWhiteSpace(actor) || actor.Length > 450 || now < ConsentedAt || !Enum.IsDefined(timing)) throw new ArgumentException("Stopping requires an original reviewed operation, actor and timing.");
+        RecordStop(operation, actor, timing, now);
+    }
+    public void RequestCleanupStop(Guid operation, DateTimeOffset now)
+    {
+        if (operation == Guid.Empty || now < ConsentedAt) throw new ArgumentException("Cleanup requires its durable original operation and valid timestamp.");
+        // A system cleanup has no user impersonation and no invented foreign-key identity.
+        RecordStop(operation, null, AutopayStopTiming.Immediately, now);
+    }
+    private void RecordStop(Guid operation, string? actor, AutopayStopTiming timing, DateTimeOffset now)
+    {
         if (State is AutopayState.StopPending or AutopayState.Stopped)
         {
             // Retried original intent preserves its effective date; a later browser time must not shift it.
