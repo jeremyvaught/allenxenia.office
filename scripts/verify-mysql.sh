@@ -8,7 +8,7 @@ trap cleanup EXIT
 docker run --detach --rm --name "$container"   --publish 127.0.0.1::3306   --env MYSQL_ROOT_PASSWORD=local-root-test-only   --env MYSQL_DATABASE=office_check   --env MYSQL_USER=office_check   --env MYSQL_PASSWORD=local-test-only   mysql:8.4 >/dev/null
 ready=false
 for attempt in $(seq 1 90); do
-  if docker exec "$container" mysql --user=office_check --password=local-test-only --database=office_check --execute='SELECT 1' >/dev/null 2>&1; then
+  if docker exec "$container" mysql --protocol=TCP --host=127.0.0.1 --user=office_check --password=local-test-only --database=office_check --execute='SELECT 1' >/dev/null 2>&1; then
     ready=true; break
   fi
   sleep 1
