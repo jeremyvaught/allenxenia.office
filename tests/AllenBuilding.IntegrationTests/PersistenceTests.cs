@@ -56,7 +56,12 @@ public sealed class PersistenceTests
             db.Users.Add(legacyUser); await db.SaveChangesAsync();
             var messageId = Guid.NewGuid();
             await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO account_messages (id, user_id, kind, protected_payload, created_at) VALUES ({messageId.ToString("D")}, {legacyUser.Id}, {"SecurityNotice"}, {"synthetic-legacy-payload"}, {now.UtcDateTime})");
+            await db.GetService<IMigrator>().MigrateAsync("PaymentEventInbox");
+            var oldEventId = Guid.NewGuid(); var oldEventVersion = Guid.NewGuid();
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO payment_events (id, provider_account, live_mode, event_id, event_type, resource_id, api_version, payload_hash, state, received_at, version) VALUES ({oldEventId.ToString("D")}, {"acct_upgrade"}, {false}, {"evt_upgrade"}, {"checkout.session.completed"}, {"cs_upgrade"}, {"2026-09-30.endive"}, {new string('A', 64)}, {"Pending"}, {now.UtcDateTime}, {oldEventVersion.ToString("D")})");
             await db.Database.MigrateAsync();
+            var oldEvent = await db.PaymentEvents.AsNoTracking().SingleAsync(x => x.Id == oldEventId);
+            Assert.Equal(now, oldEvent.NextAttemptAt); Assert.Equal(Guid.Empty, oldEvent.LeaseToken); Assert.Null(oldEvent.LeaseUntil); Assert.Equal(0, oldEvent.Failures);
             var upgraded = await db.AccountMessages.AsNoTracking().SingleAsync(x => x.Id == messageId);
             Assert.Equal(MessageState.Queued, upgraded.State); Assert.Equal(Guid.Empty, upgraded.LeaseToken);
             Assert.Equal(upgraded.CreatedAt, upgraded.NextAttemptAt);
@@ -134,6 +139,7 @@ public sealed class PersistenceTests
         await CollectionReconciliationContract.VerifyAsync(create);
         await FinancialExceptionContract.VerifyAsync(create);
         await CollectionWorkContract.VerifyAsync(create);
+        await PaymentEventWorkContract.VerifyAsync(create);
     }
 
     private static async Task VerifyProtectedIdentity(Func<OfficeDbContext> create)

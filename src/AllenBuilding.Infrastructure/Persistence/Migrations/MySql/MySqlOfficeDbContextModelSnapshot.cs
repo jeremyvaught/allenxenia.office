@@ -741,6 +741,10 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .HasColumnName("api_version")
                         .UseCollation("utf8mb4_bin");
 
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int")
+                        .HasColumnName("attempts");
+
                     b.Property<string>("EventId")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -756,9 +760,33 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .HasColumnName("event_type")
                         .UseCollation("utf8mb4_bin");
 
+                    b.Property<int>("Failures")
+                        .HasColumnType("int")
+                        .HasColumnName("failures");
+
+                    b.Property<string>("LeaseToken")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasDefaultValue("00000000-0000-0000-0000-000000000000")
+                        .HasColumnName("lease_token")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<DateTime?>("LeaseUntil")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("lease_until");
+
                     b.Property<bool>("LiveMode")
                         .HasColumnType("tinyint(1)")
                         .HasColumnName("live_mode");
+
+                    b.Property<DateTime>("NextAttemptAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime(6)")
+                        .HasDefaultValue(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc))
+                        .HasColumnName("next_attempt_at");
 
                     b.Property<string>("PayloadHash")
                         .IsRequired()
@@ -812,7 +840,7 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                     b.HasIndex("ProviderAccount", "LiveMode", "EventId")
                         .IsUnique();
 
-                    b.HasIndex("State", "ReceivedAt", "Id");
+                    b.HasIndex("State", "NextAttemptAt", "ReceivedAt", "Id");
 
                     b.ToTable("payment_events", (string)null);
                 });

@@ -669,6 +669,10 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .HasColumnType("TEXT")
                         .HasColumnName("api_version");
 
+                    b.Property<int>("Attempts")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("attempts");
+
                     b.Property<string>("EventId")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -681,9 +685,32 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .HasColumnType("TEXT")
                         .HasColumnName("event_type");
 
+                    b.Property<int>("Failures")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("failures");
+
+                    b.Property<string>("LeaseToken")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("00000000-0000-0000-0000-000000000000")
+                        .HasColumnName("lease_token");
+
+                    b.Property<DateTime?>("LeaseUntil")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("lease_until");
+
                     b.Property<bool>("LiveMode")
                         .HasColumnType("INTEGER")
                         .HasColumnName("live_mode");
+
+                    b.Property<DateTime>("NextAttemptAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue(new DateTime(2000, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc))
+                        .HasColumnName("next_attempt_at");
 
                     b.Property<string>("PayloadHash")
                         .IsRequired()
@@ -730,7 +757,7 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                     b.HasIndex("ProviderAccount", "LiveMode", "EventId")
                         .IsUnique();
 
-                    b.HasIndex("State", "ReceivedAt", "Id");
+                    b.HasIndex("State", "NextAttemptAt", "ReceivedAt", "Id");
 
                     b.ToTable("payment_events", (string)null);
                 });

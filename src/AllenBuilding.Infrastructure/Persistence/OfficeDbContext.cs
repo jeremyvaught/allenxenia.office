@@ -237,12 +237,15 @@ public abstract class OfficeDbContext(DbContextOptions options) : IdentityDbCont
         model.Entity<PaymentEventInbox>(e =>
         {
             e.ToTable("payment_events"); e.HasKey(x => x.Id); e.Property(x => x.Version).IsConcurrencyToken();
+            e.Property(x => x.LeaseToken).HasDefaultValue(Guid.Empty);
+            e.Property(x => x.NextAttemptAt).HasDefaultValue(new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.Zero));
+            e.Property(x => x.LeaseToken).IsConcurrencyToken();
             e.Property(x => x.ProviderAccount).HasMaxLength(255); e.Property(x => x.EventId).HasMaxLength(255);
             e.Property(x => x.ResourceId).HasMaxLength(255); e.Property(x => x.EventType).HasMaxLength(100);
             e.Property(x => x.ApiVersion).HasMaxLength(64); e.Property(x => x.PayloadHash).HasMaxLength(64);
             e.Property(x => x.State).HasConversion<string>().HasMaxLength(32); e.Property(x => x.ReviewReason).HasMaxLength(64);
             e.HasIndex(x => new { x.ProviderAccount, x.LiveMode, x.EventId }).IsUnique();
-            e.HasIndex(x => new { x.State, x.ReceivedAt, x.Id });
+            e.HasIndex(x => new { x.State, x.NextAttemptAt, x.ReceivedAt, x.Id });
         });
         model.Entity<PaymentAttempt>(e =>
         {
