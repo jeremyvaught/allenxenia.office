@@ -14,7 +14,8 @@ public static class OfficeAssistant
             throw new InvalidOperationException("An enabled assistant needs a server-side OpenAI credential.");
         var tenantHelp = builder.Configuration.GetValue<bool?>("Assistant:TenantHelpEnabled") ?? builder.Environment.IsDevelopment();
         var actions = builder.Configuration.GetValue<bool?>("Assistant:ActionsEnabled") ?? builder.Environment.IsDevelopment();
-        builder.Services.AddSingleton(new AssistantPolicy(enabled, enabled && tenantHelp, builder.Configuration.GetValue<bool>("Billing:PlanningEnabled"), enabled && tenantHelp && actions));
+        var followUps = builder.Configuration.GetValue<bool?>("Assistant:FollowUpsEnabled") ?? builder.Environment.IsDevelopment();
+        builder.Services.AddSingleton(new AssistantPolicy(enabled, enabled && tenantHelp, builder.Configuration.GetValue<bool>("Billing:PlanningEnabled"), enabled && tenantHelp && actions, enabled && followUps));
         if (enabled)
         {
             builder.Services.AddHttpClient("OfficeAssistant", client => client.Timeout = TimeSpan.FromSeconds(55))
@@ -30,6 +31,7 @@ public static class OfficeAssistant
         builder.Services.AddScoped<IAssistantReviewStore>(sp => sp.GetRequiredService<AllenBuilding.Infrastructure.Persistence.AssistantReviewStore>());
         builder.Services.AddScoped<AssistantMaintenance>();
         builder.Services.AddSingleton<AssistantBudget>();
+        builder.Services.AddSingleton<AssistantConversations>();
     }
 }
 

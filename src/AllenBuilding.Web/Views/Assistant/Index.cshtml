@@ -4,9 +4,18 @@
     <p class="mb-2 text-sm font-semibold tracking-widest text-brand">A LITTLE HELP, RIGHT HERE</p>
     <h1 class="mb-4 text-3xl font-semibold sm:text-4xl">Ask the office assistant</h1>
     <p class="mb-6 leading-relaxed text-muted">Find published building guidance and the right page for your next step. For immediate danger, contact emergency services. This assistant cannot dispatch help.</p>
-    <div data-assistant-result data-assistant-membership="@Model?.Scope?.MembershipId" aria-live="polite" aria-atomic="true" class="mb-6 rounded-2xl border border-line bg-panel p-5 sm:p-6">
+    <div data-assistant-result data-assistant-membership="@Model?.Scope?.MembershipId" data-assistant-conversation="@ViewData["ActiveConversation"]" aria-live="polite" aria-atomic="true" class="mb-6 rounded-2xl border border-line bg-panel p-5 sm:p-6">
     @if (Model?.Code == AllenBuilding.Application.Assistant.AssistantModelCode.Success)
     {
+        @if (Model.History?.Count > 0)
+        {
+            <details class="mb-5 border-b border-line pb-4">
+                <summary class="cursor-pointer py-3 font-semibold">Earlier messages in this conversation</summary>
+                <ol class="mt-3 space-y-4">@foreach (var exchange in Model.History) {
+                    <li class="min-w-0 rounded-xl border border-line p-4"><p class="mb-2 font-semibold">You</p><p class="mb-4 whitespace-pre-wrap break-words">@exchange.Question</p><p class="mb-2 font-semibold">Office assistant</p><p class="whitespace-pre-wrap break-words">@exchange.Answer</p></li>
+                }</ol>
+            </details>
+        }
         <h2 class="mb-3 text-lg font-semibold">Office assistant</h2>
         @if (Model.Scope is not null) { <p class="mb-3 break-words text-sm text-muted">Tenant guidance · @Model.Scope.Suite</p> }
         <p class="whitespace-pre-wrap break-words leading-relaxed">@Model.Text</p>
@@ -56,16 +65,18 @@
         }
         @if (Model.Next is not null && Model.Review is null) { <a href="@Model.Next.Path" class="quiet-button mt-5">@Model.Next.Label</a> }
     }
+    else if (ViewData["ConversationUnavailable"] is true) { <p>This conversation is busy, expired or no longer available. Start fresh using the link below. No action was submitted.</p> }
     else if (ViewData["Limited"] is true) { <p>You've reached the assistant's current limit. Try again later, or open building help.</p> }
     else if (Model?.Code == AllenBuilding.Application.Assistant.AssistantModelCode.Invalid) { <p>Please ask a question of up to 4,000 characters. If an answer could not be verified, try rephrasing or open building help.</p> }
     else if (Model?.Code == AllenBuilding.Application.Assistant.AssistantModelCode.Denied) { <p>This guidance scope is unavailable. Start a new question using your current access.</p> }
     else if (Model is not null || !enabled) { <p>The assistant is unavailable right now. You can still use <a href="/Knowledge" class="underline">building help</a> and <a href="/Portal" class="underline">your office</a>.</p> }
     else { <p>Try “How do I report a repair?” or ask about published building guidance.</p> }
     </div>
-    @if (enabled)
+    @if (enabled && ViewData["ConversationClosed"] is not true)
     {
         <form asp-action="Ask" method="post" data-assistant-form class="rounded-2xl border border-line bg-panel p-5 sm:p-6">
             <input type="hidden" name="conversationId" value="@ViewData["ConversationId"]" />
+            <input type="hidden" name="sequence" value="@(ViewData["Sequence"] ?? 0)" />
             @if (Model?.Target is not null) { <input type="hidden" name="requestId" value="@Model.Target.Id" /> }
             <label for="membershipId" class="mb-2 block font-semibold">Guidance for</label>
             <select id="membershipId" name="membershipId" class="field mb-5">
@@ -76,10 +87,11 @@
             </select>
             <label for="question" class="mb-2 block font-semibold">Your question</label>
             <textarea id="question" name="question" rows="4" maxlength="4000" required class="field" aria-describedby="assistant-privacy"></textarea>
-            <p id="assistant-privacy" class="mt-3 text-sm leading-relaxed text-muted">Your question and matching published guidance for the selected scope are sent to OpenAI. Don't include passwords, payment details or sensitive personal information. Each question starts fresh; this page does not save a chat transcript. Prepared drafts and confirmation records are stored securely in your account.</p>
+            <p id="assistant-privacy" class="mt-3 text-sm leading-relaxed text-muted">Your question, matching published guidance and earlier messages in this conversation are sent to OpenAI. Don't include passwords, payment details or sensitive personal information. @(ViewData["FollowUpsEnabled"] is true ? "This temporary conversation is available for up to six questions, thirty minutes of inactivity or two hours total. Expired messages are removed from server memory within a minute; a restart clears them. Start fresh to change scope." : "Each question starts fresh.") Prepared drafts and confirmation records are stored securely in your account.</p>
             <div class="mt-5 flex flex-wrap items-center gap-3"><button class="button" data-assistant-send>Ask assistant</button><button type="button" class="quiet-button" data-assistant-stop hidden>Stop</button><p data-assistant-progress role="status" class="text-sm text-muted"></p></div>
         </form>
     }
+    else if (enabled) { <p class="text-sm text-muted">@(Model?.Review is not null ? "Open the review above to edit, cancel or confirm your draft." : "This conversation reached its limit.") Start fresh for another question.</p> }
     <div class="mt-6 flex flex-wrap gap-3"><a href="/Knowledge" class="quiet-button">Browse building help</a><a href="/Assistant" class="quiet-button">Start fresh or change scope</a><a href="/Portal" class="quiet-button">Your office</a></div>
 </div>
 @section Scripts { <script src="~/js/assistant.js" asp-append-version="true" defer></script> }

@@ -11,7 +11,10 @@
     if (!membership || checking || document.hidden) return;
     checking = true;
     try {
-      const response = await fetch('/Assistant/Access?membershipId=' + encodeURIComponent(membership),
+      const query = new URLSearchParams({ membershipId: membership });
+      if (result.dataset.assistantConversation) query.set('conversationId', result.dataset.assistantConversation);
+      if (result.dataset.assistantReview) query.set('reviewId', result.dataset.assistantReview);
+      const response = await fetch('/Assistant/Access?' + query,
         { credentials: 'same-origin', cache: 'no-store' });
       if (!response.ok) {
         pending?.abort();
@@ -23,6 +26,8 @@
           for (const option of Array.from(selection.options)) if (option.value) option.remove();
           form.querySelector('[name="question"]').value = '';
           form.querySelector('[name="requestId"]')?.remove();
+          form.querySelector('[name="sequence"]').value = '0';
+          form.querySelector('[name="conversationId"]').value = '00000000-0000-0000-0000-000000000000';
         }
       }
     } catch { result.textContent = 'Unable to verify access. Start a new question.'; }
@@ -33,6 +38,16 @@
   document.addEventListener('visibilitychange', checkAccess);
 
   if (!form) return;
+  form.addEventListener('change', event => {
+    if (event.target.name !== 'membershipId') return;
+    pending?.abort();
+    form.querySelector('[name="sequence"]').value = '0';
+    form.querySelector('[name="conversationId"]').value = '00000000-0000-0000-0000-000000000000';
+    form.querySelector('[name="requestId"]')?.remove();
+    const result = document.querySelector('[data-assistant-result]');
+    result.textContent = 'Scope changed. Your next question starts a fresh conversation.';
+    delete result.dataset.assistantMembership;
+  });
   stop.addEventListener('click', () => pending?.abort());
   form.addEventListener('submit', async event => {
     event.preventDefault();
@@ -51,6 +66,16 @@
       document.querySelector('[data-assistant-result]').replaceWith(document.importNode(result, true));
       const conversation = documentResult.querySelector('[name="conversationId"]');
       if (conversation) form.querySelector('[name="conversationId"]').value = conversation.value;
+      const nextForm = documentResult.querySelector('[data-assistant-form]');
+      if (nextForm) {
+        form.querySelector('[name="sequence"]').value = nextForm.querySelector('[name="sequence"]').value;
+        form.querySelector('[name="membershipId"]').replaceWith(document.importNode(nextForm.querySelector('[name="membershipId"]'), true));
+        form.querySelector('[name="question"]').value = '';
+      } else {
+        form.hidden = true;
+        form.querySelector('[name="question"]').value = '';
+        form.querySelector('[name="requestId"]')?.remove();
+      }
       progress.textContent = response.ok ? 'Answer ready.' : 'Try again or use building help.';
     } catch (error) {
       progress.textContent = error.name === 'AbortError' ? 'Stopped. No action was submitted.' : 'Unable to connect. Try again or use building help.';

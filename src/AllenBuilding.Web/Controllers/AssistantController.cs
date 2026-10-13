@@ -1,8 +1,11 @@
+using System.Security.Claims;
+using System.Security.Cryptography;
 using AllenBuilding.Application.Assistant;
 using AllenBuilding.Application.Maintenance;
 using AllenBuilding.Domain.Maintenance;
 using AllenBuilding.Web.Hosting;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.Mvc.ViewEngines;
@@ -13,7 +16,8 @@ namespace AllenBuilding.Web.Controllers;
 
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class AssistantController(AssistantHelp help, AssistantPolicy policy, AssistantBudget budget, MaintenanceActions maintenance,
-    IAssistantTenantAccess access, ICompositeViewEngine views, AssistantMaintenance actions, TimeProvider time) : Controller
+    IAssistantTenantAccess access, ICompositeViewEngine views, AssistantMaintenance actions, TimeProvider time,
+    AssistantConversations conversations, IDataProtectionProvider protection) : Controller
 {
     [HttpGet]
     public async Task<IActionResult> Index(Guid? membershipId, Guid? requestId)
@@ -22,6 +26,8 @@ public sealed class AssistantController(AssistantHelp help, AssistantPolicy poli
         ViewData["ActionsEnabled"] = policy.ActionsEnabled;
         ViewData["Memberships"] = policy.TenantHelpEnabled ? await maintenance.MembersAsync(false, HttpContext.RequestAborted) : Array.Empty<RequestMemberChoice>();
         ViewData["ConversationId"] = Guid.NewGuid();
+        ViewData["FollowUpsEnabled"] = policy.FollowUpsEnabled;
+        if (policy.FollowUpsEnabled) ConversationOwner();
         if (requestId is { } request)
         {
             if (!policy.ActionsEnabled || membershipId is null) return NotFound();
@@ -37,15 +43,31 @@ public sealed class AssistantController(AssistantHelp help, AssistantPolicy poli
     }
 
     [HttpGet, EnableRateLimiting("Readiness")]
-    public async Task<IActionResult> Access(Guid membershipId) => policy.TenantHelpEnabled &&
-        await access.CaptureAsync(membershipId, HttpContext.RequestAborted) is not null ? NoContent() : NotFound();
+    public async Task<IActionResult> Access(Guid membershipId, Guid? conversationId, Guid? reviewId)
+    {
+        if (!policy.TenantHelpEnabled) return NotFound();
+        if (reviewId is { } review && conversationId is { } reviewConversation)
+        {
+            var view = policy.ActionsEnabled ? await actions.ReadAsync(review, reviewConversation, HttpContext.RequestAborted) : null;
+            return view is not null && view.Scope.MembershipId == membershipId &&
+                await access.ReleaseAsync(view.Scope, view.Sources, _ => Task.CompletedTask, HttpContext.RequestAborted) ? NoContent() : NotFound();
+        }
+        if (conversationId is { } conversation)
+        {
+            var context = policy.FollowUpsEnabled ? conversations.ReadContext(conversation, ConversationOwner()) : null;
+            return context?.Scope is { } scope && scope.MembershipId == membershipId &&
+                await access.ReleaseAsync(scope, context.Sources, _ => Task.CompletedTask, HttpContext.RequestAborted) ? NoContent() : NotFound();
+        }
+        return await access.CaptureAsync(membershipId, HttpContext.RequestAborted) is not null ? NoContent() : NotFound();
+    }
 
     [HttpPost, EnableRateLimiting("AssistantTurns"), RequestSizeLimit(20000)]
-    public async Task<IActionResult> Ask(string? question, Guid? membershipId, Guid? requestId, Guid conversationId)
+    public async Task<IActionResult> Ask(string? question, Guid? membershipId, Guid? requestId, Guid conversationId, int sequence = 0)
     {
         ViewData["Enabled"] = policy.Enabled;
         ViewData["ActionsEnabled"] = policy.ActionsEnabled;
         ViewData["ConversationId"] = Guid.NewGuid();
+        ViewData["FollowUpsEnabled"] = policy.FollowUpsEnabled;
         if (!policy.Enabled) return Answer(new(AssistantModelCode.Unavailable));
         // Browser form antiforgery is global; reject an explicit cross-origin request as well.
         var origin = Request.Headers.Origin.ToString();
@@ -56,9 +78,25 @@ public sealed class AssistantController(AssistantHelp help, AssistantPolicy poli
         { Response.StatusCode = 429; ViewData["Limited"] = true; return View("Index"); }
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(HttpContext.RequestAborted);
         deadline.CancelAfter(TimeSpan.FromSeconds(60));
+        using var conversation = policy.FollowUpsEnabled ? conversations.Begin(conversationId, sequence, ConversationOwner(), membershipId, requestId) : null;
+        if (policy.FollowUpsEnabled && conversation is null)
+        { ViewData["ConversationUnavailable"] = true; Response.StatusCode = 409; return View("Index"); }
         try
         {
-            var result = await help.AskAsync(question, deadline.Token, membershipId, requestId, conversationId);
+            var result = await help.AskAsync(question, deadline.Token, membershipId, requestId, conversation?.Id ?? Guid.NewGuid(), conversation?.Previous);
+            if (conversation is not null)
+            {
+                if (result.Code == AssistantModelCode.Success)
+                {
+                    if (!conversation.Complete(question, result)) return Answer(new(AssistantModelCode.Unavailable));
+                    ViewData["ConversationId"] = conversation.Id; ViewData["Sequence"] = conversation.Sequence;
+                    ViewData["ConversationClosed"] = conversation.Closed;
+                    ViewData["ActiveConversation"] = conversation.Id;
+                }
+                else if (result.Code == AssistantModelCode.Denied) conversation.Forget();
+                // Failure pages intentionally show no retained private text. Start fresh or retry the
+                // original form; an unsuccessful turn does not advance the server's sequence.
+            }
             if (result.Scope is null) return Answer(result);
             // Do not add unrelated memberships to a private response's provenance.
             ViewData["Memberships"] = new[] { new RequestMemberChoice(result.Scope.MembershipId, result.Scope.Suite) };
@@ -68,6 +106,25 @@ public sealed class AssistantController(AssistantHelp help, AssistantPolicy poli
         catch (OperationCanceledException) when (!HttpContext.RequestAborted.IsCancellationRequested) { return Answer(new(AssistantModelCode.Unavailable)); }
         catch (Exception exception) when (exception is System.Data.Common.DbException or Microsoft.EntityFrameworkCore.DbUpdateException)
         { return Answer(new(AssistantModelCode.Unavailable)); }
+    }
+    private string ConversationOwner()
+    {
+        const string cookie = "office.assistant";
+        var protector = protection.CreateProtector("OfficeAssistant.TransientBrowser.v1");
+        string? token = null;
+        if (Request.Cookies.TryGetValue(cookie, out var protectedToken))
+        {
+            try { var value = protector.Unprotect(protectedToken); if (Guid.TryParseExact(value, "N", out _)) token = value; }
+            catch (CryptographicException) { }
+        }
+        if (token is null)
+        {
+            token = Guid.NewGuid().ToString("N");
+            Response.Cookies.Append(cookie, protector.Protect(token), new CookieOptions
+            { HttpOnly = true, Secure = Request.IsHttps, SameSite = SameSiteMode.Strict, IsEssential = true, Path = "/Assistant", MaxAge = TimeSpan.FromHours(2) });
+        }
+        // Authentication transitions cannot transfer a guest/other-user conversation to this session.
+        return token + ":" + (User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "guest");
     }
     [Authorize, HttpGet, EnableRateLimiting("Readiness")]
     public async Task<IActionResult> Review(Guid id, Guid conversationId)

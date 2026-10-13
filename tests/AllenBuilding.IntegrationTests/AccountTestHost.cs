@@ -21,6 +21,7 @@ public sealed class AccountTestHost : WebApplicationFactory<Program>
     public AllenBuilding.Application.Assistant.IAssistantModel? AssistantModel { get; init; }
     public bool AssistantTenantHelpEnabled { get; init; }
     public bool AssistantActionsEnabled { get; init; }
+    public bool AssistantFollowUpsEnabled { get; init; }
     public Func<Task>? BeforeAssistantRelease { get; init; }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -40,7 +41,7 @@ public sealed class AccountTestHost : WebApplicationFactory<Program>
             if (AssistantModel is not null)
             {
                 services.Replace(ServiceDescriptor.Singleton(AssistantModel));
-                services.Replace(ServiceDescriptor.Singleton(new AllenBuilding.Application.Assistant.AssistantPolicy(true, AssistantTenantHelpEnabled, true, AssistantActionsEnabled)));
+                services.Replace(ServiceDescriptor.Singleton(new AllenBuilding.Application.Assistant.AssistantPolicy(true, AssistantTenantHelpEnabled, true, AssistantActionsEnabled, AssistantFollowUpsEnabled)));
             }
             if (BeforeAssistantRelease is not null)
                 services.Replace(ServiceDescriptor.Scoped<AllenBuilding.Application.Assistant.IAssistantTenantAccess>(sp => new BeforeReleaseAccess(

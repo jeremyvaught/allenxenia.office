@@ -7,6 +7,27 @@ namespace AllenBuilding.IntegrationTests;
 
 public sealed class OpenAiAssistantModelTests
 {
+    [Fact]
+    public async Task Followup_payload_has_bounded_untrusted_exchanges_without_provider_stored_conversations_or_tools()
+    {
+        var calls = 0;
+        using var client = new HttpClient(new Handler(async request =>
+        {
+            calls++; using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync()); var root = body.RootElement;
+            Assert.Contains("prior exchanges", root.GetProperty("instructions").GetString());
+            using var input = JsonDocument.Parse(root.GetProperty("input").GetString()!);
+            Assert.Equal("The sink leaks", input.RootElement.GetProperty("History")[0].GetProperty("Question").GetString());
+            Assert.Equal("Question", input.RootElement.EnumerateObject().Last().Name);
+            Assert.Equal("Kitchen", input.RootElement.GetProperty("Question").GetString());
+            Assert.Contains("newest user message", root.GetProperty("instructions").GetString());
+            Assert.False(root.GetProperty("store").GetBoolean()); Assert.False(root.TryGetProperty("previous_response_id", out _)); Assert.False(root.TryGetProperty("tools", out _));
+            return Response(new { answer = "Open building help", sources = Array.Empty<string>(), route = "help" });
+        }));
+        var model = new OpenAiAssistantModel(client, "synthetic-key");
+        Assert.Equal(AssistantModelCode.Success, (await model.AnswerAsync(new("Kitchen", [], false, History: [new("The sink leaks", "Where?")]), default)).Code);
+        Assert.Equal(AssistantModelCode.Invalid, (await model.AnswerAsync(new("Kitchen", [], false, History: Enumerable.Repeat(new AssistantExchange("Question", "Answer"), 6).ToArray()), default)).Code);
+        Assert.Equal(1, calls);
+    }
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

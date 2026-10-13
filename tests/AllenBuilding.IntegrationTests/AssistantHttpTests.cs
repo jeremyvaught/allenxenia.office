@@ -10,6 +10,43 @@ namespace AllenBuilding.IntegrationTests;
 public sealed class AssistantHttpTests
 {
     [Fact]
+    public async Task Guest_followups_use_only_server_history_and_browser_cookie_ownership_with_no_disk_transcript()
+    {
+        var model = new Model { Answer = "<script>answer-canary</script>" };
+        await using var host = new AccountTestHost { AssistantModel = model, AssistantFollowUpsEnabled = true }; await host.InitializeAsync();
+        using var browser = host.Browser();
+        using var first = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", ("question", "My first question"));
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        var fields = ConversationFields(await first.Content.ReadAsStringAsync()); Assert.Equal("1", fields.Single(x => x.Key == "sequence").Value);
+        using var second = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", fields.Concat(new[]
+        { ("question", "What about the other detail?"), ("history[0].question", "injected-history"), ("history[0].answer", "forged approval") }).ToArray());
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        var old = Assert.Single(model.Input!.History!); Assert.Equal("My first question", old.Question); Assert.Equal(model.Answer, old.Answer);
+        Assert.DoesNotContain("injected-history", System.Text.Json.JsonSerializer.Serialize(model.Input));
+        var html = await second.Content.ReadAsStringAsync(); Assert.Contains("Earlier messages", html); Assert.Contains("My first question", html);
+        Assert.DoesNotContain(model.Answer, html); Assert.Contains("&lt;script&gt;", html);
+        using var foreign = host.Browser();
+        using var denied = await AccountTestHost.PostAsync(foreign, "/Assistant", "/Assistant/Ask", ConversationFields(html).Concat(new[] { ("question", "Resume stolen conversation") }).ToArray());
+        Assert.Equal(HttpStatusCode.Conflict, denied.StatusCode); Assert.Equal(2, model.Calls);
+        using var stale = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", fields.Concat(new[] { ("question", "Duplicate turn") }).ToArray());
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode); Assert.Equal(2, model.Calls);
+        using var scope = host.Services.CreateScope(); Assert.Empty(await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().AssistantMaintenanceReviews.ToListAsync());
+    }
+    [Fact]
+    public async Task Retained_public_source_withdrawal_denies_context_before_another_model_call()
+    {
+        var model = new Model(); await using var host = new AccountTestHost { AssistantModel = model, AssistantFollowUpsEnabled = true }; await host.InitializeAsync();
+        var article = await Seed(host); using var browser = host.Browser();
+        using var first = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", ("question", "entry guidance"));
+        var fields = ConversationFields(await first.Content.ReadAsStringAsync());
+        using (var scope = host.Services.CreateScope())
+        { var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); (await db.HelpArticles.SingleAsync(x => x.Id == article)).Withdraw(); await db.SaveChangesAsync(); }
+        using var denied = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", fields.Concat(new[] { ("question", "Another detail") }).ToArray());
+        Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode); Assert.Equal(1, model.Calls); Assert.DoesNotContain("Published guidance", await denied.Content.ReadAsStringAsync());
+    }
+    internal static (string Key, string Value)[] ConversationFields(string html) => new[] { "conversationId", "sequence" }.Select(name =>
+        (name, WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Match(html, "name=\"" + name + "\"[^>]*value=\"([^\"]+)\"").Groups[1].Value))).ToArray();
+    [Fact]
     public async Task Public_generation_sees_only_published_public_excerpts_and_renders_escaped_citations_and_fixed_links()
     {
         var model = new Model(); await using var host = new AccountTestHost { AssistantModel = model }; await host.InitializeAsync();

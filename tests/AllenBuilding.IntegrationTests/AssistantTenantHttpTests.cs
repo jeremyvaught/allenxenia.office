@@ -14,6 +14,92 @@ namespace AllenBuilding.IntegrationTests;
 
 public sealed class AssistantTenantHttpTests
 {
+    [Fact]
+    public async Task Private_history_is_suppressed_if_access_changes_after_followup_generation_and_rendering()
+    {
+        var model = new Model(); AccountTestHost host = null!; Fixture fixture = null!; var releases = 0;
+        host = new AccountTestHost
+        {
+            AssistantModel = model,
+            AssistantTenantHelpEnabled = true,
+            AssistantFollowUpsEnabled = true,
+            BeforeAssistantRelease = async () =>
+            {
+                if (++releases != 3) return; // First output, follow-up context admission, follow-up output.
+                using var scope = host.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+                (await db.Memberships.SingleAsync(x => x.Id == fixture.First.Id)).Revoke(fixture.EditorId, "End access", DateTimeOffset.UtcNow);
+                db.ActiveGrants.Remove(await db.ActiveGrants.SingleAsync(x => x.MembershipId == fixture.First.Id)); await db.SaveChangesAsync();
+            }
+        };
+        await using (host)
+        {
+            await host.InitializeAsync(); fixture = await Seed(host); using var browser = host.Browser(); await Login(browser);
+            using var first = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", ("question", "entry guidance"), ("membershipId", fixture.First.Id.ToString()));
+            Assert.Equal(HttpStatusCode.OK, first.StatusCode); var fields = AssistantHttpTests.ConversationFields(await first.Content.ReadAsStringAsync());
+            using var denied = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", fields.Concat(new[] { ("question", "Another detail"), ("membershipId", fixture.First.Id.ToString()) }).ToArray());
+            Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode); Assert.Equal(2, model.Calls);
+            var html = await denied.Content.ReadAsStringAsync(); Assert.DoesNotContain("generated-private-canary", html); Assert.DoesNotContain("entry guidance", html);
+        }
+    }
+    [Fact]
+    public async Task Focus_probe_checks_retained_sources_and_original_scope_without_returning_the_transcript()
+    {
+        var model = new Model(); await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true, AssistantFollowUpsEnabled = true };
+        await host.InitializeAsync(); var fixture = await Seed(host); using var browser = host.Browser(); await Login(browser);
+        using var first = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", ("question", "entry guidance"), ("membershipId", fixture.First.Id.ToString()));
+        var conversation = AssistantHttpTests.ConversationFields(await first.Content.ReadAsStringAsync()).Single(x => x.Key == "conversationId").Value;
+        var probe = $"/Assistant/Access?membershipId={fixture.First.Id}&conversationId={conversation}";
+        using var active = await browser.GetAsync(probe); Assert.Equal(HttpStatusCode.NoContent, active.StatusCode); Assert.Empty(await active.Content.ReadAsStringAsync());
+        using (var scope = host.Services.CreateScope())
+        { var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); (await db.HelpArticles.SingleAsync(x => x.Id == fixture.FirstArticle)).Withdraw(); await db.SaveChangesAsync(); }
+        using var denied = await browser.GetAsync(probe); Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode); Assert.DoesNotContain("generated-private-canary", await denied.Content.ReadAsStringAsync());
+        Assert.Equal(1, model.Calls);
+    }
+    [Fact]
+    public async Task Followup_details_prepare_one_canonical_draft_without_client_history_or_automatic_execution()
+    {
+        var model = new Model(); await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true, AssistantActionsEnabled = true, AssistantFollowUpsEnabled = true };
+        await host.InitializeAsync(); var fixture = await Seed(host); using var browser = host.Browser(); await Login(browser);
+        using var first = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", ("question", "The sink is leaking"), ("membershipId", fixture.First.Id.ToString()));
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode); var fields = AssistantHttpTests.ConversationFields(await first.Content.ReadAsStringAsync());
+        model.Route = "new_request"; model.Draft = new(AssistantReviewKind.Request, "Leaking sink", "The sink is leaking", "Kitchen");
+        using var second = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", fields.Concat(new[] { ("question", "In the kitchen"), ("membershipId", fixture.First.Id.ToString()) }).ToArray());
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode); var html = await second.Content.ReadAsStringAsync();
+        Assert.Equal("The sink is leaking", Assert.Single(model.Input!.History!).Question); Assert.Contains("Earlier messages", html); Assert.DoesNotContain("data-assistant-form", html);
+        var path = ReviewPath(html); Assert.Contains("Kitchen", await browser.GetStringAsync(path));
+        using var scope = host.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+        Assert.Single(await db.AssistantMaintenanceReviews.ToListAsync()); Assert.Empty(await db.WorkOrders.ToListAsync());
+        using var repeated = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", fields.Select(x => x.Key == "sequence" ? (x.Key, "2") : x).Concat(new[] { ("question", "Submit now"), ("membershipId", fixture.First.Id.ToString()) }).ToArray());
+        Assert.Equal(HttpStatusCode.Conflict, repeated.StatusCode); Assert.Equal(2, model.Calls);
+    }
+    [Theory]
+    [InlineData("membership")]
+    [InlineData("revocation")]
+    [InlineData("withdrawal")]
+    [InlineData("expiry")]
+    public async Task Retained_private_context_is_not_reused_after_scope_or_provenance_changes(string change)
+    {
+        var model = new Model(); await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true, AssistantFollowUpsEnabled = true };
+        await host.InitializeAsync(); var fixture = await Seed(host); using var browser = host.Browser(); await Login(browser);
+        using var first = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", ("question", "entry guidance"), ("membershipId", fixture.First.Id.ToString()));
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode); var fields = AssistantHttpTests.ConversationFields(await first.Content.ReadAsStringAsync());
+        if (change == "expiry") host.Clock.Offset = TimeSpan.FromMinutes(31);
+        if (change is "revocation" or "withdrawal")
+        {
+            using var scope = host.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+            if (change == "revocation")
+            {
+                (await db.Memberships.SingleAsync(x => x.Id == fixture.First.Id)).Revoke(fixture.EditorId, "End original access", DateTimeOffset.UtcNow);
+                db.ActiveGrants.Remove(await db.ActiveGrants.SingleAsync(x => x.MembershipId == fixture.First.Id));
+            }
+            else foreach (var article in await db.HelpArticles.ToListAsync()) article.Withdraw();
+            await db.SaveChangesAsync();
+        }
+        using var denied = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", fields.Concat(new[]
+        { ("question", "Another detail"), ("membershipId", (change == "membership" ? fixture.Second.Id : fixture.First.Id).ToString()) }).ToArray());
+        Assert.True(denied.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Conflict); Assert.Equal(1, model.Calls);
+        var html = await denied.Content.ReadAsStringAsync(); Assert.DoesNotContain("generated-private-canary", html); Assert.DoesNotContain("entry guidance", html);
+    }
     [Theory]
     [InlineData("guest")]
     [InlineData("disabled")]
@@ -313,8 +399,8 @@ public sealed class AssistantTenantHttpTests
     }
     private sealed class Model : IAssistantModel
     {
-        public AssistantDraft? Draft { get; init; }
-        public string Route { get; init; } = "new_request";
+        public AssistantDraft? Draft { get; set; }
+        public string Route { get; set; } = "new_request";
         public AssistantModelInput? Input { get; private set; }
         public int Calls { get; private set; }
         public Task<AssistantModelReply> AnswerAsync(AssistantModelInput input, CancellationToken cancellationToken)

@@ -2,7 +2,7 @@
 @using AllenBuilding.Domain.Maintenance
 @{ var review = Model.Review; var ready = ViewData["Ready"] is true; var isRequest = review.Kind == AssistantReviewKind.Request; ViewData["Title"] = "Review maintenance " + (isRequest ? "request" : "comment"); }
 <div class="page max-w-3xl">
-    <div data-assistant-result data-assistant-membership="@Model.Scope.MembershipId" class="rounded-2xl border border-line bg-panel p-5 sm:p-6">
+    <div data-assistant-result data-assistant-membership="@Model.Scope.MembershipId" data-assistant-conversation="@review.ConversationId" data-assistant-review="@review.Id" class="rounded-2xl border border-line bg-panel p-5 sm:p-6">
         <h1 class="mb-3 text-2xl font-semibold">Review maintenance @(isRequest ? "request" : "comment")</h1>
         <p class="mb-5 break-words text-muted">@Model.Scope.Suite</p>
         @if (review.State == AssistantReviewState.Completed)
