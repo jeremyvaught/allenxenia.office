@@ -270,3 +270,18 @@ SQLite and real MySQL exercise both outcomes, a carried-remainder itemized captu
 The refund disposition now has a protected manager review/confirm flow: exact original targets and amounts, explicit debt choice and reason, five-minute actor-bound ticket, CSRF-protected confirmation, current authority and every item version rechecked. Submitted execution fields cannot replace the ticket's reviewed command. Preparation changes no ledger data. Ordinary Development/Production policy remains disabled; isolated `Testing` fixtures can opt in with `Billing__RefundReviewEnabled=true`. Pending/missing review or insufficient original funds cannot prepare the disposition. Recorded local disposition continues to display provider agreement pending.
 
 HTTP checks cover default-disabled routes, escaping, fractional-cent rejection, altered/wrong-actor/expired tickets, CSRF, replay, stale debt and revoked access. A bounded 25-item Unicode review fits its protected ticket. SQLite/real MySQL verify private preparation output is suppressed if identity or MFA changes during retrieval. Each browser project now uses a separate test server/fixture, preserving the account-IP rate limit while all three execute refund preparation, cancellation navigation, confirmation and tenant-denial checks at 320px. The WebKit review screenshot was inspected. Latest passing checks: 76 domain, 217 ordinary integration, one real MySQL and nine browser flows. Whole-payment provider verification and scoped source admission remain prerequisites for activating the workflow.
+
+## Verified local SQLite snapshot
+
+Requires Python 3.9 or newer. Run from the repository root:
+
+```sh
+python3 scripts/backup-sqlite.py src/AllenBuilding.Web/.data/office.db src/AllenBuilding.Web/.data/backups
+python3 -m unittest discover -s tests/scripts -v
+```
+
+The helper backs up a consistent source transaction, includes committed live WAL data, verifies integrity/foreign keys/counts and a SHA-256 manifest, then publishes a new private snapshot directory with a self-contained database. The source is opened only if it exists, and its connection rejects writes. Connections close explicitly; the SQLite connection context manager manages transactions rather than closing them. [Python SQLite connection guidance](https://docs.python.org/3/library/sqlite3.html#how-to-use-the-connection-context-manager).
+
+The destination must be an owned 0700 directory; each database/manifest is 0600. The default progress budget is thirty seconds. Failure exits nonzero and must stop an upgrade script (`set -e`); never continue into migration after a failed backup. Restore by verifying the manifest/checksum and copying the selected snapshot into a **new** private location, then migrate/verify that copy. Do not migrate the backup itself or overwrite a running database. The command covers the local database; protected keys and production MySQL/off-host recovery are separate release evidence.
+
+Four script checks cover committed live WAL data, unique/reopenable snapshots, permissions/checksum, foreign-key corruption without source mutation, missing source/unsafe directory, and timeout cleanup. CI runs them separately from .NET coverage. Populated SQLite/MySQL upgrades now also preserve an original capture/allocation, pending cash review and pre-existing local credit when installing the new refund relations. Preview 5081 is on `ReviewedRefundAllocations`: a verified pre-upgrade snapshot was restored and migrated separately, its original checksum remained unchanged, both databases passed integrity/FK/count checks, and public/login/CSS/liveness/readiness return 200. The preview still has no tenant/account/payment rows; this does not prove populated off-host recovery or payment readiness.

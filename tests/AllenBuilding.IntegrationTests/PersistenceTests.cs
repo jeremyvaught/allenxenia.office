@@ -68,7 +68,27 @@ public sealed class PersistenceTests
             var oldAttempt = PaymentAttempt.Admit(Guid.NewGuid(), legacyUser.Id, oldBinding, [new(oldDebt.Id, oldAccount.Id, oldDebt.Version, 1000)], now);
             db.AddRange(oldBuilding, oldSuite, oldMembership, oldAccount, oldBinding, oldDebt, oldAttempt); await db.SaveChangesAsync();
             await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO collection_work (attempt_id, api_version, public_origin, payment_method_configuration, state, lease_token, next_attempt_at, created_at, attempts, failures) VALUES ({oldAttempt.Id.ToString("D")}, {CheckoutProfile.ApiContract}, {"https://upgrade.example.test"}, {"pmc_upgrade"}, {"Queued"}, {Guid.Empty.ToString("D")}, {now.UtcDateTime}, {now.UtcDateTime}, {0}, {0})");
+            await db.GetService<IMigrator>().MigrateAsync("CanonicalCashMovements");
+            // Populated upgrade: original capture, pending returned-cash review and a pre-existing local credit survive the new composite relations.
+            var cashSuite = new Suite { BuildingId = oldBuilding.Id, Name = "Cash schema upgrade" }; var cashMembership = Membership.Grant(cashSuite.Id, legacyUser.Id, now.AddDays(-1));
+            var cashAccount = RentAccount.Open(Guid.NewGuid(), cashMembership.Id); var cashBinding = BillingCustomerBinding.Create(cashAccount.Id, "acct_upgrade_cash", false, "cus_upgrade_cash", now);
+            var cashDebt = Obligation.Issue(cashAccount.Id, new Money(1000), "Captured upgrade charge", new DateOnly(2026, 10, 1), legacyUser.Id, now);
+            var creditedDebt = Obligation.Issue(cashAccount.Id, new Money(1000), "Earlier credited charge", new DateOnly(2026, 9, 1), legacyUser.Id, now);
+            var credit = ObligationCredit.RecordLocal(Guid.NewGuid(), legacyUser.Id, new(creditedDebt.Id, cashAccount.Id, creditedDebt.Version, 1000), 1, ObligationCreditKind.Credit, "Pre-existing local credit", now);
+            var cashAttempt = PaymentAttempt.Admit(Guid.NewGuid(), legacyUser.Id, cashBinding, [new(cashDebt.Id, cashAccount.Id, cashDebt.Version, 1000)], now); cashAttempt.BeginDispatch(now);
+            var cashCapture = SettlementPayment.Record(cashAttempt, new(cashBinding.ProviderAccount, false, cashBinding.CustomerId, "cs_upgrade_cash", "pi_upgrade_cash", 1000, "USD"), now);
+            var movement = CashMovement.Record(cashCapture, cashAttempt, new(cashBinding.ProviderAccount, false, cashAccount.Id, cashAttempt.Id, cashBinding.CustomerId, cashAttempt.PaymentId!, "re_upgrade_cash", "txn_upgrade_cash", CashMovementKind.Refund, -100, "USD", now), now);
+            var cashReview = CashMovementReview.Open(movement);
+            db.AddRange(cashSuite, cashMembership, cashAccount, cashBinding, cashDebt, creditedDebt, cashAttempt, cashCapture, movement); await db.SaveChangesAsync();
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO cash_movement_reviews (movement_id, account_id, state, version, created_at) VALUES ({movement.Id.ToString("D")}, {cashAccount.Id.ToString("D")}, {"Pending"}, {cashReview.Version.ToString("D")}, {now.UtcDateTime})");
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO obligation_credits (id, account_id, obligation_id, reviewed_version, operation_id, actor_id, kind, amount_minor_units, currency, reason, recorded_at) VALUES ({credit.Id.ToString("D")}, {cashAccount.Id.ToString("D")}, {creditedDebt.Id.ToString("D")}, {credit.ReviewedVersion.ToString("D")}, {credit.OperationId.ToString("D")}, {legacyUser.Id}, {"Credit"}, {1L}, {"USD"}, {credit.Reason}, {now.UtcDateTime})");
             await db.Database.MigrateAsync();
+            var restoredReview = await db.CashMovementReviews.AsNoTracking().SingleAsync(x => x.MovementId == movement.Id);
+            Assert.Equal(CashMovementReviewState.Pending, restoredReview.State); Assert.Equal(cashReview.Version, restoredReview.Version); Assert.Null(restoredReview.OperationId); Assert.Null(restoredReview.Disposition);
+            var restoredCredit = await db.ObligationCredits.AsNoTracking().SingleAsync(x => x.Id == credit.Id); Assert.Equal(1, restoredCredit.AmountMinorUnits); Assert.Null(restoredCredit.SourceMovementId);
+            Assert.Equal(-100, (await db.CashMovements.AsNoTracking().SingleAsync(x => x.Id == movement.Id)).SignedMinorUnits);
+            Assert.Equal(1000, (await db.SettlementPayments.AsNoTracking().SingleAsync(x => x.Id == cashCapture.Id)).AmountMinorUnits);
+            Assert.Equal(1000, (await db.PaymentAllocations.AsNoTracking().SingleAsync(x => x.PaymentId == cashCapture.Id)).AmountMinorUnits);
             var oldWork = await db.CollectionWork.AsNoTracking().SingleAsync(x => x.AttemptId == oldAttempt.Id);
             Assert.Equal(now, oldWork.CycleStartedAt); Assert.False(oldWork.ReadOnlyReconciliation); Assert.Equal("pmc_upgrade", oldWork.PaymentMethodConfiguration);
             var oldEvent = await db.PaymentEvents.AsNoTracking().SingleAsync(x => x.Id == oldEventId);

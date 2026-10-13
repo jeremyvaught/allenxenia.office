@@ -17,6 +17,8 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm audit --audit-level=high
       - run: npm run build:css
+      - name: Verify local SQLite snapshots
+        run: python3 -m unittest discover -s tests/scripts -v
       - run: dotnet tool restore
       - run: dotnet restore --locked-mode
       - run: dotnet build --configuration Release --no-restore

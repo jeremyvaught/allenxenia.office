@@ -23,3 +23,6 @@ playwright-report/
 test-results/
 
 !scripts/coverage.sh
+!scripts/backup-sqlite.py
+**/__pycache__/
+*.pyc
