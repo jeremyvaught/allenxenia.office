@@ -53,11 +53,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Package verified portable release
+      - name: Package verified self-contained Linux x64 release
         run: python3 scripts/package-release.py build
       - name: Verify published Linux process and MySQL restoration
         run: |
-          for release in artifacts/releases/release-*; do
+          for release in artifacts/releases/release-*/; do
             python3 scripts/verify-release.py "$release"
           done
       - name: Preserve published recovery evidence
@@ -68,10 +68,10 @@ jobs:
           path: artifacts/release-verification/*.json
           if-no-files-found: warn
           retention-days: 14
-      - name: Preserve portable release
+      - name: Preserve self-contained release with executable permissions
         uses: actions/upload-artifact@v4
         with:
           name: allen-office-release-${{ github.sha }}
-          path: artifacts/releases/release-*/
+          path: artifacts/releases/release-*.tar.gz
           if-no-files-found: error
           retention-days: 14

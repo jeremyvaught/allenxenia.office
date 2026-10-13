@@ -55,6 +55,24 @@ class ReleasePackageTests(unittest.TestCase):
         (self.root / 'wwwroot/linked').symlink_to(self.root.parent, target_is_directory=True)
         with self.assertRaises(ValueError): release.verify(self.root)
 
+    def test_native_profile_requires_bundled_runtime_and_x64_executable(self):
+        with self.assertRaises(ValueError): release.seal(self.root, 'a' * 40, 'linux-x64')
+        runtime = {'runtimeOptions': {'tfm': 'net10.0', 'includedFrameworks': [{'name': 'Microsoft.NETCore.App', 'version': '10.0.9'}, {'name': 'Microsoft.AspNetCore.App', 'version': '10.0.9'}]}}
+        (self.root / 'AllenBuilding.Web.runtimeconfig.json').write_text(json.dumps(runtime))
+        for name in ['libhostfxr.so', 'libhostpolicy.so', 'libcoreclr.so']:
+            (self.root / name).write_bytes(b'fixture native library')
+        host = self.root / 'AllenBuilding.Web'
+        host.write_bytes(b'\x7fELF\x02\x01' + b'\0' * 12 + b'\x3e\x00')
+        host.chmod(0o755)
+        with self.assertRaises(ValueError): release.inventory(self.root, 'portable')
+        release.seal(self.root, 'a' * 40, 'linux-x64')
+        self.assertEqual('linux-x64', release.verify(self.root)['profile'])
+        host.chmod(0o644)
+        with self.assertRaises(ValueError): release.verify(self.root)
+        host.chmod(0o755)
+        host.write_bytes(b'\x7fELF\x02\x01' + b'\0' * 12 + b'\xb7\x00')
+        with self.assertRaises(ValueError): release.inventory(self.root, 'linux-x64')
+
 
 if __name__ == '__main__':
     unittest.main()

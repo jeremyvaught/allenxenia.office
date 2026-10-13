@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise a published Production DLL and independent MySQL restore using disposable local containers only."""
+"""Exercise a published Production process and MySQL/key restore in disposable containers."""
 import argparse
 import copy
 from html.parser import HTMLParser
@@ -63,6 +63,10 @@ def private_write(path, data):
 
 def verify_release(release):
     release = Path(release).absolute(); manifest = package.verify(release)
+    self_contained = manifest.get('profile') == 'linux-x64'
+    runtime = 'mcr.microsoft.com/dotnet/runtime-deps:10.0' if self_contained else RUNTIME
+    platform = ['--platform', 'linux/amd64'] if self_contained else []
+    executable = ['./AllenBuilding.Web'] if self_contained else ['dotnet', 'AllenBuilding.Web.dll']
     repository = Path(__file__).resolve().parent.parent
     artifacts = repository / 'artifacts' / 'release-verification'; artifacts.mkdir(parents=True, exist_ok=True, mode=0o700)
     if artifacts.is_symlink(): raise ValueError('Use a real local evidence directory.')
@@ -90,18 +94,20 @@ def verify_release(release):
             private_write(state / 'runtime.json', config)
             migrations = copy.deepcopy(config); migrations['ConnectionStrings'] = {'OfficeMigrator': connection.replace('office_runtime', 'office_migrator').replace('disposable-runtime', 'disposable-migrator')}
             private_write(state / 'migration.json', migrations)
-            common = ['docker', 'run', '--rm', '--ulimit', 'core=0', '--network', 'container:' + db, '--user', str(os.getuid()) + ':' + str(os.getgid()), '--read-only', '--tmpfs', '/tmp:rw,noexec,nosuid,size=64m', '--mount', 'type=bind,source=' + str(release) + ',target=/app,readonly', '--mount', 'type=bind,source=' + str(state) + ',target=/private', '--workdir', '/app', '--env', 'ASPNETCORE_ENVIRONMENT=Production']
+            if self_contained:
+                command(['docker', 'run', '--rm'] + platform + [runtime, '/bin/bash', '-c', 'if command -v dotnet; then exit 1; fi'])
+            common = ['docker', 'run', '--rm'] + platform + ['--ulimit', 'core=0', '--network', 'container:' + db, '--user', str(os.getuid()) + ':' + str(os.getgid()), '--read-only', '--tmpfs', '/tmp:rw,noexec,nosuid,size=64m', '--mount', 'type=bind,source=' + str(release) + ',target=/app,readonly', '--mount', 'type=bind,source=' + str(state) + ',target=/private', '--workdir', '/app', '--env', 'ASPNETCORE_ENVIRONMENT=Production']
             migration_name = 'office-release-migrate-' + identifier; owned.append(migration_name)
-            command(common + ['--name', migration_name, '--env', 'Office__RuntimeConfigFile=/private/migration.json', RUNTIME, 'dotnet', 'AllenBuilding.Web.dll', '--migrate'])
+            command(common + ['--name', migration_name, '--env', 'Office__RuntimeConfigFile=/private/migration.json', runtime] + executable + ['--migrate'])
             recovery_name = 'office-release-recovery-refusal-' + identifier; owned.append(recovery_name)
-            refused = subprocess.run(common + ['--name', recovery_name, '--env', 'Office__RuntimeConfigFile=/private/runtime.json', RUNTIME, 'dotnet', 'AllenBuilding.Web.dll', '--recover-manager-mfa'], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+            refused = subprocess.run(common + ['--name', recovery_name, '--env', 'Office__RuntimeConfigFile=/private/runtime.json', runtime] + executable + ['--recover-manager-mfa'], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
             if refused.returncode != 1 or b'Manager recovery failed or was not authorized.' not in refused.stderr:
                 raise ValueError('Unattended manager recovery was not refused.')
             mysql(db, "INSERT INTO buildings(id,name,time_zone_id) VALUES('11111111-1111-1111-1111-111111111111','Synthetic restore building','America/New_York'); INSERT INTO suites(id,building_id,name) VALUES('22222222-2222-2222-2222-222222222222','11111111-1111-1111-1111-111111111111','Synthetic suite');", 'office_release_proof')
 
             def start(label, filename):
                 name = 'office-release-' + label + '-' + identifier
-                command(common + ['--detach', '--name', name, '--env', 'Office__RuntimeConfigFile=/private/' + filename, RUNTIME, 'dotnet', 'AllenBuilding.Web.dll', '--urls', 'http://127.0.0.1:5081']); owned.append(name)
+                command(common + ['--detach', '--name', name, '--env', 'Office__RuntimeConfigFile=/private/' + filename, runtime] + executable + ['--urls', 'http://127.0.0.1:5081']); owned.append(name)
                 for _ in range(45):
                     try:
                         status, _headers, body = request(name, '/health/ready')
@@ -148,7 +154,9 @@ def verify_release(release):
             if status != 400: raise ValueError('Missing keys did not reject the original protected form.')
             stop(empty)
             if original_counts != counts('office_release_proof') or original_counts != counts('office_release_restored'): raise ValueError('Recovery probes changed application rows.')
-            evidence = {'format': 1, 'application_revision': manifest['source_revision'], 'profile': 'Published Production DLL on isolated Linux .NET/MySQL; no Forge host configured', 'runtime': command(['docker', 'run', '--rm', RUNTIME, 'dotnet', '--list-runtimes']).decode().strip().splitlines(), 'tables': len(original_counts), 'counts': original_counts, 'public_static_live_ready': 'passed', 'private_sign_in_required': 'passed', 'unattended_manager_recovery': 'refused', 'separate_database_restore': 'matching table counts and ready', 'protected_form_with_restored_keys': 'passed', 'protected_form_without_keys': 'rejected', 'external_financial_writes': 'disabled', 'scope': 'Synthetic local containers and empty accounts; not off-host recovery, tenant pilot, Nginx/Supervisor or payment reconciliation proof'}
+            frameworks = json.loads((release / 'AllenBuilding.Web.runtimeconfig.json').read_text())['runtimeOptions']
+            runtime_evidence = frameworks.get('includedFrameworks') if self_contained else command(['docker', 'run', '--rm', runtime, 'dotnet', '--list-runtimes']).decode().strip().splitlines()
+            evidence = {'format': 1, 'application_revision': manifest['source_revision'], 'profile': manifest.get('profile', 'portable'), 'runtime_image': runtime, 'host_dotnet': 'absent; bundled runtime used' if self_contained else 'installed', 'runtime': runtime_evidence, 'tables': len(original_counts), 'counts': original_counts, 'public_static_live_ready': 'passed', 'private_sign_in_required': 'passed', 'unattended_manager_recovery': 'refused', 'separate_database_restore': 'matching table counts and ready', 'protected_form_with_restored_keys': 'passed', 'protected_form_without_keys': 'rejected', 'external_financial_writes': 'disabled', 'scope': 'Synthetic local containers and empty accounts; not actual Forge, off-host recovery, tenant pilot, Nginx/Supervisor or payment reconciliation proof'}
             filename = artifacts / ('published-' + manifest['source_revision'][:12] + '-' + identifier[:8] + '.json'); private_write(filename, evidence)
             return filename
         finally:

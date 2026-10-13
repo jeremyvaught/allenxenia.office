@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <Content Update="appsettings.*.json" CopyToPublishDirectory="Never" />
+    <Content Update="packages.*.lock.json" CopyToPublishDirectory="Never" />
   </ItemGroup>
 
 </Project>
