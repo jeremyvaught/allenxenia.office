@@ -19,6 +19,8 @@ public sealed class AccountTestHost : WebApplicationFactory<Program>
     public TestClock Clock { get; } = new();
     public bool BillingPlanningEnabled { get; init; } = true;
     public AllenBuilding.Application.Assistant.IAssistantModel? AssistantModel { get; init; }
+    public bool AssistantTenantHelpEnabled { get; init; }
+    public Func<Task>? BeforeAssistantRelease { get; init; }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -37,8 +39,11 @@ public sealed class AccountTestHost : WebApplicationFactory<Program>
             if (AssistantModel is not null)
             {
                 services.Replace(ServiceDescriptor.Singleton(AssistantModel));
-                services.Replace(ServiceDescriptor.Singleton(new AllenBuilding.Application.Assistant.AssistantPolicy(true)));
+                services.Replace(ServiceDescriptor.Singleton(new AllenBuilding.Application.Assistant.AssistantPolicy(true, AssistantTenantHelpEnabled, true)));
             }
+            if (BeforeAssistantRelease is not null)
+                services.Replace(ServiceDescriptor.Scoped<AllenBuilding.Application.Assistant.IAssistantTenantAccess>(sp => new BeforeReleaseAccess(
+                    ActivatorUtilities.CreateInstance<AssistantTenantAccess>(sp), BeforeAssistantRelease)));
         });
     }
 
@@ -116,6 +121,16 @@ public sealed class AccountTestHost : WebApplicationFactory<Program>
         await base.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         foreach (var suffix in new[] { "", "-wal", "-shm" }) File.Delete(_path + suffix);
+    }
+
+    private sealed class BeforeReleaseAccess(AllenBuilding.Application.Assistant.IAssistantTenantAccess inner, Func<Task> before)
+        : AllenBuilding.Application.Assistant.IAssistantTenantAccess
+    {
+        public Task<AllenBuilding.Application.Assistant.AssistantTenantScope?> CaptureAsync(Guid membershipId, CancellationToken cancellationToken)
+            => inner.CaptureAsync(membershipId, cancellationToken);
+        public async Task<bool> ReleaseAsync(AllenBuilding.Application.Assistant.AssistantTenantScope scope,
+            IReadOnlyList<AllenBuilding.Application.Assistant.AssistantSource> contextualSources, Func<CancellationToken, Task> emit, CancellationToken cancellationToken)
+        { await before(); return await inner.ReleaseAsync(scope, contextualSources, emit, cancellationToken); }
     }
 }
 

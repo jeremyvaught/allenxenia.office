@@ -14,7 +14,7 @@ public sealed record PublishArticle(Guid Id, Guid Version, Guid ReviewedRevision
 
 public interface IKnowledgeStore
 {
-    Task<IReadOnlyList<HelpSource>> FindAsync(Actor? actor, KnowledgeScope scope, string search, Guid? id, CancellationToken cancellationToken);
+    Task<IReadOnlyList<HelpSource>> FindAsync(Actor? actor, KnowledgeScope scope, string search, Guid? id, CancellationToken cancellationToken, Guid? membershipId = null);
     Task<IReadOnlyList<ArticleEditor>> ManageAsync(Actor actor, Guid? id, CancellationToken cancellationToken);
     Task<ContentCode> SaveAsync(Actor actor, DraftArticle command, CancellationToken cancellationToken);
     Task<ContentCode> PublishAsync(Actor actor, PublishArticle command, CancellationToken cancellationToken);
@@ -29,6 +29,13 @@ public sealed class KnowledgeActions(ICurrentActor current, IKnowledgeStore stor
         var actor = scope == KnowledgeScope.Tenant ? await current.GetAsync(cancellationToken) : null;
         if (scope == KnowledgeScope.Tenant && (actor is null || (actor.ManagedBuildings.Count > 0 && !actor.ChallengedMfa))) return [];
         return await store.FindAsync(actor, scope, search?.Trim() ?? "", id, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<HelpSource>> FindForMembershipAsync(Guid membershipId, Guid? id = null, CancellationToken cancellationToken = default)
+    {
+        var actor = await current.GetAsync(cancellationToken);
+        if (membershipId == Guid.Empty || actor is null || (actor.ManagedBuildings.Count > 0 && !actor.ChallengedMfa)) return [];
+        return await store.FindAsync(actor, KnowledgeScope.Tenant, "", id, cancellationToken, membershipId);
     }
 
     public async Task<IReadOnlyList<ArticleEditor>> ManageAsync(Guid? id = null, CancellationToken cancellationToken = default)

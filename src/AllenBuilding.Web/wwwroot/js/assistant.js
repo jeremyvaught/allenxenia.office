@@ -5,6 +5,31 @@
   const stop = form.querySelector('[data-assistant-stop]');
   const progress = form.querySelector('[data-assistant-progress]');
   let pending;
+  let checking = false;
+  async function checkAccess() {
+    const result = document.querySelector('[data-assistant-result]');
+    const membership = result?.dataset.assistantMembership;
+    if (!membership || checking || document.hidden) return;
+    checking = true;
+    try {
+      const response = await fetch('/Assistant/Access?membershipId=' + encodeURIComponent(membership),
+        { credentials: 'same-origin', cache: 'no-store' });
+      if (!response.ok) {
+        pending?.abort();
+        result.textContent = 'Access changed. Start a new question using your current access.';
+        delete result.dataset.assistantMembership;
+        const selection = form.querySelector('[name="membershipId"]');
+        selection.value = '';
+        for (const option of Array.from(selection.options)) if (option.value) option.remove();
+        form.querySelector('[name="question"]').value = '';
+      }
+    } catch { result.textContent = 'Unable to verify access. Start a new question.'; }
+    finally { checking = false; }
+  }
+  window.addEventListener('focus', checkAccess);
+  window.addEventListener('pageshow', checkAccess);
+  document.addEventListener('visibilitychange', checkAccess);
+
   stop.addEventListener('click', () => pending?.abort());
   form.addEventListener('submit', async event => {
     event.preventDefault();

@@ -37,7 +37,7 @@
                 </nav>
                 <form action="/preferences/theme" method="post" class="flex flex-wrap items-center gap-2">
                 @Html.AntiForgeryToken()
-                <input type="hidden" name="returnUrl" value="@(Context.Request.Path + Context.Request.QueryString)" />
+                <input type="hidden" name="returnUrl" value="@(Context.Request.Path == "/Assistant/Ask" ? "/Assistant" : Context.Request.Path + Context.Request.QueryString)" />
                 <label class="flex items-center gap-2 text-sm text-muted">
                     <span>Theme</span>
                     <select data-theme-control name="value" aria-label="Theme" class="min-h-11 max-w-28 rounded-lg border border-muted bg-panel px-2 text-ink">

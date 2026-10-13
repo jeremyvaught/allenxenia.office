@@ -8,7 +8,7 @@ namespace AllenBuilding.Infrastructure.Persistence;
 
 public sealed class KnowledgeStore(OfficeDbContext db, ICurrentActor current, AccountInvitations audit, TimeProvider time) : IKnowledgeStore
 {
-    public async Task<IReadOnlyList<HelpSource>> FindAsync(Actor? actor, KnowledgeScope scope, string search, Guid? id, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<HelpSource>> FindAsync(Actor? actor, KnowledgeScope scope, string search, Guid? id, CancellationToken cancellationToken, Guid? membershipId = null)
     {
         var now = time.GetUtcNow();
         var userId = actor?.UserId ?? "";
@@ -23,6 +23,7 @@ public sealed class KnowledgeStore(OfficeDbContext db, ICurrentActor current, Ac
                                join grant in db.ActiveGrants on membership.Id equals grant.MembershipId
                                join suite in db.Suites on membership.SuiteId equals suite.Id
                                where membership.UserId == userId && suite.BuildingId == article.BuildingId && membership.RevokedAt == null &&
+                                   (membershipId == null || membership.Id == membershipId) &&
                                    membership.StartsAt <= now && (membership.EndsAt == null || membership.EndsAt > now)
                                select membership.Id).Any()))
                       select new { article.Id, Revision = revision, Building = building.Name };

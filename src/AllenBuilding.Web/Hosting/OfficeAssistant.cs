@@ -12,7 +12,8 @@ public static class OfficeAssistant
         var enabled = builder.Configuration.GetValue<bool?>("Assistant:Enabled") ?? (builder.Environment.IsDevelopment() && !string.IsNullOrWhiteSpace(key));
         if (enabled && (string.IsNullOrWhiteSpace(key) || key.Length is < 16 or > 1024 || key.Any(char.IsWhiteSpace)))
             throw new InvalidOperationException("An enabled assistant needs a server-side OpenAI credential.");
-        builder.Services.AddSingleton(new AssistantPolicy(enabled));
+        var tenantHelp = builder.Configuration.GetValue<bool?>("Assistant:TenantHelpEnabled") ?? builder.Environment.IsDevelopment();
+        builder.Services.AddSingleton(new AssistantPolicy(enabled, enabled && tenantHelp, builder.Configuration.GetValue<bool>("Billing:PlanningEnabled")));
         if (enabled)
         {
             builder.Services.AddHttpClient("OfficeAssistant", client => client.Timeout = TimeSpan.FromSeconds(55))
@@ -22,6 +23,7 @@ public static class OfficeAssistant
         }
         else builder.Services.AddScoped<IAssistantModel, DisabledAssistantModel>();
         builder.Services.AddScoped<AssistantHelp>();
+        builder.Services.AddScoped<IAssistantTenantAccess, AllenBuilding.Infrastructure.Persistence.AssistantTenantAccess>();
         builder.Services.AddSingleton<AssistantBudget>();
     }
 }
