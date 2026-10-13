@@ -7,7 +7,7 @@ namespace AllenBuilding.Infrastructure.Persistence;
 
 public static class StorageRegistration
 {
-    public static IServiceCollection AddOfficeStorage(this IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
+    public static IServiceCollection AddOfficeStorage(this IServiceCollection services, IConfiguration configuration, IHostEnvironment environment, bool migrations = false)
     {
         var provider = configuration["Database:Provider"];
         if (provider == "Sqlite")
@@ -28,9 +28,12 @@ public static class StorageRegistration
         }
         else if (provider == "MySql")
         {
-            var connection = configuration.GetConnectionString("Office");
+            var local = environment.IsDevelopment() || environment.IsEnvironment("Testing");
+            var name = migrations && !local ? "OfficeMigrator" : "Office";
+            var connection = configuration.GetConnectionString(name);
             if (string.IsNullOrWhiteSpace(connection))
-                throw new InvalidOperationException("Set ConnectionStrings__Office using restricted local configuration or environment secrets.");
+                throw new InvalidOperationException("Set the dedicated runtime or migration connection through restricted configuration.");
+            connection = MySqlConnectionPolicy.Validate(connection, local);
             services.AddDbContext<MySqlOfficeDbContext>(o => o.UseMySQL(connection));
             services.AddScoped<OfficeDbContext>(sp => sp.GetRequiredService<MySqlOfficeDbContext>());
         }

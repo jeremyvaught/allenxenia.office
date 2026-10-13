@@ -16,7 +16,8 @@ if (builder.Environment.IsEnvironment("Testing")) builder.WebHost.UseStaticWebAs
 builder.Services.AddControllersWithViews(options =>
     options.Filters.Add(new Microsoft.AspNetCore.Mvc.AutoValidateAntiforgeryTokenAttribute()));
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddOfficeStorage(builder.Configuration, builder.Environment);
+builder.Services.AddOfficeStorage(builder.Configuration, builder.Environment, migrations: migrate);
+builder.Services.AddHealthChecks().AddCheck<DatabaseReadiness>("office-database");
 builder.AddOfficeSecurity();
 builder.AddOfficeNotifications();
 builder.Services.AddScoped<AllenBuilding.Application.Maintenance.IMaintenanceStore, MaintenanceStore>();
@@ -35,6 +36,7 @@ builder.Services.AddScoped<AllenBuilding.Application.Reporting.ManagementReportQ
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddConcurrencyLimiter("Readiness", limiter => { limiter.PermitLimit = 2; limiter.QueueLimit = 0; });
     options.AddPolicy("Accounts", context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "local", _ => new FixedWindowRateLimiterOptions
         { PermitLimit = 20, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
@@ -98,6 +100,14 @@ app.UseAuthentication();
 app.UseRateLimiter();
 app.UseAuthorization();
 app.MapGet("/health/live", () => Results.Ok(new { status = "Healthy" }));
+app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        await context.Response.WriteAsJsonAsync(new { status = report.Status == Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Healthy ? "Ready" : "Unavailable" }, context.RequestAborted);
+    }
+}).RequireRateLimiting("Readiness");
 app.MapStaticAssets();
 app.MapControllerRoute("default", "{controller=Home}/{action=Index}/{id?}").WithStaticAssets();
 app.Run();
