@@ -83,6 +83,9 @@ public sealed class AutopayAuthorization
     public DateOnly? EndsBefore { get; private set; }
     public DateTimeOffset ConsentedAt { get; private set; }
     public string ConsentHash { get; private set; } = "";
+    public string? SetupSessionId { get; private set; }
+    public DateTimeOffset? SetupExpiresAt { get; private set; }
+    public AutopaySetupState? SetupState { get; private set; }
     public string? PaymentMethodId { get; private set; }
     public string? SubscriptionId { get; private set; }
     public DateTimeOffset? LastVerifiedAt { get; private set; }
@@ -153,6 +156,26 @@ public sealed class AutopayAuthorization
             Contract = "calendar-autopay.v1"
         })));
         return result;
+    }
+    public void ObserveVerifiedSetup(VerifiedAutopaySetup fact, bool allowActivation)
+    {
+        if (fact is null || !Enum.IsDefined(fact.State) || State is AutopayState.Active or AutopayState.Stopped ||
+            fact.ProviderAccount != ProviderAccount || fact.LiveMode != LiveMode || fact.AccountId != AccountId || fact.CustomerId != CustomerId || fact.ConsentHash != ConsentHash ||
+            !PaymentReferences.Valid(fact.SessionId, "cs_") || !fact.SetupOnly || fact.CheckedAt < ConsentedAt || fact.CheckedAt < LastVerifiedAt || fact.ExpiresAt <= ConsentedAt ||
+            fact.ExpiresAt.Offset != TimeSpan.Zero || (SetupState is AutopaySetupState.Ready or AutopaySetupState.Expired && SetupState != fact.State) || (SetupSessionId is not null && SetupSessionId != fact.SessionId) || (SetupExpiresAt is not null && SetupExpiresAt != fact.ExpiresAt) ||
+            (fact.State == AutopaySetupState.Ready ? !fact.OffSessionUsage || !PaymentReferences.Valid(fact.PaymentMethodId!, "pm_") : fact.PaymentMethodId is not null) ||
+            (fact.State == AutopaySetupState.Waiting && fact.CheckedAt >= fact.ExpiresAt) ||
+            (PaymentMethodId is not null && fact.State == AutopaySetupState.Ready && PaymentMethodId != fact.PaymentMethodId))
+            throw new InvalidOperationException("Setup evidence must verify the exact original customer, consent, setup-only session and off-session method.");
+        if (SetupSessionId == fact.SessionId && SetupState == fact.State && LastVerifiedAt == fact.CheckedAt) return;
+        SetupSessionId = fact.SessionId; SetupExpiresAt = fact.ExpiresAt; SetupState = fact.State; LastVerifiedAt = fact.CheckedAt.ToUniversalTime();
+        if (fact.State == AutopaySetupState.Ready)
+        {
+            PaymentMethodId = fact.PaymentMethodId;
+            // A completed external setup can be recorded after stop/revocation without authorizing a subscription.
+            if (allowActivation && State == AutopayState.AwaitingMethod && StopOperationId is null) State = AutopayState.AwaitingProvider;
+        }
+        Version = Guid.NewGuid();
     }
     public void ApplyVerifiedMethod(string providerAccount, bool liveMode, string customerId, string methodId, string consentHash)
     {

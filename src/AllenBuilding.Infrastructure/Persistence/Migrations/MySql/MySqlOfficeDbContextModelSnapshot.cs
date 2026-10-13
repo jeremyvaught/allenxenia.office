@@ -149,6 +149,21 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .HasColumnName("reviewed_account_version")
                         .UseCollation("utf8mb4_bin");
 
+                    b.Property<DateTime?>("SetupExpiresAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("setup_expires_at");
+
+                    b.Property<string>("SetupSessionId")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("setup_session_id")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("SetupState")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("setup_state");
+
                     b.Property<string>("State")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -252,6 +267,17 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .HasColumnName("account_id")
                         .UseCollation("utf8mb4_bin");
 
+                    b.Property<string>("ApiVersion")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("api_version")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int")
+                        .HasColumnName("attempts");
+
                     b.Property<string>("AuthorizationId")
                         .IsRequired()
                         .HasMaxLength(36)
@@ -263,6 +289,39 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .HasColumnType("datetime(6)")
                         .HasColumnName("created_at");
 
+                    b.Property<DateTime>("DeadlineAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("deadline_at");
+
+                    b.Property<DateTime?>("DispatchedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("dispatched_at");
+
+                    b.Property<int>("Failures")
+                        .HasColumnType("int")
+                        .HasColumnName("failures");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("last_error")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("LeaseToken")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("lease_token")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<DateTime?>("LeaseUntil")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("lease_until");
+
+                    b.Property<DateTime>("NextAttemptAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("next_attempt_at");
+
                     b.Property<string>("OriginalOperationId")
                         .IsRequired()
                         .HasMaxLength(36)
@@ -270,11 +329,25 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .HasColumnName("original_operation_id")
                         .UseCollation("utf8mb4_bin");
 
+                    b.Property<string>("PaymentMethodConfiguration")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("payment_method_configuration")
+                        .UseCollation("utf8mb4_bin");
+
                     b.Property<string>("ProviderOperationKey")
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("varchar(255)")
                         .HasColumnName("provider_operation_key")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("PublicOrigin")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)")
+                        .HasColumnName("public_origin")
                         .UseCollation("utf8mb4_bin");
 
                     b.Property<string>("ReviewedAuthorizationVersion")
@@ -296,6 +369,14 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                         .HasColumnType("varchar(32)")
                         .HasColumnName("state");
 
+                    b.Property<string>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("version")
+                        .UseCollation("utf8mb4_bin");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AuthorizationId", "AccountId");
@@ -303,7 +384,7 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.MySql
                     b.HasIndex("AuthorizationId", "Stage", "OriginalOperationId")
                         .IsUnique();
 
-                    b.HasIndex("State", "CreatedAt", "Id");
+                    b.HasIndex("Stage", "State", "NextAttemptAt", "CreatedAt", "Id");
 
                     b.ToTable("autopay_work", (string)null);
                 });

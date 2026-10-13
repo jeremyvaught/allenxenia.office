@@ -132,6 +132,20 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .HasColumnType("TEXT")
                         .HasColumnName("reviewed_account_version");
 
+                    b.Property<DateTime?>("SetupExpiresAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("setup_expires_at");
+
+                    b.Property<string>("SetupSessionId")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("setup_session_id");
+
+                    b.Property<string>("SetupState")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("setup_state");
+
                     b.Property<string>("State")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -227,6 +241,16 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .HasColumnType("TEXT")
                         .HasColumnName("account_id");
 
+                    b.Property<string>("ApiVersion")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("api_version");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("attempts");
+
                     b.Property<string>("AuthorizationId")
                         .IsRequired()
                         .HasMaxLength(36)
@@ -237,17 +261,60 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
+                    b.Property<DateTime>("DeadlineAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("deadline_at");
+
+                    b.Property<DateTime?>("DispatchedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("dispatched_at");
+
+                    b.Property<int>("Failures")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("failures");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("last_error");
+
+                    b.Property<string>("LeaseToken")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("lease_token");
+
+                    b.Property<DateTime?>("LeaseUntil")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("lease_until");
+
+                    b.Property<DateTime>("NextAttemptAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("next_attempt_at");
+
                     b.Property<string>("OriginalOperationId")
                         .IsRequired()
                         .HasMaxLength(36)
                         .HasColumnType("TEXT")
                         .HasColumnName("original_operation_id");
 
+                    b.Property<string>("PaymentMethodConfiguration")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("payment_method_configuration");
+
                     b.Property<string>("ProviderOperationKey")
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("TEXT")
                         .HasColumnName("provider_operation_key");
+
+                    b.Property<string>("PublicOrigin")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("public_origin");
 
                     b.Property<string>("ReviewedAuthorizationVersion")
                         .IsRequired()
@@ -267,6 +334,13 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                         .HasColumnType("TEXT")
                         .HasColumnName("state");
 
+                    b.Property<string>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("version");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AuthorizationId", "AccountId");
@@ -274,7 +348,7 @@ namespace AllenBuilding.Infrastructure.Persistence.Migrations.Sqlite
                     b.HasIndex("AuthorizationId", "Stage", "OriginalOperationId")
                         .IsUnique();
 
-                    b.HasIndex("State", "CreatedAt", "Id");
+                    b.HasIndex("Stage", "State", "NextAttemptAt", "CreatedAt", "Id");
 
                     b.ToTable("autopay_work", (string)null);
                 });

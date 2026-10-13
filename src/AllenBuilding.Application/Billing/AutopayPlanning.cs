@@ -5,7 +5,7 @@ using AllenBuilding.Domain.Billing;
 
 namespace AllenBuilding.Application.Billing;
 
-public sealed record AutopayPolicy(bool Enabled, string ProviderAccount, bool LiveMode);
+public sealed record AutopayPolicy(bool Enabled, string ProviderAccount, bool LiveMode, CheckoutProfile? Profile = null);
 public sealed record AutopayConsentReview(Guid OperationId, Guid AccountId, Guid AccountVersion, AutopaySchedule Schedule, string Suite);
 public sealed record ConfirmAutopay(Guid OperationId, Guid AccountId, Guid AccountVersion, AutopaySchedule Schedule, bool ExplicitlyAccepted);
 public sealed record StopAutopay(Guid OperationId, Guid AuthorizationId, Guid Version, AutopayStopTiming Timing);

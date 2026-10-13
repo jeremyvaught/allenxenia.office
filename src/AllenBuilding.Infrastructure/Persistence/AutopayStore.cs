@@ -56,7 +56,7 @@ public sealed class AutopayStore(OfficeDbContext db, ICurrentActor current, Auto
         var slot = await db.AutopaySlots.SingleOrDefaultAsync(x => x.AccountId == account.Id, token);
         if (slot is null) db.AutopaySlots.Add(new() { AccountId = account.Id, AuthorizationId = authorization.Id });
         else slot.AuthorizationId = authorization.Id;
-        db.AutopayAuthorizations.Add(authorization); db.AutopayWork.Add(AutopayWork.Enqueue(authorization, AutopayWorkStage.Setup, time.GetUtcNow()));
+        db.AutopayAuthorizations.Add(authorization); db.AutopayWork.Add(AutopayWork.Enqueue(authorization, AutopayWorkStage.Setup, time.GetUtcNow(), policy.Profile));
         account.AuthorizationChanged();
         return await Commit(tx, actor, command.OperationId, hash, account, authorization, "AutopayConsentRecorded", token);
     }
@@ -73,7 +73,8 @@ public sealed class AutopayStore(OfficeDbContext db, ICurrentActor current, Auto
         if (authorization.ProviderAccount != policy.ProviderAccount || authorization.LiveMode != policy.LiveMode) return new(BillingCode.Unavailable);
         if (authorization.Version != command.Version || authorization.State is AutopayState.StopPending or AutopayState.Stopped) return new(BillingCode.Conflict);
         authorization.RequestStop(command.OperationId, actor.UserId, command.Timing, time.GetUtcNow());
-        db.AutopayWork.Add(AutopayWork.Enqueue(authorization, AutopayWorkStage.Stop, time.GetUtcNow())); account.AuthorizationChanged();
+        var setup = await db.AutopayWork.AsNoTracking().SingleAsync(x => x.AuthorizationId == authorization.Id && x.Stage == AutopayWorkStage.Setup, token);
+        db.AutopayWork.Add(AutopayWork.Enqueue(authorization, AutopayWorkStage.Stop, time.GetUtcNow(), setup.Profile)); account.AuthorizationChanged();
         return await Commit(tx, actor, command.OperationId, hash, account, authorization, "AutopayStopRequested", token);
     }
 

@@ -3,7 +3,7 @@ using System.Diagnostics.Metrics;
 
 namespace AllenBuilding.Application.Diagnostics;
 
-public enum OfficeOperationKind { Http, MaintenanceSubmit, MaintenanceChange, MaintenanceAging, RentBalances, NotificationDispatch, CollectionDispatch, PaymentEvent, CustomerProvision, CashSource }
+public enum OfficeOperationKind { Http, MaintenanceSubmit, MaintenanceChange, MaintenanceAging, RentBalances, NotificationDispatch, CollectionDispatch, PaymentEvent, CustomerProvision, CashSource, AutopaySetup }
 public enum OfficeOutcome { Success, Denied, Invalid, Conflict, Failure, Cancelled, Retry, Uncertain, Suppressed, LeaseLost }
 public sealed record OriginTrace(string TraceId, string SpanId, Guid? OperationId);
 
@@ -28,6 +28,7 @@ public static class OfficeTelemetry
         OfficeOperationKind.PaymentEvent => "payment.event",
         OfficeOperationKind.CustomerProvision => "customer.provision",
         OfficeOperationKind.CashSource => "payment.cash_source",
+        OfficeOperationKind.AutopaySetup => "autopay.setup",
         _ => "other"
     };
     public static string Outcome(OfficeOutcome outcome) => outcome.ToString().ToLowerInvariant();
@@ -70,7 +71,7 @@ public sealed class OfficeOperation : IDisposable
     internal OfficeOperation(OfficeOperationKind kind, Guid? operationId, ActivityContext origin, Guid? messageId)
     {
         _kind = kind; _previous = Activity.Current;
-        var worker = kind is OfficeOperationKind.NotificationDispatch or OfficeOperationKind.CollectionDispatch or OfficeOperationKind.PaymentEvent or OfficeOperationKind.CustomerProvision or OfficeOperationKind.CashSource;
+        var worker = kind is OfficeOperationKind.NotificationDispatch or OfficeOperationKind.CollectionDispatch or OfficeOperationKind.PaymentEvent or OfficeOperationKind.CustomerProvision or OfficeOperationKind.CashSource or OfficeOperationKind.AutopaySetup;
         var root = worker || kind == OfficeOperationKind.Http;
         if (root) Activity.Current = null;
         _activity = OfficeTelemetry.Activities.StartActivity(OfficeTelemetry.Kind(kind), worker ? ActivityKind.Consumer : kind == OfficeOperationKind.Http ? ActivityKind.Server : ActivityKind.Internal,

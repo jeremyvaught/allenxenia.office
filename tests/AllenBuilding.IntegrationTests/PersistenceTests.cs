@@ -89,7 +89,23 @@ public sealed class PersistenceTests
             db.AddRange(cashBinding, cashDebt, creditedDebt, cashAttempt, cashCapture, movement); await db.SaveChangesAsync();
             await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO cash_movement_reviews (movement_id, account_id, state, version, created_at) VALUES ({movement.Id.ToString("D")}, {cashAccount.Id.ToString("D")}, {"Pending"}, {cashReview.Version.ToString("D")}, {now.UtcDateTime})");
             await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO obligation_credits (id, account_id, obligation_id, reviewed_version, operation_id, actor_id, kind, amount_minor_units, currency, reason, recorded_at) VALUES ({credit.Id.ToString("D")}, {cashAccount.Id.ToString("D")}, {creditedDebt.Id.ToString("D")}, {credit.ReviewedVersion.ToString("D")}, {credit.OperationId.ToString("D")}, {legacyUser.Id}, {"Credit"}, {1L}, {"USD"}, {credit.Reason}, {now.UtcDateTime})");
+            await db.GetService<IMigrator>().MigrateAsync("AutopayConsent");
+            var legacyTerms = RentAgreement.Create(cashAccount.Id, new Money(1000), 1, new DateOnly(2026, 1, 1), null, legacyUser.Id, now);
+            db.RentAgreements.Add(legacyTerms); await db.SaveChangesAsync();
+            var legacySchedule = AutopaySchedule.Select(legacyTerms, now, []);
+            var legacyConsent = AutopayAuthorization.Consent(Guid.NewGuid(), legacyUser.Id, cashAccount, cashBinding, legacySchedule, true, now);
+            var legacySetup = AutopayWork.Enqueue(legacyConsent, AutopayWorkStage.Setup, now);
+            // Insert the old table contract explicitly, without new setup/lease columns from the current EF model.
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO autopay_authorizations (id, operation_id, account_id, customer_binding_id, reviewed_account_version, agreement_id, agreement_version, actor_id, provider_account, live_mode, customer_id, monthly_minor_units, currency, due_day, first_period_starts_on, first_due_on, first_anchor_utc, consented_at, consent_hash, state, version) VALUES ({legacyConsent.Id.ToString("D")}, {legacyConsent.OperationId.ToString("D")}, {cashAccount.Id.ToString("D")}, {cashBinding.Id.ToString("D")}, {cashAccount.Version.ToString("D")}, {legacyTerms.Id.ToString("D")}, {legacyTerms.Version.ToString("D")}, {legacyUser.Id}, {cashBinding.ProviderAccount}, {false}, {cashBinding.CustomerId}, {1000L}, {"USD"}, {1}, {legacySchedule.FirstPeriodStartsOn.ToString("yyyy-MM-dd")}, {legacySchedule.FirstDueOn.ToString("yyyy-MM-dd")}, {legacySchedule.FirstAnchorUtc.UtcDateTime}, {now.UtcDateTime}, {legacyConsent.ConsentHash}, {"AwaitingMethod"}, {legacyConsent.Version.ToString("D")})");
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO autopay_slots (account_id, authorization_id) VALUES ({cashAccount.Id.ToString("D")}, {legacyConsent.Id.ToString("D")})");
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO autopay_work (id, authorization_id, account_id, stage, original_operation_id, reviewed_authorization_version, provider_operation_key, created_at, state) VALUES ({legacySetup.Id.ToString("D")}, {legacyConsent.Id.ToString("D")}, {cashAccount.Id.ToString("D")}, {"Setup"}, {legacyConsent.OperationId.ToString("D")}, {legacyConsent.Version.ToString("D")}, {legacySetup.ProviderOperationKey}, {now.UtcDateTime}, {"Queued"})");
             await db.Database.MigrateAsync();
+            var upgradedConsent = await db.AutopayAuthorizations.AsNoTracking().SingleAsync(x => x.Id == legacyConsent.Id);
+            Assert.Equal(legacyConsent.ConsentHash, upgradedConsent.ConsentHash); Assert.Equal(legacyConsent.OperationId, upgradedConsent.OperationId); Assert.Equal(cashBinding.Id, upgradedConsent.CustomerBindingId); Assert.Null(upgradedConsent.SetupSessionId); Assert.Null(upgradedConsent.PaymentMethodId);
+            Assert.Equal(AutopayState.NeedsReview, upgradedConsent.State); Assert.NotEqual(legacyConsent.Version, upgradedConsent.Version);
+            var upgradedSetup = await db.AutopayWork.AsNoTracking().SingleAsync(x => x.Id == legacySetup.Id);
+            Assert.Equal(legacySetup.ProviderOperationKey, upgradedSetup.ProviderOperationKey); Assert.Equal(legacyConsent.OperationId, upgradedSetup.OriginalOperationId); Assert.Equal(legacyConsent.Version, upgradedSetup.ReviewedAuthorizationVersion);
+            Assert.Equal(CollectionWorkState.NeedsReview, upgradedSetup.State); Assert.Equal("OriginalProfileMissing", upgradedSetup.LastError); Assert.Null(upgradedSetup.Profile); Assert.Null(upgradedSetup.DispatchedAt); Assert.Equal(now, upgradedSetup.NextAttemptAt); Assert.Equal(now.AddHours(48), upgradedSetup.DeadlineAt); Assert.NotEqual(Guid.Empty, upgradedSetup.Version);
             var restoredReview = await db.CashMovementReviews.AsNoTracking().SingleAsync(x => x.MovementId == movement.Id);
             Assert.Equal(CashMovementReviewState.Pending, restoredReview.State); Assert.Equal(cashReview.Version, restoredReview.Version); Assert.Null(restoredReview.OperationId); Assert.Null(restoredReview.Disposition); Assert.Null(restoredReview.VerifiedAt); Assert.Null(restoredReview.AgreementHash);
             var restoredCredit = await db.ObligationCredits.AsNoTracking().SingleAsync(x => x.Id == credit.Id); Assert.Equal(1, restoredCredit.AmountMinorUnits); Assert.Null(restoredCredit.SourceMovementId);
@@ -167,6 +183,7 @@ public sealed class PersistenceTests
         await KnowledgeContract.VerifyAsync(create);
         await BillingContract.VerifyAsync(create);
         await TenancyClosureContract.VerifyAsync(create);
+        await AutopaySetupContract.VerifyAsync(create);
         await AutopayContract.VerifyAsync(create);
         await AccessContract.VerifyAsync(create);
         await OperatorRecoveryContract.VerifyAsync(create);

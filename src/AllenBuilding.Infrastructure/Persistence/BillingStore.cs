@@ -160,7 +160,8 @@ public sealed partial class BillingStore(OfficeDbContext db, ICurrentActor curre
             if (activeAutopay.State is not (AutopayState.Stopped or AutopayState.StopPending))
             {
                 activeAutopay.RequestStop(Guid.NewGuid(), actor.UserId, AutopayStopTiming.Immediately, time.GetUtcNow());
-                db.AutopayWork.Add(AutopayWork.Enqueue(activeAutopay, AutopayWorkStage.Stop, time.GetUtcNow()));
+                var originalSetup = await db.AutopayWork.AsNoTracking().SingleAsync(x => x.AuthorizationId == activeAutopay.Id && x.Stage == AutopayWorkStage.Setup, cancellationToken);
+                db.AutopayWork.Add(AutopayWork.Enqueue(activeAutopay, AutopayWorkStage.Stop, time.GetUtcNow(), originalSetup.Profile));
                 audit.Audit(actor.UserId, "AutopayStopForChangedTerms", activeAutopay.Id.ToString("D"), "Original agreement " + activeAutopay.AgreementId.ToString("D"));
             }
         }
