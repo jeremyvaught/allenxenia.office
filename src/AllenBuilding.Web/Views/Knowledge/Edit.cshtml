@@ -20,8 +20,11 @@
             <section class="min-w-0 rounded-2xl border border-line bg-panel p-6"><h2 class="mb-4 text-xl font-semibold">Review the saved revision</h2><p class="mb-4 text-sm text-muted">@article.State · @(article.Draft.Audience == ArticleAudience.Public ? "Public visitors and tenants" : "Active tenants in this building") · Review by @article.Draft.ReviewOn.ToString("MMM d, yyyy")</p>
                 <h3 class="mb-3 break-words text-xl font-semibold">@article.Draft.Title</h3><p class="whitespace-pre-wrap break-words">@article.Draft.Body</p>
                 <p class="mt-6 mb-4 text-sm text-muted">Publishing uses this saved revision. Save edits before reviewing and publishing them.</p>
-                <form asp-action="Publish" method="post"><input name="Id" value="@article.Id" type="hidden" /><input name="Version" value="@article.Version" type="hidden" /><input name="ReviewedRevisionId" value="@article.Draft.Id" type="hidden" /><button class="button">Publish reviewed revision</button></form>
-                @if (article.State == PublicationState.Published)
+                @if (ViewData["UnsavedDraft"] is not true)
+                {
+                    <form asp-action="Publish" method="post"><input name="Id" value="@article.Id" type="hidden" /><input name="Version" value="@article.Version" type="hidden" /><input name="ReviewedRevisionId" value="@article.Draft.Id" type="hidden" /><button class="button">Publish reviewed revision</button></form>
+                }
+                @if (article.State == PublicationState.Published && ViewData["UnsavedDraft"] is not true)
                 {
                     @if (article.PublishedRevisionId != article.Draft.Id) { <p class="mt-4 text-sm text-muted">A previous approved revision remains visible until you publish these edits.</p> }
                     <form asp-action="Publish" method="post" class="mt-4"><input name="Id" value="@article.Id" type="hidden" /><input name="Version" value="@article.Version" type="hidden" /><input name="ReviewedRevisionId" value="@article.Draft.Id" type="hidden" /><input name="Withdraw" value="true" type="hidden" /><button class="quiet-button">Withdraw article</button></form>

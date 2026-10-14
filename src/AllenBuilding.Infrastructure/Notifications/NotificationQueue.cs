@@ -114,7 +114,7 @@ public sealed class NotificationQueue(OfficeDbContext db, IDataProtectionProvide
         await using var transaction = await AuthorityLocks.BeginAsync(db, cancellationToken);
         await AuthorityLocks.UserAsync(db, initial.UserId, cancellationToken);
         await Lock(id, cancellationToken);
-        var message = await db.AccountMessages.SingleOrDefaultAsync(x => x.Id == id, cancellationToken); if (message is null) return false;
+        var message = await db.AccountMessages.SingleOrDefaultAsync(x => x.Id == id, cancellationToken); if (message is null || message.Kind == "PasswordReset") return false;
         if (message.BuildingId is { } building) await AuthorityLocks.ManagerAsync(db, initial.UserId, building, cancellationToken);
         var actor = await current.GetAsync(cancellationToken);
         if (actor is not { RecentMfa: true } || actor.ManagedBuildings.Count == 0 ||

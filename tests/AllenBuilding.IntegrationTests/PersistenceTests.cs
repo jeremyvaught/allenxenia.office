@@ -180,6 +180,7 @@ public sealed class PersistenceTests
         await VerifyProtectedIdentity(create);
         await MaintenanceContract.VerifyAsync(create);
         await NotificationContract.VerifyAsync(create);
+        await NotificationInboxContract.VerifyAsync(create);
         await KnowledgeContract.VerifyAsync(create);
         await AssistantTenantAccessContract.VerifyAsync(create);
         await AssistantReviewContract.VerifyAsync(create);

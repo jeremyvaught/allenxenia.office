@@ -8,7 +8,8 @@
   "scripts": {
     "build:css": "tailwindcss -i src/AllenBuilding.Web/Styles/app.css -o src/AllenBuilding.Web/wwwroot/css/app.css --minify",
     "dev:css": "tailwindcss -i src/AllenBuilding.Web/Styles/app.css -o src/AllenBuilding.Web/wwwroot/css/app.css --watch",
-    "test:browser": "playwright test --project=chromium --output=artifacts/browser/chromium && playwright test --project=mobile --output=artifacts/browser/mobile && playwright test --project=webkit-mobile --output=artifacts/browser/webkit"
+    "test:browser": "playwright test --project=chromium --grep-invert @article-conflict --output=artifacts/browser/chromium && playwright test --project=mobile --grep-invert @article-conflict --output=artifacts/browser/mobile && playwright test --project=webkit-mobile --grep-invert @article-conflict --output=artifacts/browser/webkit && npm run test:browser:article",
+    "test:browser:article": "playwright test --grep @article-conflict --output=artifacts/browser/article-conflict"
   },
   "devDependencies": {
     "@tailwindcss/cli": "4.3.3",

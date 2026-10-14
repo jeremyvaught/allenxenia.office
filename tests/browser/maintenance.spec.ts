@@ -24,6 +24,41 @@ async function login(page: Page, email: string, password: string) {
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 }
 
+test('native article conflict preserves the draft for comparison and an explicit retry at 320px @article-conflict', async ({ browser }, testInfo) => {
+  const directory = readFileSync('artifacts/browser-fixture/current.txt', 'utf8');
+  const account = JSON.parse(readFileSync(join(directory, 'accounts.json'), 'utf8'))[testInfo.project.name];
+  const context = await browser.newContext({ baseURL: 'http://127.0.0.1:5088', javaScriptEnabled: false,
+    viewport: { width: 320, height: 800 }, colorScheme: 'dark' });
+  try {
+    const first = await context.newPage();
+    await login(first, account.managerEmail, account.password);
+    await first.getByLabel('Verification code').fill(code(account.key));
+    await first.getByRole('button', { name: 'Verify sign-in', exact: true }).click();
+    await first.goto('/Knowledge/Create');
+    await first.getByLabel('Article title', { exact: true }).fill('Conflict review ' + testInfo.project.name);
+    await first.getByLabel('Guidance (plain text)', { exact: true }).fill('Original guidance');
+    await first.getByLabel('Review date', { exact: true }).fill('2027-01-01');
+    await first.getByRole('button', { name: 'Save draft', exact: true }).click();
+    await expect(first).toHaveURL(/\/Knowledge\/Edit\//);
+    const second = await context.newPage(); await second.goto(first.url());
+    await first.getByLabel('Guidance (plain text)', { exact: true }).fill('Current saved guidance from the first tab');
+    await first.getByRole('button', { name: 'Save draft', exact: true }).click();
+    const draft = 'Second tab draft <script>must remain plain text</script>';
+    await second.getByLabel('Guidance (plain text)', { exact: true }).fill(draft);
+    await second.getByRole('button', { name: 'Save draft', exact: true }).click();
+    await expect(second.getByRole('alert')).toContainText('Your draft has been preserved');
+    await expect(second.getByLabel('Guidance (plain text)', { exact: true })).toHaveValue(draft);
+    await expect(second.getByText('Current saved guidance from the first tab', { exact: true }).first()).toBeVisible();
+    await expect(second.getByRole('button', { name: 'Publish reviewed revision', exact: true })).toHaveCount(0);
+    expect(await second.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await second.screenshot({ path: testInfo.outputPath('article-conflict-native-dark-320.png'), fullPage: true });
+    await second.getByRole('button', { name: 'Save draft', exact: true }).click();
+    await expect(second).toHaveURL(/\/Knowledge\/Edit\//);
+    await expect(second.getByLabel('Guidance (plain text)', { exact: true })).toHaveValue(draft);
+    await expect(second.getByRole('button', { name: 'Publish reviewed revision', exact: true })).toBeVisible();
+  } finally { await context.close(); }
+});
+
 test('first manager login needs only a password, with optional single-verification setup later', async ({ browser }, testInfo) => {
   const directory = readFileSync('artifacts/browser-fixture/current.txt', 'utf8');
   const account = JSON.parse(readFileSync(join(directory, 'accounts.json'), 'utf8'))[testInfo.project.name];

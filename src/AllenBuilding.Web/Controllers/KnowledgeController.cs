@@ -48,7 +48,23 @@ public sealed class KnowledgeController(KnowledgeActions actions, ICurrentActor 
             // Do not attach publish controls to invalid/unsaved form values.
             return View("Edit", form);
         }
-        return Outcome(await actions.SaveAsync(form.Command()), form.Id);
+        var result = await actions.SaveAsync(form.Command());
+        if (result is ContentCode.Success or ContentCode.Unavailable) return Outcome(result, form.Id);
+        var saved = (await actions.ManageAsync(form.Id)).SingleOrDefault();
+        if (result == ContentCode.Conflict && saved is null) return NotFound();
+        if (saved is not null)
+        {
+            form.Version = saved.Version; form.BuildingId = saved.BuildingId;
+            ModelState.Remove(nameof(form.Version)); ModelState.Remove(nameof(form.BuildingId));
+            ViewData["Article"] = saved;
+        }
+        await Buildings();
+        ViewData["UnsavedDraft"] = true;
+        ModelState.AddModelError("", result == ContentCode.Conflict
+            ? "The article changed in another tab. Your draft has been preserved. Compare it with the current saved revision, then save explicitly."
+            : "Your draft has been preserved. Review the article values before saving again.");
+        Response.StatusCode = result == ContentCode.Conflict ? 409 : 400;
+        return View("Edit", form);
     }
     [Authorize(Policy = OfficeSecurity.ManagerPolicy), HttpPost]
     public async Task<IActionResult> Publish(PublishArticle command) => Outcome(await actions.PublishAsync(command), command.Id);

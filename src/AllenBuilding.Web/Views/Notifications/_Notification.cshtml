@@ -1,0 +1,24 @@
+@model AllenBuilding.Application.Notifications.NotificationRow
+@using AllenBuilding.Domain.Tenancy
+<li id="notification-@Model.Id" class="rounded-xl border border-line bg-panel p-5">
+    <div class="flex flex-wrap justify-between gap-3"><h3 class="text-xl font-semibold">@(Model.Kind switch { "MaintenanceUpdate" => "Maintenance update", "SecurityNotice" => "Security notice", "PasswordReset" => "Password reset", _ => "Invitation" })</h3><span>@(Model.State == MessageState.NeedsReview ? "Needs review" : Model.State.ToString())</span></div>
+    <p class="mt-2 text-sm text-muted">@OfficeTime.Timestamp(Model.CreatedAt) · @Model.Attempts attempt(s)</p>
+    @if (Model.ResetRecipient is not null) { <p class="mt-2 break-words">Account: @Model.ResetRecipient</p> }
+    @if (Model.State == MessageState.NeedsReview)
+    {
+        @if (Model.Kind == "PasswordReset")
+        {
+            <p class="mt-4 text-muted">Resolve the mail configuration or provider failure, then ask the tenant to request a fresh password reset from the sign-in page. Reset links expire after two hours; do not resend this old message. A fresh request retires this failed delivery.</p>
+            <a asp-controller="Invitation" asp-action="Forgot" class="mt-4 quiet-button">Open password-reset request page</a>
+        }
+        else
+        {
+            <p class="mt-4 text-muted">@(Model.Error == "DeliveryUnknown" || Model.Error == "LeaseExpired" ? "The delivery result could not be confirmed. Check the previous delivery before retrying; the message may already have been sent." : "Delivery could not finish. Resolve the mail configuration or provider failure before retrying.")</p>
+            <form asp-controller="Notifications" asp-action="Retry" method="post" class="mt-4 space-y-3">
+                <input name="Id" value="@Model.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" />
+                <label for="reason-@Model.Id" class="block">Reason for retry approval</label><input id="reason-@Model.Id" name="Reason" required maxlength="2000" class="field" />
+                <button class="quiet-button">Approve another delivery attempt</button>
+            </form>
+        }
+    }
+</li>

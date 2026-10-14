@@ -24,6 +24,7 @@ builder.Services.AddOfficeStorage(builder.Configuration, builder.Environment, mi
 builder.Services.AddHealthChecks().AddCheck<DatabaseReadiness>("office-database");
 builder.AddOfficeSecurity();
 builder.AddOfficeNotifications();
+builder.Services.AddScoped<AllenBuilding.Infrastructure.Notifications.NotificationInbox>();
 builder.AddOfficeAssistant();
 builder.Services.AddScoped<AllenBuilding.Application.Maintenance.IMaintenanceStore, MaintenanceStore>();
 builder.Services.AddScoped<AllenBuilding.Application.Maintenance.MaintenanceActions>();

@@ -77,9 +77,18 @@ public sealed class AccountInvitations(OfficeDbContext db, UserManager<OfficeUse
     {
         var user = await users.FindByEmailAsync(email.Trim());
         if (user is not { EmailConfirmed: true }) return;
+        await using var transaction = await AuthorityLocks.BeginAsync(db, CancellationToken.None);
+        await AuthorityLocks.InvitationUserAsync(db, user.Id, CancellationToken.None);
+        await db.Entry(user).ReloadAsync();
+        if (!user.EmailConfirmed) return;
         var token = await users.GeneratePasswordResetTokenAsync(user);
+        // A new account request resolves old failed deliveries without replaying an expired reset credential.
+        await db.AccountMessages.Where(x => x.UserId == user.Id && x.Kind == "PasswordReset" && x.State == MessageState.NeedsReview)
+            .ExecuteUpdateAsync(update => update.SetProperty(x => x.State, MessageState.Suppressed)
+                .SetProperty(x => x.LastError, "SupersededReset"));
         Queue(user.Id, "PasswordReset", JsonSerializer.Serialize(new { userId = user.Id, token }));
         await db.SaveChangesAsync();
+        await transaction.CommitAsync();
     }
 
     public async Task<bool> ResetAsync(string userId, string token, string password)
