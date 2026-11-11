@@ -272,13 +272,13 @@ public sealed class MaintenanceHttpTests
         Assert.StartsWith("http://localhost/Account/Denied", denied.Headers.Location?.OriginalString);
     }
 
-    private static async Task Login(HttpClient client, string email)
+    internal static async Task Login(HttpClient client, string email)
     {
         using var result = await AccountTestHost.PostAsync(client, "/Account/Login", "/Account/Login", ("Email", email), ("Password", AccountTestHost.Password));
         Assert.Equal(HttpStatusCode.Redirect, result.StatusCode);
     }
 
-    private static async Task<(string First, string Second, Guid Membership)> SeedTenants(AccountTestHost host, Guid building)
+    internal static async Task<(string First, string Second, Guid Membership)> SeedTenants(AccountTestHost host, Guid building)
     {
         using var scope = host.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();

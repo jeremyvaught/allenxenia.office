@@ -391,15 +391,15 @@ public sealed class AssistantTenantHttpTests
         }
     }
 
-    private static async Task<string> Prepare(HttpClient browser, Guid membership)
+    internal static async Task<string> Prepare(HttpClient browser, Guid membership)
     {
         using var response = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", ("question", "A sink leaks in the kitchen. Water under the basin."),
             ("membershipId", membership.ToString()), ("conversationId", Guid.NewGuid().ToString()));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return ReviewPath(await response.Content.ReadAsStringAsync());
     }
-    private static string ReviewPath(string html) => System.Net.WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Match(html, "href=\"(/Assistant/Review/[^\"]+)\"").Groups[1].Value);
-    private static (string Key, string Value)[] ReviewFields(string html) => new[] { "id", "conversationId", "version", "operationId" }.Select(name =>
+    internal static string ReviewPath(string html) => System.Net.WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Match(html, "href=\"(/Assistant/Review/[^\"]+)\"").Groups[1].Value);
+    internal static (string Key, string Value)[] ReviewFields(string html) => new[] { "id", "conversationId", "version", "operationId" }.Select(name =>
         (name, WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Match(html, "name=\"" + name + "\"[^>]*value=\"([^\"]+)\"").Groups[1].Value))).ToArray();
     [Theory]
     [InlineData("requests")]
@@ -597,12 +597,12 @@ public sealed class AssistantTenantHttpTests
         Assert.Equal(0, model.Calls);
     }
 
-    private static async Task Login(HttpClient browser)
+    internal static async Task Login(HttpClient browser)
     {
         using var response = await AccountTestHost.PostAsync(browser, "/Account/Login", "/Account/Login", ("Email", "assistant-tenant@example.test"), ("Password", AccountTestHost.Password));
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
     }
-    private static async Task<Fixture> Seed(AccountTestHost host)
+    internal static async Task<Fixture> Seed(AccountTestHost host)
     {
         var (editor, firstBuilding) = await host.SeedManagerAsync();
         using var scope = host.Services.CreateScope();
@@ -635,8 +635,8 @@ public sealed class AssistantTenantHttpTests
         await db.SaveChangesAsync();
         return new(first, second, foreign, ids[0], ids[1], editor);
     }
-    private sealed record Fixture(Membership First, Membership Second, Membership Foreign, Guid FirstArticle, Guid SecondArticle, string EditorId);
-    private static async Task<(Guid Request, Guid Account)> SeedRecords(AccountTestHost host, Fixture fixture)
+    internal sealed record Fixture(Membership First, Membership Second, Membership Foreign, Guid FirstArticle, Guid SecondArticle, string EditorId);
+    internal static async Task<(Guid Request, Guid Account)> SeedRecords(AccountTestHost host, Fixture fixture)
     {
         using var scope = host.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();

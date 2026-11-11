@@ -181,8 +181,8 @@ public sealed class AssistantGuestHttpTests
         using var scope = host.Services.CreateScope();
         Assert.Empty(await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().AssistantMaintenanceReviews.ToListAsync());
     }
-    private static AccountTestHost Host(Model model, bool guest = true) => new() { AssistantModel = model, AssistantTenantHelpEnabled = true, AssistantActionsEnabled = true, AssistantFollowUpsEnabled = true, AssistantGuestDraftsEnabled = guest };
-    private static async Task<string> Stage(HttpClient browser)
+    internal static AccountTestHost Host(Model model, bool guest = true) => new() { AssistantModel = model, AssistantTenantHelpEnabled = true, AssistantActionsEnabled = true, AssistantFollowUpsEnabled = true, AssistantGuestDraftsEnabled = guest };
+    internal static async Task<string> Stage(HttpClient browser)
     {
         using var result = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", ("question", "repair entry guidance: Synthetic sink drips in Kitchen"));
         Assert.Equal(HttpStatusCode.OK, result.StatusCode);
@@ -191,15 +191,15 @@ public sealed class AssistantGuestHttpTests
         Assert.NotEmpty(path);
         return path;
     }
-    private static (string Key, string Value)[] Fields(string html, params string[] names) => (names.Length == 0 ? new[] { "id", "version" } : names).Select(name =>
+    internal static (string Key, string Value)[] Fields(string html, params string[] names) => (names.Length == 0 ? new[] { "id", "version" } : names).Select(name =>
         (name, WebUtility.HtmlDecode(Regex.Match(html, "name=\"" + name + "\"[^>]*value=\"([^\"]+)\"").Groups[1].Value))).ToArray();
-    private static async Task Login(HttpClient browser)
+    internal static async Task Login(HttpClient browser)
     {
         using var result = await AccountTestHost.PostAsync(browser, "/Account/Login", "/Account/Login", ("Email", "guest-tenant@example.test"), ("Password", AccountTestHost.Password));
         Assert.Equal("/Portal", result.Headers.Location?.OriginalString);
     }
-    private sealed record Fixture(Membership First, Membership Second, Membership Foreign, Guid Article, string Manager);
-    private static async Task<Fixture> Seed(AccountTestHost host)
+    internal sealed record Fixture(Membership First, Membership Second, Membership Foreign, Guid Article, string Manager);
+    internal static async Task<Fixture> Seed(AccountTestHost host)
     {
         var (manager, building) = await host.SeedManagerAsync();
         using var scope = host.Services.CreateScope();
@@ -227,7 +227,7 @@ public sealed class AssistantGuestHttpTests
         await db.SaveChangesAsync();
         return new(first, second, foreign, publicId, manager);
     }
-    private sealed class Model : IAssistantModel
+    internal sealed class Model : IAssistantModel
     {
         public int Calls { get; private set; }
         public AssistantModelInput? Input { get; private set; }
