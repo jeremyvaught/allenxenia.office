@@ -7,15 +7,13 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace AllenBuilding.Web.Controllers;
 
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("Accounts")]
 public sealed class AccountController(UserManager<OfficeUser> users, SignInManager<OfficeUser> signIn,
-    TimeProvider time, AllenBuilding.Infrastructure.Persistence.OfficeDbContext db, AccountInvitations invitations,
-    OperatorEnrollment operatorEnrollment, ICurrentActor current) : Controller
+    TimeProvider time, AccountSecurity security, OperatorEnrollment operatorEnrollment, ICurrentActor current) : Controller
 {
     [HttpGet]
     public IActionResult Login(string? returnUrl)
@@ -44,7 +42,7 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
             // First sign-in is a welcome, not an enrollment wizard. Protected manager
             // destinations still enforce their policies when selected afterward.
             if (!user.TwoFactorEnabled && !user.MustReplaceRecoveryCodes &&
-                await db.BuildingManagers.AnyAsync(x => x.UserId == user.Id, HttpContext.RequestAborted) &&
+                await security.IsManagerAsync(user.Id, HttpContext.RequestAborted) &&
                 form.ReturnUrl != "/Account/Enroll")
                 return RedirectToAction("Index", "Portal");
             return AfterSignIn(form.ReturnUrl);
@@ -77,11 +75,7 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
         if (result.Succeeded)
         {
             if (form.Recovery)
-            {
-                invitations.Audit(user.Id, "RecoveryCodeUsed", user.Id);
-                invitations.Queue(user.Id, "SecurityNotice", "A recovery code was used to sign in. Replace your recovery codes.");
-                await db.SaveChangesAsync();
-            }
+                await security.RecordRecoveryCodeUseAsync(user.Id);
             await ChallengedSignIn(user, passwordAt, form.Recovery);
             return form.Recovery || (form.ReturnUrl is not null && user.MustReplaceRecoveryCodes)
                 ? RedirectToAction(nameof(RecoveryCodes)) : AfterSignIn(form.ReturnUrl);
@@ -117,10 +111,8 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
     [Authorize, HttpPost]
     public async Task<IActionResult> Enroll(EnrollmentForm form)
     {
-        await using var transaction = await AllenBuilding.Infrastructure.Persistence.AuthorityLocks.BeginAsync(db, HttpContext.RequestAborted);
         var user = (await users.GetUserAsync(User))!;
-        await AllenBuilding.Infrastructure.Persistence.AuthorityLocks.InvitationUserAsync(db, user.Id, HttpContext.RequestAborted);
-        await db.Entry(user).ReloadAsync(HttpContext.RequestAborted);
+        await using var transaction = await security.LockForEnrollmentAsync(user, HttpContext.RequestAborted);
         if (user.TwoFactorEnabled)
             return RedirectToAction(nameof(Login));
         if (!await EnrollmentAllowed(user))
@@ -132,31 +124,15 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
         if (ModelState.IsValid && !await users.IsLockedOutAsync(user) &&
             await users.VerifyTwoFactorTokenAsync(user, users.Options.Tokens.AuthenticatorTokenProvider, NormalizeCode(form.Code)))
         {
-            if (!(await users.SetTwoFactorEnabledAsync(user, true)).Succeeded)
+            var enrolled = await security.CompleteEnrollmentAsync(user, firstSetup);
+            if (!enrolled.Succeeded)
                 return StatusCode(409);
-            if (!(await users.RemoveAuthenticationTokenAsync(user, OperatorEnrollment.Provider, OperatorEnrollment.RequiredToken)).Succeeded)
-                return StatusCode(409);
-            user.MustReplaceRecoveryCodes = true;
-            if (!(await users.UpdateAsync(user)).Succeeded)
-                return StatusCode(409);
-            invitations.Audit(user.Id, "MfaEnrolled", user.Id);
-            if (firstSetup)
+            await transaction.CommitAsync();
+            if (enrolled.RecoveryCodes is { } codes)
             {
-                var codes = (await users.GenerateNewTwoFactorRecoveryCodesAsync(user, 10))?.ToArray();
-                if (codes is null)
-                    return StatusCode(409);
-                user.MustReplaceRecoveryCodes = false;
-                if (!(await users.UpdateAsync(user)).Succeeded)
-                    return StatusCode(409);
-                invitations.Audit(user.Id, "RecoveryCodesReplaced", user.Id);
-                invitations.Queue(user.Id, "SecurityNotice", "Your authenticator was enabled and recovery codes were created.");
-                await db.SaveChangesAsync();
-                await transaction.CommitAsync();
                 await ChallengedSignIn(user, passwordAt);
                 return View("RecoveryIssued", codes);
             }
-            await db.SaveChangesAsync();
-            await transaction.CommitAsync();
             // Recovery enrollment still requires a new password + factor challenge.
             await signIn.SignOutAsync();
             return RedirectToAction(nameof(Login));
@@ -182,7 +158,7 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
             Response.StatusCode = 400;
             return View("OperatorEnrollment", form);
         }
-        await db.Entry(user).ReloadAsync(HttpContext.RequestAborted);
+        await security.ReloadAsync(user, HttpContext.RequestAborted);
         await signIn.SignInWithClaimsAsync(user, false, [OfficeSecurity.TimeClaim(OperatorEnrollment.SessionTime, time.GetUtcNow())]);
         return RedirectToAction(nameof(Enroll));
     }
@@ -216,15 +192,8 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
             return Forbid();
         if (!ModelState.IsValid || !(await signIn.CheckPasswordSignInAsync(user, form.Password, true)).Succeeded)
         { ModelState.AddModelError("", "Unable to verify your password."); return View("RecoveryReview", new ReauthenticateForm()); }
-        await using var transaction = await db.Database.BeginTransactionAsync();
-        if (!(await users.SetTwoFactorEnabledAsync(user, false)).Succeeded ||
-            !(await users.ResetAuthenticatorKeyAsync(user)).Succeeded ||
-            (await users.GenerateNewTwoFactorRecoveryCodesAsync(user, 0)) is null)
+        if (!await security.ResetAuthenticatorAsync(user))
             return StatusCode(409);
-        invitations.Audit(user.Id, "AuthenticatorRecovered", user.Id);
-        invitations.Queue(user.Id, "SecurityNotice", "Your authenticator was reset after recovery verification. Sign in and enroll a new device.");
-        await db.SaveChangesAsync();
-        await transaction.CommitAsync();
         await signIn.SignOutAsync();
         return RedirectToAction(nameof(Login));
     }
@@ -237,17 +206,9 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
             return Forbid();
         if (!ModelState.IsValid || !await VerifyPasswordAndFactor(user, form))
         { ModelState.AddModelError("", "Unable to verify your password and code."); return View("RecoveryReview", form); }
-        await using var transaction = await db.Database.BeginTransactionAsync();
-        var codes = (await users.GenerateNewTwoFactorRecoveryCodesAsync(user, 10))?.ToArray();
+        var codes = await security.ReplaceRecoveryCodesAsync(user);
         if (codes is null)
             return StatusCode(409);
-        user.MustReplaceRecoveryCodes = false;
-        if (!(await users.UpdateAsync(user)).Succeeded)
-            return StatusCode(409);
-        invitations.Audit(user.Id, "RecoveryCodesReplaced", user.Id);
-        invitations.Queue(user.Id, "SecurityNotice", "Recovery codes were replaced.");
-        await db.SaveChangesAsync();
-        await transaction.CommitAsync();
         await ChallengedSignIn(user, time.GetUtcNow());
         return View("RecoveryIssued", codes);
     }
