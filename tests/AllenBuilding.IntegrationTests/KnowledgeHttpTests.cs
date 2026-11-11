@@ -128,7 +128,7 @@ public sealed class KnowledgeHttpTests
         await host.LoginManagerAsync(manager, managerId);
 
         Assert.Contains("No articles yet.", await manager.GetStringAsync("/Knowledge/Manage"));
-        Assert.Contains("No published guidance matches this view.", await visitor.GetStringAsync("/Knowledge"));
+        Assert.Contains("No help articles found.", await visitor.GetStringAsync("/Knowledge"));
         using var longSearch = await visitor.GetAsync("/Knowledge?search=" + new string('a', 121));
         Assert.Equal(HttpStatusCode.BadRequest, longSearch.StatusCode);
         using var anonymousTenant = await visitor.GetAsync("/Knowledge/Tenant");
@@ -144,7 +144,7 @@ public sealed class KnowledgeHttpTests
         Assert.Contains("Draft · Public", manage);
         Assert.Contains("Draft · Active tenants", manage);
         Assert.Contains($"href=\"/Knowledge/Edit/{dock}\"", manage);
-        Assert.Contains("No published guidance matches this view.", await visitor.GetStringAsync("/Knowledge"));
+        Assert.Contains("No help articles found.", await visitor.GetStringAsync("/Knowledge"));
 
         var (lobbyVersion, lobbyDraft) = await ArticleAsync(host, lobby);
         using var stale = await Publish(lobby, Guid.NewGuid(), lobbyDraft);
@@ -157,7 +157,7 @@ public sealed class KnowledgeHttpTests
         using var unreviewed = await Publish(lobby, lobbyVersion, Guid.Empty);
         Assert.Equal(HttpStatusCode.BadRequest, unreviewed.StatusCode);
         Assert.Contains("Check the article fields and try again.", await unreviewed.Content.ReadAsStringAsync());
-        Assert.Contains("No published guidance matches this view.", await visitor.GetStringAsync("/Knowledge"));
+        Assert.Contains("No help articles found.", await visitor.GetStringAsync("/Knowledge"));
 
         using (var published = await Publish(lobby, lobbyVersion, lobbyDraft))
         {
@@ -172,7 +172,7 @@ public sealed class KnowledgeHttpTests
         Assert.Contains($"href=\"/Knowledge/Article/{lobby}\"", index);
         Assert.DoesNotContain("Loading dock code", index);
         Assert.Contains("Lobby hours", await visitor.GetStringAsync("/Knowledge?search=SEVEN"));
-        Assert.Contains("No published guidance matches this view.", await visitor.GetStringAsync("/Knowledge?search=elevator"));
+        Assert.Contains("No help articles found.", await visitor.GetStringAsync("/Knowledge?search=elevator"));
         Assert.Contains("Open seven to seven", await visitor.GetStringAsync($"/Knowledge/Article/{lobby}"));
         using var hidden = await visitor.GetAsync($"/Knowledge/Article/{dock}");
         Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
@@ -198,7 +198,7 @@ public sealed class KnowledgeHttpTests
         using (var edited = await Save(manager, lobby, building, editedVersion, "Lobby hours (winter)", "Open eight to six", "2027-03-01", "Public"))
             Assert.Equal(HttpStatusCode.Redirect, edited.StatusCode);
         manage = await manager.GetStringAsync("/Knowledge/Manage");
-        Assert.Contains("Unpublished edits; the previous approved revision is visible.", manage);
+        Assert.Contains("Has unpublished edits. Readers still see the last published version.", manage);
         Assert.Contains("Published · Public", manage);
         var editPage = await manager.GetStringAsync($"/Knowledge/Edit/{lobby}");
         Assert.Contains("A previous approved revision remains visible until you publish these edits.", editPage);

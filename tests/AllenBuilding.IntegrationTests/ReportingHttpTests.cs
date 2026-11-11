@@ -60,7 +60,7 @@ public sealed class ReportingHttpTests
         Assert.DoesNotContain("<script>privateTitle", html);
         Assert.DoesNotContain("Hidden private description", html);
         Assert.DoesNotContain("Foreign private", html);
-        Assert.Contains("1 active request", html);
+        Assert.Contains("1 open request", html);
         foreach (var query in new[] { "Page=0", "Page=1001", "Page=invalid", "Bucket=999", "Bucket=unsupported", "BuildingId=invalid", "BuildingId=" + Guid.Empty })
         { using var invalid = await manager.GetAsync("/Reports/Maintenance?" + query); Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode); }
         using var foreignRead = await manager.GetAsync("/Reports/Maintenance?BuildingId=" + foreignId);
@@ -89,7 +89,7 @@ public sealed class ReportingHttpTests
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
         Assert.Contains("Report temporarily unavailable", html);
         Assert.DoesNotContain("synthetic-sensitive-diagnostic", html);
-        Assert.DoesNotContain("active requests", html);
+        Assert.DoesNotContain("open requests", html);
     }
     [Fact]
     public async Task A_slow_report_cancels_at_its_deadline_and_preserves_caller_cancellation()

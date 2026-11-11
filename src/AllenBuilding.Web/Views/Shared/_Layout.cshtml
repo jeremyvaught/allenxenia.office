@@ -20,21 +20,21 @@
                 <span aria-hidden="true" class="flex size-11 items-center justify-center rounded-xl bg-brand-soft text-brand">A</span>
                 <span>Allen Xenia<span class="block text-xs font-normal tracking-widest text-muted">OFFICE &amp; TENANT SERVICES</span></span>
             </a>
-            <div class="flex flex-wrap items-center gap-4 sm:gap-6">
-                <nav aria-label="Main navigation" class="flex gap-4 text-sm font-medium">
-                    <a asp-controller="Knowledge" asp-action="Index" class="flex min-h-11 items-center hover:text-brand">Help</a>
-                    <a href="/Assistant" class="flex min-h-11 items-center hover:text-brand">Ask</a>
-                    <a href="/#services" class="flex min-h-11 items-center hover:text-brand">Services</a>
-                    @if (User.Identity?.IsAuthenticated == true)
-                    {
-                        <a asp-controller="Portal" asp-action="Index" class="flex min-h-11 items-center hover:text-brand">Your office</a>
-                        <form asp-controller="Account" asp-action="Logout" method="post"><button class="min-h-11">Sign out</button></form>
-                    }
-                    else
-                    {
-                        <a asp-controller="Account" asp-action="Login" class="flex min-h-11 items-center hover:text-brand">Sign in</a>
-                    }
-                </nav>
+            @await Component.InvokeAsync("MainNav")
+        </div>
+    </header>
+    @if (Guid.TryParse(Context.Request.Cookies[AllenBuilding.Web.Controllers.AssistantController.GuestHintCookie], out var guestHint))
+    {
+        <div class="border-b border-line bg-brand-soft px-5 py-3 text-sm"><div class="mx-auto max-w-7xl"><a href="/Assistant/Guest/@guestHint" class="inline-flex min-h-11 items-center font-semibold text-brand underline">Continue your maintenance draft</a><p class="text-muted">Nothing has been submitted.</p></div></div>
+    }
+    <main id="main" tabindex="-1" class="flex-1">
+        @if (TempData["Notice"] is string notice) { <div class="mx-auto w-full max-w-5xl px-5 pt-6 sm:px-8"><p role="status" class="rounded-xl border border-line bg-panel p-4">@notice</p></div> }
+        @RenderBody()
+    </main>
+    <footer class="border-t border-line">
+        <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-7 text-sm text-muted sm:px-8">
+            <p>Allen Building · Xenia, Ohio</p>
+            <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
                 <form action="/preferences/theme" method="post" class="flex flex-wrap items-center gap-2">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="returnUrl" value="@(Context.Request.Path.StartsWithSegments("/Assistant") && Context.Request.Method == "POST" ? "/Assistant" : Context.Request.Path + Context.Request.QueryString)" />
@@ -48,18 +48,8 @@
                 </label>
                 <noscript><button class="quiet-button">Apply theme</button></noscript>
                 </form>
+                <a asp-controller="Home" asp-action="Privacy" class="flex min-h-11 items-center underline-offset-4 hover:underline">Privacy</a>
             </div>
-        </div>
-    </header>
-    @if (Guid.TryParse(Context.Request.Cookies[AllenBuilding.Web.Controllers.AssistantController.GuestHintCookie], out var guestHint))
-    {
-        <div class="border-b border-line bg-brand-soft px-5 py-3 text-sm"><div class="mx-auto max-w-7xl"><a href="/Assistant/Guest/@guestHint" class="inline-flex min-h-11 items-center font-semibold text-brand underline">Continue your maintenance draft</a><p class="text-muted">Nothing has been submitted.</p></div></div>
-    }
-    <main id="main" tabindex="-1" class="flex-1">@RenderBody()</main>
-    <footer class="border-t border-line">
-        <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-7 text-sm text-muted sm:px-8">
-            <p>Allen Building · Xenia, Ohio</p>
-            <a asp-controller="Home" asp-action="Privacy" class="flex min-h-11 items-center underline-offset-4 hover:underline">Privacy</a>
         </div>
     </footer>
     @await RenderSectionAsync("Scripts", required: false)

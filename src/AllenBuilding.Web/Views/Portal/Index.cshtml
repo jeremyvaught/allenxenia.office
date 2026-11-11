@@ -1,7 +1,7 @@
-@model IReadOnlyList<AllenBuilding.Domain.Tenancy.Membership>
-@{ ViewData["Title"] = "Your office"; }
-<div class="page"><p class="mb-2 text-sm text-muted">ALLEN BUILDING</p><h1 class="mb-6 text-4xl font-semibold">Your office</h1>
-@if (ViewData["SecuritySetupAvailable"] is true)
+@model PortalDashboard
+@{ ViewData["Title"] = "Your office"; const string tile = "block h-full rounded-xl border border-line bg-panel p-5 hover:ring-2 hover:ring-brand"; }
+<div class="page"><h1 class="mb-6 text-4xl font-semibold">Your office</h1>
+@if (Model.SecuritySetupAvailable)
 {
     <section class="mb-6 rounded-xl border border-line bg-panel p-6">
         <h2 class="mb-3 text-2xl font-semibold">Welcome to your office</h2>
@@ -9,7 +9,55 @@
         <div class="flex flex-wrap gap-3"><a asp-controller="Account" asp-action="Enroll" class="quiet-button">Set up account security</a><a asp-controller="Knowledge" asp-action="Index" class="quiet-button">Building help</a></div>
     </section>
 }
-@if (ViewData["Manager"] is true) { <div class="mb-6 flex flex-wrap gap-3"><a asp-controller="Management" asp-action="Index" class="quiet-button">Manage building access</a><a asp-controller="Maintenance" asp-action="Manage" class="button">Manage maintenance</a><a asp-controller="Reports" asp-action="Maintenance" class="quiet-button">Maintenance aging report</a><a asp-controller="Reports" asp-action="Completion" class="quiet-button">Completion time report</a><a asp-controller="Knowledge" asp-action="Manage" class="quiet-button">Manage building help</a><a asp-controller="Contractors" asp-action="Index" class="quiet-button">Contractor contacts</a><a asp-controller="Notifications" asp-action="Index" class="quiet-button">Notification delivery</a><a asp-controller="FinancialExceptions" asp-action="Index" class="quiet-button">Financial exceptions</a>@if (ViewData["BillingEnabled"] is true) { <a asp-controller="Billing" asp-action="Manage" class="quiet-button">Manage billing</a><a asp-controller="Reports" asp-action="Rent" class="quiet-button">Rent balance report</a> }</div> }
-@if (Model.Count == 0 && ViewData["Manager"] is not true && ViewData["SecuritySetupAvailable"] is not true) { <p class="rounded-xl border border-line bg-panel p-6">No active tenant membership. Contact your building manager if you need access.</p> }
-@if (Model.Count > 0) { <p class="mb-5 text-muted">Report a maintenance issue, follow progress, and keep the conversation in one place.</p><div class="flex flex-wrap gap-3"><a asp-controller="Maintenance" asp-action="Create" class="button">Report an issue</a><a asp-controller="Maintenance" asp-action="Index" class="quiet-button">Your requests</a><a asp-controller="Knowledge" asp-action="Tenant" class="quiet-button">Building help</a>@if (ViewData["BillingEnabled"] is true) { <a asp-controller="Billing" asp-action="Index" class="quiet-button">Your billing records</a> }</div> }
+@if (Model.Managing is { } managing)
+{
+    var summary = managing.Summary;
+    <section aria-labelledby="attention-heading" class="mb-10">
+        <h2 id="attention-heading" class="mb-4 text-xl font-semibold">Needs attention</h2>
+        <ul class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            <li><a asp-controller="Maintenance" asp-action="Manage" asp-route-Status="Submitted" class="@tile"><span class="block text-3xl font-semibold">@summary.AwaitingTriage</span><span class="mt-1 block text-sm text-muted">New requests to triage</span></a></li>
+            <li><a asp-controller="Maintenance" asp-action="Manage" asp-route-Status="Completed" class="@tile"><span class="block text-3xl font-semibold">@summary.AwaitingVerification</span><span class="mt-1 block text-sm text-muted">Finished, waiting for you to verify</span></a></li>
+            <li><a asp-controller="Maintenance" asp-action="Manage" class="@tile"><span class="block text-3xl font-semibold">@(summary.AwaitingTriage + summary.InProgress + summary.AwaitingVerification)</span><span class="mt-1 block text-sm text-muted">Open requests in total</span></a></li>
+            <li><a asp-controller="Notifications" asp-action="Index" class="@tile"><span class="block text-3xl font-semibold">@managing.DeliveryProblems@(managing.MoreDeliveryProblems ? "+" : "")</span><span class="mt-1 block text-sm text-muted">Emails that failed to send</span></a></li>
+            <li><a asp-controller="Management" asp-action="Index" class="@tile"><span class="block text-3xl font-semibold">@summary.PendingInvitations</span><span class="mt-1 block text-sm text-muted">Invitations not yet accepted</span></a></li>
+        </ul>
+    </section>
+    <section aria-labelledby="newest-heading" class="mb-10">
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 id="newest-heading" class="text-xl font-semibold">Newest open requests</h2>
+            <a asp-controller="Maintenance" asp-action="CreateOnBehalf" class="quiet-button">Record a tenant request</a>
+        </div>
+        @if (managing.NewestRequests.Count == 0) { <p class="rounded-xl border border-line bg-panel p-6">No open maintenance requests.</p> }
+        else
+        {
+            ViewData["Manager"] = true; ViewData["ObservedAt"] = managing.ObservedAt;
+            <partial name="~/Views/Maintenance/_RequestList.cshtml" model="managing.NewestRequests" />
+            <a asp-controller="Maintenance" asp-action="Manage" class="mt-4 flex min-h-11 items-center underline">See the whole maintenance queue</a>
+        }
+    </section>
+    @if (Model.BillingEnabled)
+    {
+        <section aria-labelledby="billing-heading" class="mb-10">
+            <h2 id="billing-heading" class="mb-4 text-xl font-semibold">Billing</h2>
+            <div class="flex flex-wrap gap-3"><a asp-controller="Billing" asp-action="Manage" class="quiet-button">Manage billing</a><a asp-controller="Reports" asp-action="Rent" class="quiet-button">Rent balance report</a><a asp-controller="FinancialExceptions" asp-action="Index" class="quiet-button">Financial exceptions</a></div>
+        </section>
+    }
+}
+@if (!Model.Tenant && Model.Managing is null && !Model.SecuritySetupAvailable) { <p class="rounded-xl border border-line bg-panel p-6">No active tenant membership. Contact your building manager if you need access.</p> }
+@if (Model.Tenant)
+{
+    <section aria-labelledby="requests-heading">
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 id="requests-heading" class="text-xl font-semibold">Your open maintenance requests</h2>
+            <a asp-controller="Maintenance" asp-action="Create" class="button">Report an issue</a>
+        </div>
+        @if (Model.OpenRequests.Count == 0) { <p class="rounded-xl border border-line bg-panel p-6">Nothing open right now. If something needs fixing, report it and building management will be notified.</p> }
+        else
+        {
+            ViewData["Manager"] = false;
+            <partial name="~/Views/Maintenance/_RequestList.cshtml" model="Model.OpenRequests" />
+        }
+        <div class="mt-4 flex flex-wrap gap-x-6"><a asp-controller="Maintenance" asp-action="Index" class="flex min-h-11 items-center underline">All your requests</a><a asp-controller="Knowledge" asp-action="Tenant" class="flex min-h-11 items-center underline">Building help</a>@if (Model.BillingEnabled) { <a asp-controller="Billing" asp-action="Index" class="flex min-h-11 items-center underline">Your billing records</a> }</div>
+    </section>
+}
 </div>

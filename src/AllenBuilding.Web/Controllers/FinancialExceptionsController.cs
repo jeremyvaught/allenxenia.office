@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace AllenBuilding.Web.Controllers;
 
-[Authorize(Policy = OfficeSecurity.ManagerPolicy), ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+[Authorize(Policy = OfficeSecurity.ManagerPolicy), RequiresBilling, ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class FinancialExceptionsController(FinancialExceptionActions actions, RefundDispositionActions refunds, RefundDispositionPolicy refundPolicy,
     CashSourceRecoveryActions cashSources, CashSourceRecoveryPolicy cashPolicy, ICurrentActor current, BillingReviewTickets tickets,
     TimeProvider time) : Controller

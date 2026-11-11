@@ -2,7 +2,6 @@
 @{ ViewData["Title"] = Model.Suite + " billing"; var manager = ViewData["Manager"] is true; var today = (DateOnly)ViewData["Today"]!; }
 <div class="page"><p class="mb-2 text-sm text-muted">@(manager ? "MANAGE BILLING" : "YOUR BILLING RECORDS")</p><h1 class="mb-3 text-4xl font-semibold">@Model.Suite billing</h1>
     @if (manager) { <p class="mb-3 break-words text-muted">@Model.PayerEmail</p><p class="mb-4 break-all text-sm text-muted">Original membership @Model.MembershipId</p> }
-    @if (TempData["Notice"] is string notice) { <p role="status" class="mb-5 rounded-xl border border-line bg-panel p-4">@notice</p> }
     @if (Model.CollectionAvailable) { <p class="mb-5 max-w-3xl text-muted">These are original issued charges and recorded debt credits. Review verified balances and individual payment records before paying.</p><a asp-controller="Payments" asp-action="Index" asp-route-accountId="@Model.Id" class="button mb-8">Review a payment</a> }
     else { <p class="mb-8 max-w-3xl text-muted">Payment collection is unavailable. Recorded charges show their original issued amounts; payment status and outstanding balances are not available yet.</p> }
     @if (ViewData["AutopayAvailable"] is true) { <a asp-controller="Autopay" asp-action="Index" asp-route-accountId="@Model.Id" class="quiet-button mb-6">Manage monthly autopay</a> }

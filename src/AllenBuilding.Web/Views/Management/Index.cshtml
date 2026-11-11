@@ -1,33 +1,101 @@
 @model AllenBuilding.Application.Access.BuildingAccessOverview
-@{ ViewData["Title"] = "Building access"; var buildings = Model.Buildings; }
-<div class="page"><h1 class="mb-3 text-4xl font-semibold">Building access</h1><p class="mb-6 text-muted">Invitations activate only their recorded suite. Sensitive changes require a recent password and authenticator challenge.</p>
-@if (TempData["Notice"] is string notice) { <p role="status" class="mb-6 rounded-xl border border-line bg-panel p-4">@notice</p> }
-<div class="grid gap-6 md:grid-cols-2"><section class="rounded-2xl border border-line bg-panel p-6"><h2 class="mb-5 text-xl font-semibold">Add a suite</h2><form asp-action="AddSuite" method="post" class="space-y-5"><div><label for="building" class="mb-2 block">Building</label><select id="building" name="BuildingId" class="field">@foreach (var building in buildings) { <option value="@building.Id">@building.Name</option> }</select></div><div><label for="suite-name" class="mb-2 block">Suite name</label><input id="suite-name" name="Name" maxlength="80" required class="field" /></div><button class="button">Add suite</button></form></section>
-<section class="rounded-2xl border border-line bg-panel p-6"><h2 class="mb-5 text-xl font-semibold">Invite a tenant</h2><form asp-action="Invite" method="post" class="space-y-5"><div><label for="suite" class="mb-2 block">Suite</label><select id="suite" name="SuiteId" class="field">@foreach (var suite in Model.Suites) { <option value="@suite.Id">@suite.Name</option> }</select></div><div><label for="invite-email" class="mb-2 block">Email</label><input id="invite-email" name="Email" type="email" maxlength="256" required autocomplete="email" class="field" /></div><button class="button" disabled="@(Model.Suites.Count == 0)">Record invitation</button></form></section></div>
-<section class="mt-6 rounded-2xl border border-line bg-panel p-6"><h2 class="mb-3 text-xl font-semibold">Grant another suite to an existing account</h2><p class="mb-5 text-muted">Use a confirmed account that already has a password. Returning tenants receive a new membership; this cannot restore their previous records.</p>
-    <form asp-action="Grant" method="post" class="space-y-4"><input name="OperationId" value="@Guid.NewGuid()" type="hidden" />
-        <label for="existing-suite" class="block">Suite for existing account</label><select id="existing-suite" name="SuiteId" class="field">@foreach (var suite in Model.Suites) { <option value="@suite.Id">@suite.Name</option> }</select>
-        <label for="existing-email" class="block">Existing account email</label><input id="existing-email" name="Email" type="email" maxlength="256" required class="field" />
-        <label for="grant-reason" class="block">Reason for granting access</label><input id="grant-reason" name="Reason" maxlength="2000" required class="field" />
-        <button class="button" disabled="@(Model.Suites.Count == 0)">Grant access to this suite</button>
-    </form>
-</section>
-<section class="mt-8"><h2 class="mb-4 text-2xl font-semibold">Unaccepted invitations</h2><div class="grid gap-4 md:grid-cols-2">
-@foreach (var invitation in Model.Invitations)
-{
-    <article class="min-w-0 rounded-2xl border border-line bg-panel p-5"><h3 class="break-words font-semibold">@invitation.Email · @invitation.Suite</h3><p class="my-3 text-sm text-muted">@invitation.Status · Expires @OfficeTime.Timestamp(invitation.ExpiresAt)</p>
-        <form asp-action="ChangeInvitation" method="post" class="space-y-3"><input name="InvitationId" value="@invitation.Id" type="hidden" /><input name="Version" value="@invitation.Version" type="hidden" />
-            <label for="invitation-reason-@invitation.Id" class="block">Reason for invitation change</label><input id="invitation-reason-@invitation.Id" name="Reason" maxlength="2000" required class="field" />
-            <p class="text-sm text-muted">Reissue approves a new seven-day activation window and invalidates every previous link. Revoking an invitation cannot remove access that has already been accepted.</p>
-            <div class="flex flex-wrap gap-3"><button name="Revoke" value="false" class="quiet-button">Reissue invitation</button>@if (invitation.Status != "Revoked") { <button name="Revoke" value="true" class="quiet-button">Revoke invitation</button> }</div>
+@{
+    ViewData["Title"] = "Building access";
+    const string panel = "rounded-2xl border border-line bg-panel p-6";
+    const string opener = "inline-flex min-h-11 cursor-pointer items-center underline";
+}
+<div class="page">
+    <h1 class="mb-3 text-4xl font-semibold">Building access</h1>
+    <p class="mb-8 text-muted">Invite tenants, see who has access and remove it. Changes need a recent sign-in with your authenticator.</p>
+
+    <section aria-labelledby="invite-heading" class="@panel">
+        <h2 id="invite-heading" class="mb-5 text-xl font-semibold">Invite a tenant</h2>
+        @if (Model.Suites.Count == 0) { <p class="mb-5 text-muted">Add a suite below before inviting a tenant.</p> }
+        <form asp-action="Invite" method="post" class="grid items-end gap-4 md:grid-cols-[1fr_1.5fr_auto]">
+            <div><label for="suite" class="mb-2 block">Suite</label><select id="suite" name="SuiteId" class="field">@foreach (var suite in Model.Suites) { <option value="@suite.Id">@suite.Name</option> }</select></div>
+            <div><label for="invite-email" class="mb-2 block">Email</label><input id="invite-email" name="Email" type="email" maxlength="256" required autocomplete="email" class="field" /></div>
+            <button class="button" disabled="@(Model.Suites.Count == 0)">Send invitation</button>
         </form>
-    </article>
-}
-</div></section>
-<section class="mt-8"><h2 class="mb-4 text-2xl font-semibold">Tenant access</h2><ul class="space-y-4">
-@foreach (var access in Model.Access)
-{
-    <li class="rounded-xl border border-line bg-panel p-5"><h3 class="mb-4 break-all font-semibold">@access.Email · @access.Suite</h3><form asp-action="Revoke" method="post" class="space-y-3"><input name="MembershipId" value="@access.Id" type="hidden" /><input name="Version" value="@access.Version" type="hidden" /><label for="reason-@access.Id" class="block">Reason for revoking access</label><input id="reason-@access.Id" name="Reason" maxlength="2000" required class="field" /><p class="text-sm text-muted">Revokes portal access immediately. This does not end rent or cancel billing arrangements.</p><button class="quiet-button">Revoke tenant access</button></form></li>
-}
-</ul></section>
-<a asp-controller="Account" asp-action="Reauthenticate" class="mt-6 flex min-h-11 items-center underline">Verify sign-in for sensitive changes</a></div>
+    </section>
+
+    <section aria-labelledby="tenants-heading" class="mt-10">
+        <h2 id="tenants-heading" class="mb-4 text-2xl font-semibold">Tenants</h2>
+        @if (Model.Access.Count == 0) { <p class="text-muted">No tenants have access yet.</p> }
+        else
+        {
+        <ul class="divide-y divide-line rounded-2xl border border-line bg-panel">
+        @foreach (var access in Model.Access)
+        {
+            <li class="p-5">
+                <p class="break-all font-semibold">@access.Email</p>
+                <p class="text-sm text-muted">@access.Suite</p>
+                <details class="mt-2">
+                    <summary class="@opener">Remove access</summary>
+                    <form asp-action="Revoke" method="post" class="mt-3 max-w-xl space-y-3">
+                        <input name="MembershipId" value="@access.Id" type="hidden" /><input name="Version" value="@access.Version" type="hidden" />
+                        <label for="reason-@access.Id" class="block">Reason for revoking access</label><input id="reason-@access.Id" name="Reason" maxlength="2000" required class="field" />
+                        <p class="text-sm text-muted">Removes this person's portal access right away. Their past requests are kept.</p>
+                        <button class="quiet-button">Revoke tenant access</button>
+                    </form>
+                </details>
+            </li>
+        }
+        </ul>
+        }
+    </section>
+
+    <section aria-labelledby="invitations-heading" class="mt-10">
+        <h2 id="invitations-heading" class="mb-4 text-2xl font-semibold">Invitations waiting</h2>
+        @if (Model.Invitations.Count == 0) { <p class="text-muted">No invitations are waiting.</p> }
+        else
+        {
+        <div class="divide-y divide-line rounded-2xl border border-line bg-panel">
+        @foreach (var invitation in Model.Invitations)
+        {
+            <article class="min-w-0 p-5">
+                <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
+                    <h3 class="break-all font-semibold">@invitation.Email</h3>
+                    <span class="rounded-lg bg-brand-soft px-3 py-1 text-sm">@invitation.Status</span>
+                </div>
+                <p class="text-sm text-muted">@invitation.Suite · Expires @OfficeTime.Timestamp(invitation.ExpiresAt)</p>
+                <details class="mt-2">
+                    <summary class="@opener">Reissue or revoke</summary>
+                    <form asp-action="ChangeInvitation" method="post" class="mt-3 max-w-xl space-y-3">
+                        <input name="InvitationId" value="@invitation.Id" type="hidden" /><input name="Version" value="@invitation.Version" type="hidden" />
+                        <label for="invitation-reason-@invitation.Id" class="block">Reason for invitation change</label><input id="invitation-reason-@invitation.Id" name="Reason" maxlength="2000" required class="field" />
+                        <p class="text-sm text-muted">Reissuing sends a new link that works for seven days and cancels the old one. Revoking stops an unused invitation; it does not remove access someone already has.</p>
+                        <div class="flex flex-wrap gap-3"><button name="Revoke" value="false" class="quiet-button">Reissue invitation</button>@if (invitation.Status != "Revoked") { <button name="Revoke" value="true" class="quiet-button">Revoke invitation</button> }</div>
+                    </form>
+                </details>
+            </article>
+        }
+        </div>
+        }
+    </section>
+
+    <section aria-labelledby="more-heading" class="mt-10">
+        <h2 id="more-heading" class="mb-4 text-2xl font-semibold">Suites and existing accounts</h2>
+        <div class="divide-y divide-line rounded-2xl border border-line bg-panel">
+            <details class="p-5">
+                <summary class="@opener">Add a suite</summary>
+                <form asp-action="AddSuite" method="post" class="mt-3 max-w-xl space-y-4">
+                    <div><label for="building" class="mb-2 block">Building</label><select id="building" name="BuildingId" class="field">@foreach (var building in Model.Buildings) { <option value="@building.Id">@building.Name</option> }</select></div>
+                    <div><label for="suite-name" class="mb-2 block">Suite name</label><input id="suite-name" name="Name" maxlength="80" required class="field" /></div>
+                    <button class="button">Add suite</button>
+                </form>
+            </details>
+            <details class="p-5">
+                <summary class="@opener">Give an existing account another suite</summary>
+                <p class="mt-3 max-w-xl text-muted">For someone who already has an account here. A returning tenant starts fresh; their earlier requests are not restored.</p>
+                <form asp-action="Grant" method="post" class="mt-3 max-w-xl space-y-4"><input name="OperationId" value="@Guid.NewGuid()" type="hidden" />
+                    <div><label for="existing-suite" class="mb-2 block">Suite for existing account</label><select id="existing-suite" name="SuiteId" class="field">@foreach (var suite in Model.Suites) { <option value="@suite.Id">@suite.Name</option> }</select></div>
+                    <div><label for="existing-email" class="mb-2 block">Existing account email</label><input id="existing-email" name="Email" type="email" maxlength="256" required class="field" /></div>
+                    <div><label for="grant-reason" class="mb-2 block">Reason for granting access</label><input id="grant-reason" name="Reason" maxlength="2000" required class="field" /></div>
+                    <button class="button" disabled="@(Model.Suites.Count == 0)">Grant access to this suite</button>
+                </form>
+            </details>
+        </div>
+    </section>
+
+    <a asp-controller="Account" asp-action="Reauthenticate" class="mt-8 flex min-h-11 items-center underline">Verify your sign-in to make changes</a>
+</div>

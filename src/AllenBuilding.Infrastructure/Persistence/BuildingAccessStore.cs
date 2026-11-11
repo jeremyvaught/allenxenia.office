@@ -1,4 +1,5 @@
 using AllenBuilding.Application.Access;
+using AllenBuilding.Domain.Maintenance;
 using AllenBuilding.Domain.Tenancy;
 using AllenBuilding.Infrastructure.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -38,6 +39,24 @@ public sealed class BuildingAccessStore(OfficeDbContext db, ICurrentActor curren
         await db.Memberships.AsNoTracking().Where(x => x.UserId == userId && x.RevokedAt == null &&
             x.StartsAt <= now && (x.EndsAt == null || x.EndsAt > now)).Join(db.ActiveGrants,
             membership => membership.Id, grant => grant.MembershipId, (membership, grant) => membership).ToListAsync(cancellationToken);
+
+    public async Task<ManagerSummary> ReadManagerSummaryAsync(Actor actor, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var open = await (from order in db.WorkOrders.AsNoTracking()
+                          join suite in db.Suites on order.SuiteId equals suite.Id
+                          where actor.ManagedBuildings.Contains(suite.BuildingId) &&
+                              order.Status != WorkOrderStatus.Closed && order.Status != WorkOrderStatus.Cancelled
+                          group order by order.Status into stage
+                          select new { Status = stage.Key, Count = stage.Count() }).ToListAsync(cancellationToken);
+        int Count(params WorkOrderStatus[] statuses) => open.Where(x => statuses.Contains(x.Status)).Sum(x => x.Count);
+        var invitations = await (from invitation in db.Invitations.AsNoTracking()
+                                 join suite in db.Suites on invitation.SuiteId equals suite.Id
+                                 where actor.ManagedBuildings.Contains(suite.BuildingId) && invitation.AcceptedAt == null &&
+                                     invitation.RevokedAt == null && invitation.ExpiresAt > now
+                                 select invitation.Id).CountAsync(cancellationToken);
+        return new(Count(WorkOrderStatus.Submitted), Count(WorkOrderStatus.Triaged, WorkOrderStatus.Assigned, WorkOrderStatus.InProgress),
+            Count(WorkOrderStatus.Completed), invitations);
+    }
 
     public async Task<SuiteResult> AddSuiteAsync(Guid buildingId, string name, CancellationToken cancellationToken)
     {

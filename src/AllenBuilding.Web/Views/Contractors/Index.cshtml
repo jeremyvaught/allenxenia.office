@@ -1,9 +1,8 @@
 @model IReadOnlyList<AllenBuilding.Application.Maintenance.ContractorDetails>
 @{ ViewData["Title"] = "Contractor contacts"; }
 <div class="page">
-    <a asp-controller="Portal" asp-action="Index" class="mb-6 flex min-h-11 items-center underline">Back to your office</a>
     <div class="mb-8 flex flex-wrap items-center justify-between gap-4"><h1 class="text-3xl font-semibold">Contractor contacts</h1><a asp-action="Create" class="button">Add a contractor</a></div>
-    <p class="mb-6 text-muted">Contacts are visible to management. Deactivation prevents new assignments and keeps previous work on record.</p>
+    <p class="mb-6 text-muted">Only managers see these contacts. Deactivate one to stop new assignments; past work stays on record.</p>
     @if (Model.Count == 0) { <p class="rounded-2xl border border-line bg-panel p-6">No contractor contacts yet.</p> }
     <div class="grid gap-4 md:grid-cols-2">
     @foreach (var contact in Model)

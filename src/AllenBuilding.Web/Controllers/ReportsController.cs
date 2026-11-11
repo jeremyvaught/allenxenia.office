@@ -24,7 +24,7 @@ public sealed class ReportsController(ManagementReportQueries queries, Completio
             return View("Unavailable");
         }
     }
-    [HttpGet]
+    [HttpGet, RequiresBilling]
     public async Task<IActionResult> Rent(RentBalanceQuery query, CancellationToken cancellationToken)
     {
         if (!ModelState.IsValid || !query.IsValid)

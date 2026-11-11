@@ -8,7 +8,8 @@ public class HomeController : Controller
 {
     public IActionResult Index()
     {
-        return View();
+        // The public page is only a sign-in entry; a signed-in visitor goes to their portal.
+        return User.Identity?.IsAuthenticated == true ? RedirectToAction("Index", "Portal") : View();
     }
 
     public IActionResult Privacy()

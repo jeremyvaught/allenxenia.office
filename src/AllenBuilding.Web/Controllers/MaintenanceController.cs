@@ -55,7 +55,7 @@ public sealed class MaintenanceController(MaintenanceActions actions) : Controll
             return View(form);
         }
         var result = await actions.SubmitAsync(new(form.OperationId, form.MembershipId, form.Title, form.Description, form.Location));
-        return Outcome(result, false);
+        return Outcome(result, false, "Request sent. Building management has been notified and will reply here.");
     }
 
     [Authorize(Policy = OfficeSecurity.ManagerPolicy), HttpGet]
@@ -75,7 +75,8 @@ public sealed class MaintenanceController(MaintenanceActions actions) : Controll
             Response.StatusCode = 400;
             return View("Create", form);
         }
-        return Outcome(await actions.SubmitOnBehalfAsync(new(form.OperationId, form.MembershipId, form.Title, form.Description, form.Location)), true);
+        return Outcome(await actions.SubmitOnBehalfAsync(new(form.OperationId, form.MembershipId, form.Title, form.Description, form.Location)), true,
+            "Request recorded for the tenant.");
     }
 
     [HttpPost, RequestSizeLimit(10000)]
@@ -88,7 +89,18 @@ public sealed class MaintenanceController(MaintenanceActions actions) : Controll
     {
         var result = ModelState.IsValid ? await actions.ChangeAsync(form.Command(), management) : new MaintenanceResult(MaintenanceCode.ValidationFailed);
         if (result.Code is not (MaintenanceCode.Conflict or MaintenanceCode.ValidationFailed))
-            return Outcome(result, management);
+            return Outcome(result, management, form.Action switch
+            {
+                MaintenanceAction.Comment => form.Internal ? "Internal note added." : "Comment added.",
+                MaintenanceAction.Triage => "Request triaged.",
+                MaintenanceAction.Assign or MaintenanceAction.AssignSelf => "Assignment saved.",
+                MaintenanceAction.Start => "Work marked as started.",
+                MaintenanceAction.Complete => "Work marked complete. Verify it, then close the request.",
+                MaintenanceAction.Close => "Request closed.",
+                MaintenanceAction.Cancel => "Request cancelled.",
+                MaintenanceAction.Reopen => "Request reopened.",
+                _ => "Request updated."
+            });
         var current = await actions.ReadAsync(form.WorkOrderId, management, HttpContext.RequestAborted);
         if (current is null)
             return NotFound();
@@ -115,8 +127,13 @@ public sealed class MaintenanceController(MaintenanceActions actions) : Controll
         return choices.Count > 0;
     }
 
-    private IActionResult Outcome(MaintenanceResult result, bool management) => result.Code == MaintenanceCode.Success
-        ? RedirectToAction(management ? nameof(ManageDetails) : nameof(Details), new { id = result.WorkOrderId }) : Error(result.Code);
+    private IActionResult Outcome(MaintenanceResult result, bool management, string notice)
+    {
+        if (result.Code != MaintenanceCode.Success)
+            return Error(result.Code);
+        TempData["Notice"] = notice;
+        return RedirectToAction(management ? nameof(ManageDetails) : nameof(Details), new { id = result.WorkOrderId });
+    }
 
     private IActionResult Error(MaintenanceCode code)
     {

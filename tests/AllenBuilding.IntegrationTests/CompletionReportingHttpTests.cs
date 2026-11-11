@@ -24,8 +24,8 @@ public sealed class CompletionReportingHttpTests
         Assert.Contains("no-store", page.Headers.CacheControl!.ToString());
         var html = await page.Content.ReadAsStringAsync();
         Assert.Contains("Maintenance completion times", html);
-        Assert.Contains("No completed samples", html);
-        Assert.Contains("nearest rank", html);
+        Assert.Contains("Not enough data yet", html);
+        Assert.Contains("Slowest cases (95th percentile)", html);
         using var foreign = await browser.GetAsync("/Reports/Completion?BuildingId=" + Guid.NewGuid());
         Assert.Equal(HttpStatusCode.NotFound, foreign.StatusCode);
         using var invalid = await browser.GetAsync("/Reports/Completion?BuildingId=invalid");

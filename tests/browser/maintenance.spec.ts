@@ -86,7 +86,7 @@ test('first manager login needs only a password, with optional single-verificati
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.getByRole('link', { name: 'Continue to your office', exact: true }).click();
     await expect(page).toHaveURL('http://127.0.0.1:5088/Portal');
-    await expect(page.getByRole('link', { name: 'Manage maintenance', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Maintenance', exact: true })).toBeVisible();
   } finally { await context.close(); }
 });
 
@@ -144,7 +144,7 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await login(manager, account.managerEmail, account.password);
     await manager.getByLabel('Verification code').fill(code(account.key));
     await manager.getByRole('button', { name: 'Verify sign-in', exact: true }).click();
-    await manager.getByRole('link', { name: 'Contractor contacts' }).click();
+    await manager.getByRole('link', { name: 'Contractors', exact: true }).click();
     await manager.getByRole('link', { name: 'Add a contractor' }).click();
     await expect(manager.getByLabel('Trade', { exact: true }).locator('option', { hasText: 'Heating and cooling' })).toHaveCount(1);
     await manager.getByLabel('Contact name').fill('Reliable plumbing');
@@ -178,7 +178,7 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await manager.reload();
     await manager.getByLabel('Resolution', { exact: true }).fill('Replaced the seal and tested for leaks.');
     await manager.getByRole('button', { name: 'Complete', exact: true }).click();
-    await expect(manager.getByText('Verify the work before closing this request.', { exact: false })).toBeVisible();
+    await expect(manager.getByText('Check it, then close the request.', { exact: false })).toBeVisible();
     await manager.getByRole('button', { name: 'Verify work and close', exact: true }).click();
     await page.goto(path);
     await expect(page.getByText('Replaced the seal and tested for leaks.', { exact: true }).first()).toBeVisible();
@@ -225,9 +225,11 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
 
     await manager.goto('/Management');
     const addedSuite = `Additional suite ${testInfo.project.name}`;
+    await manager.getByText('Add a suite', { exact: true }).click();
     await manager.getByLabel('Suite name', { exact: true }).fill(addedSuite);
     await manager.getByRole('button', { name: 'Add suite', exact: true }).click();
     await expect(manager.getByRole('status')).toContainText(`Suite ${addedSuite} added`);
+    await manager.getByText('Give an existing account another suite', { exact: true }).click();
     await manager.getByLabel('Suite for existing account').selectOption({ label: addedSuite });
     await manager.getByLabel('Existing account email').fill(account.tenantEmail);
     await manager.getByLabel('Reason for granting access').fill('Additional suite approved.');
@@ -238,12 +240,14 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await manager.getByLabel('Suite', { exact: true }).selectOption({ label: addedSuite });
     const invitedEmail = `invited-${testInfo.project.name}@example.test`;
     await manager.getByLabel('Email', { exact: true }).fill(invitedEmail);
-    await manager.getByRole('button', { name: 'Record invitation', exact: true }).click();
+    await manager.getByRole('button', { name: 'Send invitation', exact: true }).click();
     let invitation = manager.locator('article').filter({ hasText: invitedEmail });
+    await invitation.getByText('Reissue or revoke', { exact: true }).click();
     await invitation.getByLabel('Reason for invitation change').fill('Replace the activation link.');
     await invitation.getByRole('button', { name: 'Reissue invitation', exact: true }).click();
     await expect(manager.getByRole('status')).toContainText('Previous links are invalid');
     invitation = manager.locator('article').filter({ hasText: invitedEmail });
+    await invitation.getByText('Reissue or revoke', { exact: true }).click();
     await invitation.getByLabel('Reason for invitation change').fill('Invitation no longer needed.');
     await invitation.getByRole('button', { name: 'Revoke invitation', exact: true }).click();
     await expect(manager.locator('article').filter({ hasText: invitedEmail })).toContainText('Revoked');
@@ -316,7 +320,7 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await manager.screenshot({ path: `artifacts/browser/queue-${testInfo.project.name}.png`, fullPage: true });
     await manager.goto('/Portal');
-    await manager.getByRole('link', { name: 'Maintenance aging report', exact: true }).click();
+    await manager.getByRole('link', { name: 'Reports', exact: true }).click();
     await expect(manager.getByRole('heading', { level: 1 })).toHaveText('Maintenance aging');
     await expect(manager.getByRole('link', { name: new RegExp(behalfTitle) })).toBeVisible();
     await expect(manager.getByRole('link', { name: new RegExp(`Leaking sink ${testInfo.project.name}`) })).toHaveCount(0);
@@ -476,10 +480,11 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Access unavailable');
 
     await manager.goto('/Portal');
+    await manager.getByRole('link', { name: 'Reports', exact: true }).click();
     await manager.getByRole('link', { name: 'Completion time report', exact: true }).click();
     await expect(manager.getByRole('heading', { level: 1 })).toHaveText('Maintenance completion times');
-    await expect(manager.getByRole('heading', { name: 'Repair completion', exact: true })).toBeVisible();
-    await expect(manager.getByRole('heading', { name: 'Manager verification', exact: true })).toBeVisible();
+    await expect(manager.getByRole('heading', { name: 'Time to repair', exact: true })).toBeVisible();
+    await expect(manager.getByRole('heading', { name: 'Time to verify and close', exact: true })).toBeVisible();
     expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     for (const control of await manager.locator('main button, main select, main .quiet-button').all()) {
       expect((await control.boundingBox())!.height).toBeGreaterThanOrEqual(44);

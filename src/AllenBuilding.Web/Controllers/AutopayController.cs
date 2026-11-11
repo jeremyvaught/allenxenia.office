@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.RateLimiting;
 
 namespace AllenBuilding.Web.Controllers;
 
-[Authorize, ResponseCache(NoStore = true, Location = ResponseCacheLocation.None), EnableRateLimiting("PaymentActions")]
+[Authorize, RequiresBilling, ResponseCache(NoStore = true, Location = ResponseCacheLocation.None), EnableRateLimiting("PaymentActions")]
 public sealed class AutopayController(
     AutopayPlanning actions, BillingActions billing, AutopayPolicy policy, ICurrentActor current, AutopayReviewTickets tickets,
     TimeProvider time, AutopayMethodHandoffs handoffs) : Controller

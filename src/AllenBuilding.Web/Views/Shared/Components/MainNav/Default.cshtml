@@ -1,0 +1,32 @@
+@model AllenBuilding.Web.ViewComponents.MainNav
+@{ const string link = "flex min-h-11 items-center hover:text-brand"; }
+<nav aria-label="Main navigation" class="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm font-medium">
+    @if (Model.Manager)
+    {
+        <a asp-controller="Maintenance" asp-action="Manage" class="@link">Maintenance</a>
+        <a asp-controller="Management" asp-action="Index" class="@link">Access</a>
+        <a asp-controller="Knowledge" asp-action="Manage" class="@link">Help articles</a>
+        <a asp-controller="Contractors" asp-action="Index" class="@link">Contractors</a>
+        <a asp-controller="Reports" asp-action="Maintenance" class="@link">Reports</a>
+        <a asp-controller="Notifications" asp-action="Index" class="@link">Notifications</a>
+        @if (Model.Tenant) { <a asp-controller="Maintenance" asp-action="Index" class="@link">My requests</a> }
+    }
+    else if (Model.Tenant)
+    {
+        <a asp-controller="Maintenance" asp-action="Index" class="@link">Requests</a>
+        <a asp-controller="Knowledge" asp-action="Tenant" class="@link">Help</a>
+    }
+    else
+    {
+        <a asp-controller="Knowledge" asp-action="Index" class="@link">Help</a>
+    }
+    @if (Model.AssistantEnabled) { <a href="/Assistant" class="@link">Ask</a> }
+    @if (Model.SignedIn)
+    {
+        <form asp-controller="Account" asp-action="Logout" method="post"><button class="min-h-11 hover:text-brand">Sign out</button></form>
+    }
+    else
+    {
+        <a asp-controller="Account" asp-action="Login" class="@link">Sign in</a>
+    }
+</nav>

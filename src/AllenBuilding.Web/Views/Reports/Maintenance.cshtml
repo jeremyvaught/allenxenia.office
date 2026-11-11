@@ -4,9 +4,9 @@
     string Label(MaintenanceAgeBucket bucket) => bucket switch { MaintenanceAgeBucket.Under7Days => "Under 7 days", MaintenanceAgeBucket.From7To30Days => "7 to under 30 days", MaintenanceAgeBucket.AtLeast30Days => "30 days or more", MaintenanceAgeBucket.AwaitingVerification => "Awaiting verification", _ => "All active work" };
 }
 <div class="page">
-    <p class="mb-2 text-sm text-muted">BUILDING MANAGEMENT · REPORTS</p><h1 class="mb-4 text-4xl font-semibold">Maintenance aging</h1>
-    <p class="mb-3 max-w-3xl text-muted">Active work includes submitted, triaged, assigned and in-progress requests. Completed work awaiting verification is counted separately. Closed and cancelled requests are excluded.</p>
-    <p class="mb-6 text-sm text-muted">Snapshot @OfficeTime.Timestamp(Model.ObservedAt, true) · Age uses elapsed time since original submission, including reopened requests. Each page reflects current records when loaded.</p>
+    <nav aria-label="Reports" class="mb-4 flex flex-wrap gap-x-5 text-sm"><a asp-action="Maintenance" class="flex min-h-11 items-center underline">Maintenance aging report</a><a asp-action="Completion" class="flex min-h-11 items-center underline">Completion time report</a></nav><h1 class="mb-4 text-4xl font-semibold">Maintenance aging</h1>
+    <p class="mb-3 max-w-3xl text-muted">Open requests grouped by how long they have been waiting. Finished work waiting for you to verify is counted separately.</p>
+    <p class="mb-6 text-sm text-muted">As of @OfficeTime.Timestamp(Model.ObservedAt, true). Age counts from when the request was first submitted.</p>
     <section aria-label="Maintenance aging totals" class="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         @foreach (var bucket in new[] { MaintenanceAgeBucket.Under7Days, MaintenanceAgeBucket.From7To30Days, MaintenanceAgeBucket.AtLeast30Days, MaintenanceAgeBucket.AwaitingVerification }) {
             <a asp-action="Maintenance" asp-route-BuildingId="@query.BuildingId" asp-route-Bucket="@bucket" class="rounded-2xl border border-line bg-panel p-5"><span class="block text-sm text-muted">@Label(bucket)</span><strong class="mt-2 block text-3xl font-semibold">@Model.Totals.For(bucket)</strong></a>
@@ -17,7 +17,7 @@
         <div><label for="report-bucket" class="mb-2 block">Age group</label><select id="report-bucket" name="Bucket" class="field">@foreach (var bucket in Enum.GetValues<MaintenanceAgeBucket>()) { <option value="@bucket" selected="@(query.Bucket == bucket)">@Label(bucket)</option> }</select></div>
         <div class="flex flex-wrap gap-3 sm:col-span-2"><button class="button">View report</button><a asp-action="Maintenance" class="quiet-button">Reset report</a></div>
     </form>
-    <p class="mb-4 text-sm text-muted">@Model.Totals.Active active @(Model.Totals.Active == 1 ? "request" : "requests") · @Model.Totals.For(query.Bucket) in the selected group · Page @query.Page · up to @MaintenanceAgingQuery.PageSize per page. Totals cover the whole selected building scope, regardless of page or age group.</p>
+    <p class="mb-4 text-sm text-muted">@Model.Totals.Active open @(Model.Totals.Active == 1 ? "request" : "requests") · @Model.Totals.For(query.Bucket) in this group@(query.Page > 1 || Model.HasNext ? " · page " + query.Page : "")</p>
     @if (Model.Items.Count == 0) { <p class="rounded-xl border border-line bg-panel p-6">No requests in this group.</p> }
     <ul class="grid gap-4">@foreach (var item in Model.Items) {
         <li class="rounded-2xl border border-line bg-panel p-5"><a asp-controller="Maintenance" asp-action="ManageDetails" asp-route-id="@item.Id" class="block break-words text-xl font-semibold underline">@item.Title</a><p class="mt-2 text-muted">@item.Building · @item.Suite</p><p class="mt-2 text-sm">@MaintenanceText.Status(item.Status) · @((long)Math.Floor((Model.ObservedAt - item.CreatedAt).TotalDays)) days since submission</p><p class="mt-2 text-sm text-muted">Submitted @OfficeTime.Timestamp(item.CreatedAt)</p></li>
@@ -26,5 +26,4 @@
         @if (query.Page > 1) { <a asp-action="Maintenance" asp-route-BuildingId="@query.BuildingId" asp-route-Bucket="@query.Bucket" asp-route-Page="@(query.Page - 1)" class="quiet-button">Previous page</a> }
         @if (Model.HasNext) { <a asp-action="Maintenance" asp-route-BuildingId="@query.BuildingId" asp-route-Bucket="@query.Bucket" asp-route-Page="@(query.Page + 1)" class="quiet-button">Next page</a> }
     </nav>
-    <div class="mt-8 flex flex-wrap gap-3"><a asp-controller="Maintenance" asp-action="Manage" class="quiet-button">Maintenance queue</a><a asp-controller="Portal" asp-action="Index" class="quiet-button">Your office</a></div>
 </div>

@@ -116,10 +116,10 @@ public sealed class NotificationInboxHttpTests
         await host.LoginManagerAsync(manager, managerId);
         var html = await manager.GetStringAsync("/Notifications");
         Assert.Contains("reset-tenant@example.test", html);
-        Assert.Contains("request a fresh password reset", html);
+        Assert.Contains("ask the tenant to request a new reset", html);
         Assert.DoesNotContain("unrelated@example.test", html);
         Assert.DoesNotContain("secret-reset-token-canary", html);
-        Assert.DoesNotContain("Approve another delivery attempt", html);
+        Assert.DoesNotContain(">Send again</button>", html);
         using var retry = await AccountTestHost.PostAsync(manager, "/Management", "/Notifications/Retry", ("Id", failedId.ToString()), ("Version", version.ToString()), ("Reason", "Forged retry"));
         Assert.Equal(HttpStatusCode.Conflict, retry.StatusCode);
         using (var scope = host.Services.CreateScope())

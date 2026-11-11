@@ -151,5 +151,23 @@ public static class AccessContract
         var revocation = Task.Run(() => As(second, sp => sp.GetRequiredService<AccountInvitations>().ChangeAsync(racing.Id, racing.Version, true, "Revoke during activation")));
         await Task.WhenAll(acceptance, revocation);
         Assert.True(acceptance.Result ? revocation.Result == AccessCode.Conflict : revocation.Result == AccessCode.Success);
+
+        // The manager's overview and dashboard counts agree with the stored rows on both providers.
+        var waiting = await Invitation($"access-pending-{Guid.NewGuid():N}@example.test");
+        using (var scope = provider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+            var store = new BuildingAccessStore(db, scope.ServiceProvider.GetRequiredService<ICurrentActor>(), new AuditTrail(db, TimeProvider.System));
+            var now = DateTimeOffset.UtcNow;
+            var overview = await store.ReadOverviewAsync(manager, now, default);
+            var summary = await store.ReadManagerSummaryAsync(manager, now, default);
+            Assert.Contains(overview.Invitations, x => x.Id == waiting.Id && x.Status == "Pending");
+            Assert.Equal(overview.Invitations.Count(x => x.Status == "Pending"), summary.PendingInvitations);
+            var orders = await db.WorkOrders.AsNoTracking().Where(x => x.SuiteId == suite.Id).Select(x => x.Status).ToListAsync();
+            Assert.Equal(orders.Count(x => x == WorkOrderStatus.Submitted), summary.AwaitingTriage);
+            Assert.Equal(orders.Count(x => x is WorkOrderStatus.Triaged or WorkOrderStatus.Assigned or WorkOrderStatus.InProgress), summary.InProgress);
+            Assert.Equal(orders.Count(x => x == WorkOrderStatus.Completed), summary.AwaitingVerification);
+            Assert.Equal(new ManagerSummary(0, 0, 0, 0), await store.ReadManagerSummaryAsync(new Actor(managerId, new HashSet<Guid> { Guid.NewGuid() }, true, true), now, default));
+        }
     }
 }

@@ -2,7 +2,6 @@
 @{ ViewData["Title"] = "Payment status"; var label = Model.AgreementPending ? "Checking payment" : Model.State switch { AllenBuilding.Domain.Billing.PaymentAttemptState.Settled => "Payment captured", AllenBuilding.Domain.Billing.PaymentAttemptState.Uncollected => "No payment collected", AllenBuilding.Domain.Billing.PaymentAttemptState.HandoffReady => "Ready for checkout", AllenBuilding.Domain.Billing.PaymentAttemptState.NeedsReview => "Checking payment", AllenBuilding.Domain.Billing.PaymentAttemptState.Processing => "Payment processing", _ => "Preparing checkout" }; }
 <div class="page max-w-3xl">
     <p class="mb-2 text-sm text-muted">@Model.Suite · PAYMENT</p><h1 class="mb-4 text-4xl font-semibold">@label</h1>
-    @if (TempData["Notice"] is string notice) { <p role="status" class="mb-5 rounded-xl border border-line bg-panel p-4">@notice</p> }
     <p class="mb-6 text-muted">A checkout return does not confirm payment. This page shows the app’s verified records. Refresh to see later results.</p>
     <dl class="grid gap-5 rounded-2xl border border-line bg-panel p-6 sm:grid-cols-2">
         <div><dt class="text-muted">Reviewed total</dt><dd class="mt-1 text-2xl font-semibold">@BillingDisplay.Usd(Model.TotalMinorUnits) USD</dd></div>
