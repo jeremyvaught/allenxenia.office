@@ -30,6 +30,15 @@ public sealed class BuildingAccessStore(OfficeDbContext db, ICurrentActor curren
         return new(buildings, suites, access, invitations);
     }
 
+    public async Task<IReadOnlyList<BuildingOption>> ReadManagedBuildingsAsync(Actor actor, CancellationToken cancellationToken) =>
+        await db.Buildings.AsNoTracking().Where(x => actor.ManagedBuildings.Contains(x.Id))
+            .OrderBy(x => x.Name).Select(x => new BuildingOption(x.Id, x.Name)).ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<Membership>> ReadActiveMembershipsAsync(string userId, DateTimeOffset now, CancellationToken cancellationToken) =>
+        await db.Memberships.AsNoTracking().Where(x => x.UserId == userId && x.RevokedAt == null &&
+            x.StartsAt <= now && (x.EndsAt == null || x.EndsAt > now)).Join(db.ActiveGrants,
+            membership => membership.Id, grant => grant.MembershipId, (membership, grant) => membership).ToListAsync(cancellationToken);
+
     public async Task<SuiteResult> AddSuiteAsync(Guid buildingId, string name, CancellationToken cancellationToken)
     {
         var initial = await current.GetAsync(cancellationToken);
