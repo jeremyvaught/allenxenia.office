@@ -15,20 +15,70 @@ namespace AllenBuilding.IntegrationTests;
 
 public sealed class PersistenceTests
 {
+    // Each contract seeds its own fixtures and needs only a migrated schema.
+    private static readonly (string Name, Func<Func<OfficeDbContext>, Task> Verify)[] ContractChecks =
+    [
+        ("ProtectedIdentity", VerifyProtectedIdentity),
+        (nameof(MaintenanceContract), MaintenanceContract.VerifyAsync),
+        (nameof(NotificationContract), NotificationContract.VerifyAsync),
+        (nameof(NotificationInboxContract), NotificationInboxContract.VerifyAsync),
+        (nameof(KnowledgeContract), KnowledgeContract.VerifyAsync),
+        (nameof(AssistantTenantAccessContract), AssistantTenantAccessContract.VerifyAsync),
+        (nameof(AssistantReviewContract), AssistantReviewContract.VerifyAsync),
+        (nameof(BillingContract), BillingContract.VerifyAsync),
+        (nameof(TenancyClosureContract), TenancyClosureContract.VerifyAsync),
+        (nameof(AutopayLifecycleContract), AutopayLifecycleContract.VerifyAsync),
+        (nameof(AutopaySetupContract), AutopaySetupContract.VerifyAsync),
+        (nameof(AutopayContract), AutopayContract.VerifyAsync),
+        (nameof(AutopayMethodContract), AutopayMethodContract.VerifyAsync),
+        (nameof(RentInvoiceMappingContract), RentInvoiceMappingContract.VerifyAsync),
+        (nameof(CompletionReportingContract), CompletionReportingContract.VerifyAsync),
+        (nameof(AccessContract), AccessContract.VerifyAsync),
+        (nameof(OperatorRecoveryContract), OperatorRecoveryContract.VerifyAsync),
+        (nameof(MaintenanceQueueContract), MaintenanceQueueContract.VerifyAsync),
+        (nameof(MaintenanceReportingContract), MaintenanceReportingContract.VerifyAsync),
+        (nameof(RentReportingContract), RentReportingContract.VerifyAsync),
+        (nameof(TelemetryPersistenceContract), TelemetryPersistenceContract.VerifyAsync),
+        (nameof(DatabaseReadinessContract), DatabaseReadinessContract.VerifyAsync),
+        (nameof(PaymentAttemptContract), PaymentAttemptContract.VerifyAsync),
+        (nameof(SettlementPaymentContract), SettlementPaymentContract.VerifyAsync),
+        (nameof(CollectionAdmissionContract), CollectionAdmissionContract.VerifyAsync),
+        (nameof(PaymentWebhookContract), PaymentWebhookContract.VerifyAsync),
+        (nameof(CollectionReconciliationContract), CollectionReconciliationContract.VerifyAsync),
+        (nameof(FinancialExceptionContract), FinancialExceptionContract.VerifyAsync),
+        (nameof(CollectionWorkContract), CollectionWorkContract.VerifyAsync),
+        (nameof(PaymentEventWorkContract), PaymentEventWorkContract.VerifyAsync),
+        (nameof(CustomerProvisionContract), CustomerProvisionContract.VerifyAsync),
+        (nameof(LocalCreditContract), LocalCreditContract.VerifyAsync),
+        (nameof(CashMovementContract), CashMovementContract.VerifyAsync),
+        (nameof(CashSourceRecoveryContract), CashSourceRecoveryContract.VerifyAsync),
+        (nameof(RefundDispositionContract), RefundDispositionContract.VerifyAsync),
+        (nameof(CashAgreementContract), CashAgreementContract.VerifyAsync),
+        (nameof(InitialCashInventoryContract), InitialCashInventoryContract.VerifyAsync),
+        (nameof(PayerCollectionContract), PayerCollectionContract.VerifyAsync),
+    ];
+
+    public static TheoryData<string> Contracts => new(ContractChecks.Select(x => x.Name));
+
     [Fact]
     public async Task Sqlite_migrations_constraints_and_concurrency_preserve_private_ownership()
     {
-        var path = Path.Combine(Path.GetTempPath(), $"office-check-{Guid.NewGuid():N}.db");
-        OfficeDbContext Create() => new SqliteOfficeDbContext(new DbContextOptionsBuilder<SqliteOfficeDbContext>()
-            .UseSqlite($"Data Source={path};Foreign Keys=True").Options);
-        try { await VerifyDatabase(Create); }
-        finally
-        {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-            foreach (var suffix in new[] { "", "-wal", "-shm" }) File.Delete(path + suffix);
-        }
+        await WithSqliteDatabase(VerifyDatabase);
     }
 
+    [Theory]
+    [MemberData(nameof(Contracts))]
+    public async Task Sqlite_contract_holds_on_a_fresh_database(string contract)
+    {
+        var verify = ContractChecks.Single(x => x.Name == contract).Verify;
+        await WithSqliteDatabase(async create =>
+        {
+            await using (var db = create()) await db.Database.MigrateAsync();
+            await verify(create);
+        });
+    }
+
+    // One sequential test: the migration user cannot create databases, and the upgrade path must start empty.
     [MySqlFact]
     public async Task MySql_migrations_constraints_and_concurrency_match_local_contract()
     {
@@ -39,8 +89,22 @@ public sealed class PersistenceTests
         OfficeDbContext Create() => new MySqlOfficeDbContext(new DbContextOptionsBuilder<MySqlOfficeDbContext>()
             .UseMySQL(connection).Options);
         await VerifyDatabase(Create);
+        foreach (var (_, verify) in ContractChecks) await verify(Create);
         var runtime = Environment.GetEnvironmentVariable("OFFICE_TEST_MYSQL_RUNTIME");
         if (!string.IsNullOrWhiteSpace(runtime)) await MySqlRuntimeRoleContract.VerifyAsync(runtime);
+    }
+
+    private static async Task WithSqliteDatabase(Func<Func<OfficeDbContext>, Task> verify)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"office-check-{Guid.NewGuid():N}.db");
+        OfficeDbContext Create() => new SqliteOfficeDbContext(new DbContextOptionsBuilder<SqliteOfficeDbContext>()
+            .UseSqlite($"Data Source={path};Foreign Keys=True").Options);
+        try { await verify(Create); }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            foreach (var suffix in new[] { "", "-wal", "-shm" }) File.Delete(path + suffix);
+        }
     }
 
     private static async Task VerifyDatabase(Func<OfficeDbContext> create)
@@ -177,44 +241,6 @@ public sealed class PersistenceTests
             Assert.False((await db.Memberships.SingleAsync(x => x.Id == membership.Id)).IsActive(now));
             Assert.Equal(WorkOrderStatus.Triaged, (await db.WorkOrders.SingleAsync(x => x.Id == request.Id)).Status);
         }
-        await VerifyProtectedIdentity(create);
-        await MaintenanceContract.VerifyAsync(create);
-        await NotificationContract.VerifyAsync(create);
-        await NotificationInboxContract.VerifyAsync(create);
-        await KnowledgeContract.VerifyAsync(create);
-        await AssistantTenantAccessContract.VerifyAsync(create);
-        await AssistantReviewContract.VerifyAsync(create);
-        await BillingContract.VerifyAsync(create);
-        await TenancyClosureContract.VerifyAsync(create);
-        await AutopayLifecycleContract.VerifyAsync(create);
-        await AutopaySetupContract.VerifyAsync(create);
-        await AutopayContract.VerifyAsync(create);
-        await AutopayMethodContract.VerifyAsync(create);
-        await RentInvoiceMappingContract.VerifyAsync(create);
-        await CompletionReportingContract.VerifyAsync(create);
-        await AccessContract.VerifyAsync(create);
-        await OperatorRecoveryContract.VerifyAsync(create);
-        await MaintenanceQueueContract.VerifyAsync(create);
-        await MaintenanceReportingContract.VerifyAsync(create);
-        await RentReportingContract.VerifyAsync(create);
-        await TelemetryPersistenceContract.VerifyAsync(create);
-        await DatabaseReadinessContract.VerifyAsync(create);
-        await PaymentAttemptContract.VerifyAsync(create);
-        await SettlementPaymentContract.VerifyAsync(create);
-        await CollectionAdmissionContract.VerifyAsync(create);
-        await PaymentWebhookContract.VerifyAsync(create);
-        await CollectionReconciliationContract.VerifyAsync(create);
-        await FinancialExceptionContract.VerifyAsync(create);
-        await CollectionWorkContract.VerifyAsync(create);
-        await PaymentEventWorkContract.VerifyAsync(create);
-        await CustomerProvisionContract.VerifyAsync(create);
-        await LocalCreditContract.VerifyAsync(create);
-        await CashMovementContract.VerifyAsync(create);
-        await CashSourceRecoveryContract.VerifyAsync(create);
-        await RefundDispositionContract.VerifyAsync(create);
-        await CashAgreementContract.VerifyAsync(create);
-        await InitialCashInventoryContract.VerifyAsync(create);
-        await PayerCollectionContract.VerifyAsync(create);
     }
 
     private static async Task VerifyProtectedIdentity(Func<OfficeDbContext> create)
