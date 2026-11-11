@@ -42,7 +42,12 @@ public sealed class DemoSeedTests
                 ["Help articles in draft"] = 1,
                 ["Emails waiting to send"] = 2,
                 ["Emails failed, with a retry available"] = 1,
-                ["Billing, payment, autopay and financial-exception rows"] = 0,
+                ["Payment, autopay, provider and financial-exception rows"] = 0,
+                ["Rent accounts"] = 7,
+                ["Rent accounts with rent terms"] = 7,
+                ["One-time charges"] = 3,
+                ["Rent report total matches the account pages"] = 1,
+                ["Tenants who see billing that is not their own, or a credit reason"] = 0,
                 ["Dashboard: new requests to triage"] = 5,
                 ["Dashboard: finished, waiting to verify"] = 3,
                 ["Dashboard: invitations not yet accepted"] = 1,
@@ -53,6 +58,11 @@ public sealed class DemoSeedTests
             Assert.True(report["Requests with an internal manager note"] >= 4);
             Assert.True(report["Open urgent requests"] >= 2);
             Assert.True(report["Open requests older than 21 days"] >= 2);
+            // Rent for last month and this month; the newest tenant may not have a whole month yet.
+            Assert.InRange(report["Monthly rent charges"], 12, 13);
+            Assert.InRange(report["Tenants with an overdue balance"], 1, 2);
+            Assert.True(report["Tenants with nothing overdue"] >= 5);
+            Assert.True(report["Credits recorded by a manager"] >= 10);
 
             var accounts = Path.Combine(directory, "accounts.json");
             if (!OperatingSystem.IsWindows())

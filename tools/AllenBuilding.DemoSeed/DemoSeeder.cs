@@ -1,8 +1,11 @@
 using System.Text.Json;
 using AllenBuilding.Application.Access;
+using AllenBuilding.Application.Billing;
 using AllenBuilding.Application.Knowledge;
 using AllenBuilding.Application.Maintenance;
 using AllenBuilding.Application.Notifications;
+using AllenBuilding.Application.Reporting;
+using AllenBuilding.Domain.Billing;
 using AllenBuilding.Domain.Tenancy;
 using AllenBuilding.Infrastructure.Identity;
 using AllenBuilding.Infrastructure.Notifications;
@@ -29,6 +32,8 @@ public sealed class DemoSeeder
     private readonly Dictionary<string, Guid> _contractors = [];
     private readonly Dictionary<string, Guid> _invitations = [];
     private readonly Dictionary<string, Guid> _memberships = [];
+    private readonly Dictionary<string, Guid> _accounts = [];
+    private IReadOnlyList<BillingEvent> _billing = [];
     private readonly DateTimeOffset _now;
     private readonly TimeZoneInfo _zone;
     private Guid _building;
@@ -88,6 +93,14 @@ public sealed class DemoSeeder
         services.AddScoped<ContractorActions>();
         services.AddScoped<IKnowledgeStore, KnowledgeStore>();
         services.AddScoped<KnowledgeActions>();
+        // Rent planning and manager-recorded credits only. No payment, autopay or provider service is registered.
+        services.AddScoped<IBillingStore, BillingStore>();
+        services.AddScoped<BillingActions>();
+        services.AddSingleton(new LocalCreditPolicy(true));
+        services.AddScoped<ILocalCreditStore, LocalCreditStore>();
+        services.AddScoped<LocalCreditActions>();
+        services.AddScoped<IManagementReportReader, ManagementReportReader>();
+        services.AddScoped<ManagementReportQueries>();
         services.AddScoped<INotificationQueue>(sp => new NotificationQueue(sp.GetRequiredService<OfficeDbContext>(),
             sp.GetRequiredService<IDataProtectionProvider>(), sp.GetRequiredService<TimeProvider>(), new Uri("http://localhost:5081/")));
         services.AddScoped<NotificationDispatcher>();
@@ -101,14 +114,14 @@ public sealed class DemoSeeder
         seeder._clock.Now = now;
         seeder._actor.Current = null;
         await using var verification = provider.CreateAsyncScope();
-        var report = await SeedVerification.CheckAsync(verification.ServiceProvider, seeder._actor, now, directory);
+        var report = await SeedVerification.CheckAsync(verification.ServiceProvider, seeder._actor, now, directory, seeder._billing);
         // Let the connection pool release the file so the directory can be moved or deleted straight away.
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         return report;
     }
 
-    private void At(When when, Func<IServiceProvider, Task> run, Mail mail = Mail.Send) =>
-        _timeline.Add((when.Resolve(_now, _zone), _timeline.Count, mail, run));
+    private void At(When when, Func<IServiceProvider, Task> run, Mail mail = Mail.Send) => At(when.Resolve(_now, _zone), run, mail);
+    private void At(DateTimeOffset at, Func<IServiceProvider, Task> run, Mail mail = Mail.Send) => _timeline.Add((at, _timeline.Count, mail, run));
 
     private void Plan()
     {
@@ -145,6 +158,9 @@ public sealed class DemoSeeder
             At(invite.Invited, sp => InviteAsync(sp, invite.Contact, invite.Suite));
         foreach (var request in DemoContent.Requests())
             PlanRequest(request);
+        _billing = DemoBilling.Events(_now, _zone);
+        foreach (var step in _billing)
+            At(step.At, sp => BillingAsync(sp, step));
     }
 
     private void PlanRequest(RequestScript request)
@@ -318,6 +334,42 @@ public sealed class DemoSeeder
             .Where(x => x.Id == id).Select(x => x.Version).SingleAsync();
         var code = await sp.GetRequiredService<AccessRevocation>().RevokeAsync(id, version, DemoContent.FormerTenantReason);
         Require(code == AccessCode.Success, "revoke the former tenant");
+    }
+
+    // Every billing step goes through the action the billing pages confirm with, as a recently verified manager.
+    private async Task BillingAsync(IServiceProvider sp, BillingEvent step)
+    {
+        _actor.Current = Manager(step.By);
+        var db = sp.GetRequiredService<OfficeDbContext>();
+        var actions = sp.GetRequiredService<BillingActions>();
+        var who = step.Tenant.Name;
+        if (step.Step == BillingStep.Open)
+        {
+            var id = Guid.NewGuid();
+            Require((await actions.OpenAsync(new(Guid.NewGuid(), id, _memberships[step.Tenant.Key]))).Code == BillingCode.Success, "open a rent account for " + who);
+            _accounts[step.Tenant.Key] = id;
+            return;
+        }
+        var account = _accounts[step.Tenant.Key];
+        var version = await db.RentAccounts.AsNoTracking().Where(x => x.Id == account).Select(x => x.Version).SingleAsync();
+        var result = step.Step switch
+        {
+            BillingStep.Terms => await actions.TermsAsync(new(Guid.NewGuid(), account, version, step.AmountMinorUnits, 1, step.Month!.Value)),
+            BillingStep.Rent => await actions.RentAsync(new(Guid.NewGuid(), account, version, step.Month!.Value.Year, step.Month.Value.Month)),
+            BillingStep.Charge => await actions.ChargeAsync(new(Guid.NewGuid(), account, version, step.AmountMinorUnits, step.Description!, step.DueOn!.Value)),
+            _ => await CreditAsync(sp, db, account, step)
+        };
+        Require(result.Code == BillingCode.Success, $"record {step.Step} for {who}");
+    }
+
+    private static async Task<BillingResult> CreditAsync(IServiceProvider sp, OfficeDbContext db, Guid account, BillingEvent step)
+    {
+        var period = step.Month is { } month ? await db.BillingPeriods.AsNoTracking()
+            .Where(x => x.AccountId == account && x.StartsOn == month).Select(x => (Guid?)x.Id).SingleAsync() : null;
+        var charge = await db.Obligations.AsNoTracking().SingleAsync(x => x.AccountId == account &&
+            (period != null ? x.PeriodId == period : x.Description == step.Description));
+        return await sp.GetRequiredService<LocalCreditActions>().ApplyAsync(new(
+            Guid.NewGuid(), account, charge.Id, charge.Version, step.AmountMinorUnits, ObligationCreditKind.Credit, step.Reason!));
     }
 
     private async Task WriteAccountsAsync(IServiceProvider provider, string directory)

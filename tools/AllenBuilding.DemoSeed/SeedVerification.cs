@@ -1,5 +1,8 @@
 using AllenBuilding.Application.Access;
+using AllenBuilding.Application.Billing;
 using AllenBuilding.Application.Maintenance;
+using AllenBuilding.Application.Reporting;
+using AllenBuilding.Domain.Billing;
 using AllenBuilding.Domain.Knowledge;
 using AllenBuilding.Domain.Maintenance;
 using AllenBuilding.Domain.Tenancy;
@@ -24,7 +27,8 @@ public sealed record SeedReport(string Directory, IReadOnlyList<SeedCheck> Check
 // quietly alters the seed is caught here and not on recording day.
 internal static class SeedVerification
 {
-    public static async Task<SeedReport> CheckAsync(IServiceProvider sp, SeedActor actor, DateTimeOffset now, string directory)
+    public static async Task<SeedReport> CheckAsync(IServiceProvider sp, SeedActor actor, DateTimeOffset now, string directory,
+        IReadOnlyList<BillingEvent> billingPlan)
     {
         var db = sp.GetRequiredService<OfficeDbContext>();
         var checks = new List<SeedCheck>();
@@ -145,23 +149,62 @@ internal static class SeedVerification
         Exactly("Emails in any other state",
             messages.Count(x => x.State is not (MessageState.Delivered or MessageState.Queued or MessageState.NeedsReview)), 0);
 
-        // Billing is disabled and must not look delivered: nothing may exist in any of its tables.
-        var billing = 0;
+        // Rent planning is shown; payment collection is not. Only the planning tables may hold rows.
+        var planning = new[] { typeof(RentAccount), typeof(RentAgreement), typeof(BillingPeriod), typeof(Obligation), typeof(ObligationCredit), typeof(BillingReceipt) };
+        var collection = 0;
         await db.Database.OpenConnectionAsync();
-        foreach (var entity in db.Model.GetEntityTypes().Where(x => x.ClrType.Namespace == "AllenBuilding.Domain.Billing"))
+        foreach (var entity in db.Model.GetEntityTypes().Where(x => x.ClrType.Namespace == "AllenBuilding.Domain.Billing" && !planning.Contains(x.ClrType)))
         {
             var table = entity.GetTableName();
             if (table is null)
                 continue;
             await using var command = db.Database.GetDbConnection().CreateCommand();
             command.CommandText = $"SELECT COUNT(*) FROM \"{table}\"";
-            billing += Convert.ToInt32(await command.ExecuteScalarAsync());
+            collection += Convert.ToInt32(await command.ExecuteScalarAsync());
         }
         await db.Database.CloseConnectionAsync();
-        Exactly("Billing, payment, autopay and financial-exception rows", billing, 0);
+        Exactly("Payment, autopay, provider and financial-exception rows", collection, 0);
+
+        // Billing, read as a manager through the action behind the billing pages.
+        var manager = new Actor(managers[0], building.Select(x => x.Id).ToHashSet(), true, true);
+        var zone = TimeZoneInfo.FindSystemTimeZoneById(building[0].TimeZoneId);
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
+        actor.Current = manager;
+        var billing = sp.GetRequiredService<BillingActions>();
+        var accounts = await billing.ReadAsync(management: true);
+        var charges = accounts.SelectMany(x => x.Obligations).ToList();
+        Exactly("Rent accounts", accounts.Count, 7);
+        Exactly("Rent accounts for a current tenant", accounts.Count(x => active.Any(m => m.Id == x.MembershipId)), 7);
+        Exactly("Rent accounts with rent terms", accounts.Count(x => x.Terms.Count == 1), 7);
+        Exactly("Monthly rent charges", charges.Count(x => x.Kind == ChargeKind.BaseRent), billingPlan.Count(x => x.Step == BillingStep.Rent));
+        AtLeast("Monthly rent charges, at least", charges.Count(x => x.Kind == ChargeKind.BaseRent), 12);
+        Exactly("One-time charges", charges.Count(x => x.Kind == ChargeKind.OneTime), 3);
+        Exactly("Credits recorded by a manager", charges.Sum(x => x.Credits?.Count ?? 0), billingPlan.Count(x => x.Step == BillingStep.Credit));
+        Exactly("Charges dated in the future or before the demo window", await db.Obligations.CountAsync() -
+            (await db.Obligations.AsNoTracking().Select(x => x.IssuedAt).ToListAsync()).Count(x => x < now && x >= now.AddDays(-62)), 0);
+        var behind = accounts.Count(x => x.OverdueMinorUnits(today) > 0);
+        AtLeast("Tenants with an overdue balance", behind, 1);
+        Exactly("Tenants with an overdue balance, at most two", Math.Min(behind, 2), behind);
+        AtLeast("Tenants with nothing overdue", accounts.Count - behind, 5);
+        AtLeast("Tenants who owe nothing at all", accounts.Count(x => x.BalanceMinorUnits == 0), 4);
+        AtLeast("Charges owed but not yet due", charges.Count(x => x.BalanceMinorUnits > 0 && x.DueOn >= today), 1);
+        var balances = await sp.GetRequiredService<ManagementReportQueries>().RentBalancesAsync(new());
+        Exactly("Rent report total matches the account pages", balances is not null &&
+            balances.Totals.ConfirmedMinor == accounts.Sum(x => x.BalanceMinorUnits) && balances.Totals.OverdueMinor == accounts.Sum(x => x.OverdueMinorUnits(today)) &&
+            balances.Totals.ConfirmedMinor > 0 && balances.Totals.HeldMinor == 0 ? 1 : 0, 1);
+        // Each tenant, through the same action as their billing page, sees their own suite's account and nothing else.
+        var strangers = 0;
+        foreach (var membership in active)
+        {
+            actor.Current = new Actor(membership.UserId, new HashSet<Guid>(), false, false);
+            var own = await billing.ReadAsync(management: false);
+            if (own.Count != 1 || own[0].MembershipId != membership.Id || own[0].Obligations.Any(x => x.Credits?.Any(c => c.Reason is not null) == true))
+                strangers++;
+        }
+        actor.Current = null;
+        Exactly("Tenants who see billing that is not their own, or a credit reason", strangers, 0);
 
         // What the manager dashboard tiles will show, read through the action the dashboard uses.
-        var manager = new Actor(managers[0], building.Select(x => x.Id).ToHashSet(), true, true);
         var summary = await sp.GetRequiredService<BuildingAccessActions>().ManagerSummaryAsync(manager, CancellationToken.None);
         Exactly("Dashboard: new requests to triage", summary.AwaitingTriage, 5);
         Exactly("Dashboard: finished, waiting to verify", summary.AwaitingVerification, 3);
