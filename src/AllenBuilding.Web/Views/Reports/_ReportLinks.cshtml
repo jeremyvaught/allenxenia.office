@@ -1,0 +1,2 @@
+@inject AllenBuilding.Web.Security.BillingFeatures Billing
+<nav aria-label="Reports" class="mb-4 flex flex-wrap gap-x-5 text-sm"><a asp-controller="Reports" asp-action="Maintenance" class="flex min-h-11 items-center underline">Maintenance aging report</a><a asp-controller="Reports" asp-action="Completion" class="flex min-h-11 items-center underline">Completion time report</a>@if (Billing.Planning) { <a asp-controller="Reports" asp-action="Rent" class="flex min-h-11 items-center underline">Rent balance report</a> }</nav>

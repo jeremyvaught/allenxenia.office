@@ -7,7 +7,8 @@ using Microsoft.AspNetCore.Mvc;
 namespace AllenBuilding.Web.Controllers;
 
 [Authorize(Policy = OfficeSecurity.ManagerPolicy), ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-public sealed class ReportsController(ManagementReportQueries queries, CompletionReportQueries completion, ILogger<ReportsController> logger) : Controller
+public sealed class ReportsController(ManagementReportQueries queries, CompletionReportQueries completion, BillingFeatures features,
+    ILogger<ReportsController> logger) : Controller
 {
     [HttpGet]
     public async Task<IActionResult> Completion(CompletionQuery query, CancellationToken token)
@@ -30,7 +31,11 @@ public sealed class ReportsController(ManagementReportQueries queries, Completio
         if (!ModelState.IsValid || !query.IsValid)
             return BadRequest();
         try
-        { var report = await queries.RentBalancesAsync(query, cancellationToken); return report is null ? NotFound() : View(report); }
+        {
+            ViewData["FinancialReview"] = features.FinancialReview;
+            var report = await queries.RentBalancesAsync(query, cancellationToken);
+            return report is null ? NotFound() : View(report);
+        }
         catch (Exception exception) when (exception is TimeoutException or DbException)
         {
             logger.LogWarning("Rent balance report unavailable ({FailureType})", exception.GetType().Name);

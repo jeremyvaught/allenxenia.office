@@ -4,10 +4,11 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace AllenBuilding.Web.ViewComponents;
 
-public sealed record MainNav(bool SignedIn, bool Manager, bool Tenant, bool AssistantEnabled);
+public sealed record MainNav(bool SignedIn, bool Manager, bool Tenant, bool AssistantEnabled, bool Billing = false);
 
 public sealed class MainNavViewComponent(
-    ICurrentActor current, BuildingAccessActions buildingAccess, AssistantPolicy assistant, ILogger<MainNavViewComponent> logger) : ViewComponent
+    ICurrentActor current, BuildingAccessActions buildingAccess, AssistantPolicy assistant, AllenBuilding.Web.Security.BillingFeatures billing,
+    ILogger<MainNavViewComponent> logger) : ViewComponent
 {
     public async Task<IViewComponentResult> InvokeAsync()
     {
@@ -32,6 +33,6 @@ public sealed class MainNavViewComponent(
                 tenant = false;
             }
         }
-        return View(new MainNav(signedIn, manager, tenant, assistant.Enabled));
+        return View(new MainNav(signedIn, manager, tenant, assistant.Enabled, billing.Planning));
     }
 }

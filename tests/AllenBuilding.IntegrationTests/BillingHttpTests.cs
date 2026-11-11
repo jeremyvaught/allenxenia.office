@@ -29,13 +29,15 @@ public sealed class BillingHttpTests
             ("AccountId", accountId.ToString()), ("Version", account.Version.ToString()), ("Amount", "1000.00"), ("DueDay", "31"), ("StartsOn", "2026-01-01"));
         using (var scope = host.Services.CreateScope())
             Assert.Empty(await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().RentAgreements.ToListAsync());
-        Assert.Contains("$1,000.00 USD", terms.Html);
+        Assert.Contains("$1,000.00", terms.Html);
+        Assert.Contains("the 31st, or the last day of a shorter month", terms.Html);
         using var termsSaved = await Confirm(manager, terms.Ticket);
         Assert.Equal(HttpStatusCode.Redirect, termsSaved.StatusCode);
         account = await ReadAccount(host, accountId);
         var rent = await Review(manager, "/Billing/ManageAccount/" + accountId, "/Billing/PrepareRent",
             ("AccountId", accountId.ToString()), ("Version", account.Version.ToString()), ("Year", "2026"), ("Month", "2"));
-        Assert.Contains("2026-02-28", rent.Html);
+        Assert.Contains("Charge rent for February 2026", rent.Html);
+        Assert.Contains("Feb 28, 2026", rent.Html);
         using (var scope = host.Services.CreateScope())
             Assert.Empty(await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().Obligations.ToListAsync());
         using var issued = await Confirm(manager, rent.Ticket);
@@ -69,23 +71,55 @@ public sealed class BillingHttpTests
         Assert.Equal(HttpStatusCode.OK, read.StatusCode);
         var html = await read.Content.ReadAsStringAsync();
         Assert.Contains("$19.75", html);
-        Assert.Contains("Payment status unavailable", html);
-        Assert.DoesNotContain("Confirm reviewed change", html);
+        Assert.Contains("Rent for February 2026", html);
+        Assert.Contains("The portal does not take payments", html);
+        Assert.Contains("You owe in total", html);
+        Assert.Contains("$1,019.75", html);
+        Assert.DoesNotContain("Review a payment", html);
+        Assert.DoesNotContain("Record a credit", html);
+        Assert.DoesNotContain("Review rent charge", html);
         using (var scope = host.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
             var debt = await db.Obligations.SingleAsync(x => x.AmountMinorUnits == 1975);
-            db.ObligationCredits.Add(ObligationCredit.RecordLocal(Guid.NewGuid(), managerId, new(debt.Id, debt.AccountId, debt.Version, 1975), 1950, ObligationCreditKind.Credit, "Approved local credit", host.Clock.GetUtcNow()));
-            debt.FinancialStateChanged();
-            await db.SaveChangesAsync();
+            Assert.Empty(await db.ObligationCredits.ToListAsync());
         }
+        // A manager records a credit through the same review-then-confirm steps; nothing is saved by the review alone.
+        Obligation owed;
+        using (var scope = host.Services.CreateScope())
+            owed = await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().Obligations.AsNoTracking().SingleAsync(x => x.AmountMinorUnits == 1975);
+        using var tooMuch = await AccountTestHost.PostAsync(manager, "/Billing/ManageAccount/" + accountId, "/Billing/PrepareCredit",
+            ("OperationId", Guid.NewGuid().ToString()), ("AccountId", accountId.ToString()), ("ObligationId", owed.Id.ToString()), ("Version", owed.Version.ToString()),
+            ("Amount", "19.76"), ("Kind", "Credit"), ("Reason", "More than is owed"));
+        Assert.Equal(HttpStatusCode.BadRequest, tooMuch.StatusCode);
+        var credit = await Review(manager, "/Billing/ManageAccount/" + accountId, "/Billing/PrepareCredit",
+            ("AccountId", accountId.ToString()), ("ObligationId", owed.Id.ToString()), ("Version", owed.Version.ToString()),
+            ("Amount", "19.50"), ("Kind", "Credit"), ("Reason", "Approved local credit"));
+        Assert.Contains("Record a credit", credit.Html);
+        Assert.Contains("$0.25", credit.Html);
+        using (var scope = host.Services.CreateScope())
+            Assert.Empty(await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().ObligationCredits.ToListAsync());
+        using var credited = await Confirm(manager, credit.Ticket);
+        Assert.Equal(HttpStatusCode.Redirect, credited.StatusCode);
+        using var creditedAgain = await Confirm(manager, credit.Ticket);
+        Assert.Equal(HttpStatusCode.Redirect, creditedAgain.StatusCode);
+        using (var scope = host.Services.CreateScope())
+            Assert.Equal(1950, (await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().ObligationCredits.SingleAsync()).AmountMinorUnits);
+        var managerHtml = await manager.GetStringAsync("/Billing/ManageAccount/" + accountId);
+        Assert.Contains("Credited $19.50", managerHtml);
+        Assert.Contains("Approved local credit", managerHtml);
+        Assert.Contains("$0.25 still owed", managerHtml);
+        var managerList = await manager.GetStringAsync("/Billing/Manage");
+        Assert.Contains("$1,000.25 owed", managerList);
+        Assert.Contains("Tenants with an overdue balance", managerList);
         using var afterCredit = await tenant.GetAsync("/Billing/Account/" + accountId);
         var creditHtml = await afterCredit.Content.ReadAsStringAsync();
-        Assert.Contains("Recorded credits: $19.50 USD", creditHtml);
-        Assert.Contains("Charge after credits: $0.25 USD", creditHtml);
-        Assert.Contains("This small balance remains owed", creditHtml);
-        Assert.Contains("Payment status unavailable", creditHtml);
-        using var tenantPrepare = await AccountTestHost.PostAsync(tenant, "/Billing", "/Billing/PrepareCharge", ("AccountId", accountId.ToString()));
+        Assert.Contains("Credited $19.50", creditHtml);
+        Assert.Contains("$0.25 still owed", creditHtml);
+        Assert.Contains("$1,000.25", creditHtml);
+        // The tenant sees the amount and date of a credit, never the manager's reason.
+        Assert.DoesNotContain("Approved local credit", creditHtml);
+        using var tenantPrepare = await AccountTestHost.PostAsync(tenant, "/Portal", "/Billing/PrepareCharge", ("AccountId", accountId.ToString()));
         Assert.StartsWith("http://localhost/Account/Denied", tenantPrepare.Headers.Location?.OriginalString);
         using (var scope = host.Services.CreateScope())
         {

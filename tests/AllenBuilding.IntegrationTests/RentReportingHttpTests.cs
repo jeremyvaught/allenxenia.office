@@ -64,7 +64,7 @@ public sealed class RentReportingHttpTests
         Assert.DoesNotContain("Foreign private", html);
         Assert.DoesNotContain("<script>rent-private()", html);
         Assert.Contains("$123.45", html);
-        Assert.Contains("America/New_York", html);
+        Assert.Contains("overdue from the day after its due date", html);
         Assert.Contains("/Billing/ManageAccount/", html);
         foreach (var query in new[] { "Page=0", "Page=1001", "Page=invalid", "Group=999", "Group=invalid", "BuildingId=invalid", "BuildingId=" + Guid.Empty })
         { using var invalid = await manager.GetAsync("/Reports/Rent?" + query); Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode); }
@@ -89,7 +89,7 @@ public sealed class RentReportingHttpTests
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
         Assert.Contains("Report temporarily unavailable", html);
         Assert.DoesNotContain("private-synthetic-database", html);
-        Assert.DoesNotContain("Recorded outstanding", html);
+        Assert.DoesNotContain("Owed in total", html);
         Assert.Contains("href=\"/Reports/Rent\"", html);
     }
     [Fact]

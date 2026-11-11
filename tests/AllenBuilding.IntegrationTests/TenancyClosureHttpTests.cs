@@ -57,9 +57,9 @@ public sealed class TenancyClosureHttpTests
         using var review = await AccountTestHost.PostAsync(manager, "/Billing/ManageAccount/" + accountId, "/Billing/PrepareEnd", values);
         var html = await review.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.OK, review.StatusCode);
-        Assert.Contains("End tenancy and revoke access", html);
+        Assert.Contains("End this tenancy", html);
         Assert.Contains("&lt;script&gt;end-reason()&lt;/script&gt;", html);
-        Assert.Contains("does not verify a Stripe cancellation", html);
+        Assert.Contains("No new charges or rent terms can be added", html);
         using (var scope = host.Services.CreateScope())
         { var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); Assert.Null((await db.Memberships.SingleAsync(x => x.Id == memberId)).RevokedAt); Assert.False(await db.TenancyClosures.AnyAsync()); }
         var ticket = WebUtility.HtmlDecode(Regex.Match(html, "name=\"Ticket\"[^>]*value=\"([^\"]+)\"").Groups[1].Value);
@@ -75,13 +75,15 @@ public sealed class TenancyClosureHttpTests
         using var retainedRead = await tenantBrowser.GetAsync("/Billing/Account/" + retainedId);
         Assert.Equal(HttpStatusCode.OK, retainedRead.StatusCode);
         var managerHtml = await manager.GetStringAsync("/Billing/ManageAccount/" + accountId);
-        Assert.Contains("Billing closure pending", managerHtml);
+        Assert.Contains("This tenancy has ended", managerHtml);
+        Assert.Contains("Payment-provider cleanup for this account is still pending", managerHtml);
         Assert.DoesNotContain("Review tenancy end", managerHtml);
-        Assert.DoesNotContain("Review calendar rent", managerHtml);
+        Assert.DoesNotContain("Review rent charge", managerHtml);
+        Assert.DoesNotContain("Record a credit", managerHtml);
         Assert.Contains("Existing debt", managerHtml);
         var heldReport = await manager.GetStringAsync("/Reports/Rent?Group=Held");
         Assert.Contains("Existing debt", heldReport);
-        Assert.Contains("Held for reconciliation", heldReport);
+        Assert.Contains("On hold", heldReport);
         using var pending = await manager.GetAsync("/Billing/Closures");
         var queue = await pending.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.OK, pending.StatusCode);

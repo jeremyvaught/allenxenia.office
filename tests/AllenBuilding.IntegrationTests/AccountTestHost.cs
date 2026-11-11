@@ -18,6 +18,8 @@ public sealed class AccountTestHost : WebApplicationFactory<Program>
     public const string Password = "Synthetic-account-2026!";
     public TestClock Clock { get; } = new();
     public bool BillingPlanningEnabled { get; init; } = true;
+    // Most billing tests exercise the financial-exception queue directly; planning alone leaves it hidden.
+    public bool FinancialReviewEnabled { get; init; } = true;
     public AllenBuilding.Application.Assistant.IAssistantModel? AssistantModel { get; init; }
     public bool AssistantTenantHelpEnabled { get; init; }
     public bool AssistantActionsEnabled { get; init; }
@@ -28,7 +30,7 @@ public sealed class AccountTestHost : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
-        builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Billing:PlanningEnabled"] = BillingPlanningEnabled.ToString() }));
+        builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Billing:PlanningEnabled"] = BillingPlanningEnabled.ToString(), ["Billing:FinancialReviewEnabled"] = FinancialReviewEnabled.ToString() }));
         if (AssistantModel is not null)
             builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
             { ["Assistant:Enabled"] = "true", ["OPENAI_API_KEY"] = "synthetic-assistant-key" }));

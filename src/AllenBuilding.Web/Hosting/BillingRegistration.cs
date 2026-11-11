@@ -54,5 +54,16 @@ public static class BillingRegistration
         // No hosted reader or Stripe credential is registered while full payment agreement is unfinished.
         services.AddScoped<IPaymentWebhookReceiver, DisabledPaymentWebhookReceiver>();
         services.AddScoped<BillingReviewTickets>();
+        // A manager can credit a charge that has never been sent to a payment provider, for example rent received by check.
+        // Both read configuration when first used, so a host can still override it after registration.
+        services.AddSingleton(provider => new LocalCreditPolicy(provider.GetRequiredService<IConfiguration>().GetValue<bool>("Billing:PlanningEnabled")));
+        services.AddScoped<ILocalCreditStore, LocalCreditStore>();
+        services.AddScoped<LocalCreditActions>();
+        // The financial-exception queue only has work when payments can move. It stays hidden with planning alone.
+        services.AddSingleton(provider => new BillingFeatures(
+            provider.GetRequiredService<IConfiguration>().GetValue<bool>("Billing:PlanningEnabled"),
+            provider.GetRequiredService<CollectionPolicy>().Enabled || provider.GetRequiredService<AutopayPolicy>().Enabled ||
+            provider.GetRequiredService<RefundDispositionPolicy>().Enabled || provider.GetRequiredService<CashSourceRecoveryPolicy>().Enabled ||
+            provider.GetRequiredService<IConfiguration>().GetValue<bool>("Billing:FinancialReviewEnabled")));
     }
 }

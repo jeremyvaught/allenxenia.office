@@ -133,4 +133,28 @@ public sealed class PortalHttpTests
         using var page = await manager.GetAsync("/FinancialExceptions");
         Assert.Equal(HttpStatusCode.OK, page.StatusCode);
     }
+
+    [Fact]
+    public async Task Rent_planning_alone_offers_billing_without_the_payment_problem_pages()
+    {
+        await using var host = new AccountTestHost { FinancialReviewEnabled = false };
+        await host.InitializeAsync();
+        var (managerId, _) = await host.SeedManagerAsync();
+        using var manager = host.Browser();
+        await host.LoginManagerAsync(manager, managerId);
+        var dashboard = await manager.GetStringAsync("/Portal");
+        Assert.Contains("href=\"/Billing/Manage\"", dashboard);
+        Assert.Contains("Rent balance report", dashboard);
+        Assert.Contains("Owed in total", dashboard);
+        Assert.DoesNotContain("Financial exceptions", dashboard);
+        using var exceptions = await manager.GetAsync("/FinancialExceptions");
+        Assert.Equal(HttpStatusCode.NotFound, exceptions.StatusCode);
+        var report = await manager.GetStringAsync("/Reports/Rent");
+        Assert.DoesNotContain("FinancialExceptions", report);
+        Assert.DoesNotContain("On hold", report);
+        Assert.Contains("Rent balance report", await manager.GetStringAsync("/Reports/Maintenance"));
+        var billing = await manager.GetStringAsync("/Billing/Manage");
+        Assert.DoesNotContain("FinancialExceptions", billing);
+        Assert.DoesNotContain("Closures", billing);
+    }
 }

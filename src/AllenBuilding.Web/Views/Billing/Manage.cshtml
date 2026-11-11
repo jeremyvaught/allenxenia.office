@@ -1,20 +1,54 @@
 @model BillingManagement
-@{ ViewData["Title"] = "Manage billing"; }
-<div class="page"><p class="mb-2 text-sm text-muted">BILLING PLANNING</p><h1 class="mb-4 text-4xl font-semibold">Manage billing</h1>
-    <p class="mb-6 max-w-3xl text-muted">Review calendar rent and one-time obligations. Payment collection is unavailable. Issued amounts do not establish a paid amount or an outstanding balance.</p>
-    <section class="mb-8 max-w-2xl rounded-2xl border border-line bg-panel p-6"><h2 class="mb-3 text-xl font-semibold">Open a rent account</h2>
-        <p class="mb-5 text-muted">Each account belongs to one original membership. Opening it does not create rent or enable autopay.</p>
-        @if (Model.Candidates.Count == 0) { <p>No eligible active membership without an account.</p> }
-        else {
-            <form asp-action="PrepareOpen" method="post" class="space-y-4"><input name="OperationId" value="@Guid.NewGuid()" type="hidden" /><input name="AccountId" value="@Guid.NewGuid()" type="hidden" /><label for="rent-membership" class="block">Tenant membership</label><select id="rent-membership" name="MembershipId" class="field">
-                @foreach (var candidate in Model.Candidates) { <option value="@candidate.MembershipId">@candidate.Suite · @candidate.Email · @candidate.MembershipId</option> }
-            </select><button class="button">Review new rent account</button></form>
-            <p class="mt-3 text-sm text-muted">Showing up to 100 eligible memberships.</p>
+@{
+    ViewData["Title"] = "Billing";
+    var today = (DateOnly)ViewData["Today"]!;
+    const string tile = "block h-full rounded-xl border border-line bg-panel p-5 hover:ring-2 hover:ring-brand";
+}
+<div class="page">
+    <h1 class="mb-3 text-4xl font-semibold">Billing</h1>
+    <p class="mb-6 max-w-3xl text-muted">Rent terms, charges and what each tenant owes. The portal does not take payments; record a credit on a charge when a tenant pays another way.</p>
+    <ul class="mb-10 grid gap-4 sm:grid-cols-3">
+        <li><a asp-controller="Reports" asp-action="Rent" class="@tile"><span class="block text-3xl font-semibold">@BillingDisplay.Usd(Model.Accounts.Sum(x => x.BalanceMinorUnits))</span><span class="mt-1 block text-sm text-muted">Owed in total</span></a></li>
+        <li><a asp-controller="Reports" asp-action="Rent" asp-route-Group="Overdue" class="@tile"><span class="block text-3xl font-semibold">@BillingDisplay.Usd(Model.Accounts.Sum(x => x.OverdueMinorUnits(today)))</span><span class="mt-1 block text-sm text-muted">Of that, overdue</span></a></li>
+        <li><a asp-controller="Reports" asp-action="Rent" asp-route-Group="Overdue" class="@tile"><span class="block text-3xl font-semibold">@Model.Accounts.Count(x => x.OverdueMinorUnits(today) > 0)</span><span class="mt-1 block text-sm text-muted">Tenants with an overdue balance</span></a></li>
+    </ul>
+    <section aria-labelledby="accounts-heading" class="mb-10">
+        <h2 id="accounts-heading" class="mb-4 text-2xl font-semibold">Rent accounts</h2>
+        @if (Model.Accounts.Count == 0) { <p class="rounded-xl border border-line bg-panel p-6">No rent accounts yet. Open one for a tenant below.</p> }
+        else
+        {
+            <ul class="divide-y divide-line rounded-2xl border border-line bg-panel">
+            @foreach (var account in Model.Accounts)
+            {
+                var terms = account.CurrentTerms(today);
+                var overdue = account.OverdueMinorUnits(today);
+                <li class="flex min-w-0 flex-wrap items-center justify-between gap-4 p-5">
+                    <div class="min-w-0"><h3 class="text-xl font-semibold">Suite @account.Suite</h3><p class="break-all text-sm text-muted">@account.PayerEmail</p>
+                        <p class="mt-2 text-sm">@(terms is null ? "No rent terms yet" : BillingDisplay.Usd(terms.AmountMinorUnits) + " a month") · @BillingDisplay.Usd(account.BalanceMinorUnits) owed@(overdue > 0 ? " · " + BillingDisplay.Usd(overdue) + " overdue" : "")@(account.EndedAt is not null ? " · Tenancy ended" : "")</p></div>
+                    <a asp-action="ManageAccount" asp-route-id="@account.Id" class="quiet-button">Manage suite @account.Suite billing</a>
+                </li>
+            }
+            </ul>
+            @if (Model.Accounts.Count == 50) { <p class="mt-3 text-sm text-muted">Showing the first 50 accounts.</p> }
         }
     </section>
-    <a asp-action="Closures" class="quiet-button mb-6">Pending billing closures</a>
-    <h2 class="mb-4 text-2xl font-semibold">Rent accounts</h2><ul class="grid gap-4 md:grid-cols-2">
-        @foreach (var account in Model.Accounts) { <li class="min-w-0 rounded-2xl border border-line bg-panel p-6"><h3 class="mb-2 text-xl font-semibold">@account.Suite</h3><p class="break-words text-muted">@account.PayerEmail</p>@if (account.Closure is not null) { <p class="mt-2 font-semibold">Tenancy access ended · Billing closure pending</p> }<p class="my-3 break-all text-sm text-muted">Original membership @account.MembershipId</p><a asp-action="ManageAccount" asp-route-id="@account.Id" class="quiet-button">Manage @account.Suite billing</a></li> }
-    </ul><p class="mt-4 text-sm text-muted">Showing up to 50 accounts. Account records remain available to management after portal access ends.</p>
-    <a asp-controller="Account" asp-action="Reauthenticate" class="mt-6 flex min-h-11 items-center underline">Verify sign-in for sensitive changes</a>
+    <section aria-labelledby="open-heading" class="mb-6">
+        <h2 id="open-heading" class="mb-4 text-2xl font-semibold">Tenants without a rent account</h2>
+        @if (Model.Candidates.Count == 0) { <p class="text-muted">Every current tenant has a rent account.</p> }
+        else
+        {
+            <details class="rounded-2xl border border-line bg-panel p-5" open="@(Model.Accounts.Count == 0)">
+                <summary class="inline-flex min-h-11 cursor-pointer items-center underline">Open a rent account (@Model.Candidates.Count without one)</summary>
+                <p class="mt-3 max-w-xl text-muted">Opening an account adds no rent or charges. You set the rent terms afterwards.</p>
+                <form asp-action="PrepareOpen" method="post" class="mt-3 max-w-xl space-y-4"><input name="OperationId" value="@Guid.NewGuid()" type="hidden" /><input name="AccountId" value="@Guid.NewGuid()" type="hidden" />
+                    <div><label for="rent-membership" class="mb-2 block">Tenant</label><select id="rent-membership" name="MembershipId" class="field">@foreach (var candidate in Model.Candidates) { <option value="@candidate.MembershipId">Suite @candidate.Suite · @candidate.Email</option> }</select></div>
+                    <button class="@(Model.Accounts.Count == 0 ? "button" : "quiet-button")">Review new rent account</button></form>
+            </details>
+        }
+    </section>
+    <div class="flex flex-wrap gap-x-6">
+        <a asp-controller="Reports" asp-action="Rent" class="flex min-h-11 items-center underline">Rent balance report</a>
+        @if (Model.Accounts.Any(x => x.EndedAt is not null) && ViewData["FinancialReview"] is true) { <a asp-action="Closures" class="flex min-h-11 items-center underline">Ended tenancies with cleanup pending</a> }
+        <a asp-controller="Account" asp-action="Reauthenticate" class="flex min-h-11 items-center underline">Verify your sign-in to make changes</a>
+    </div>
 </div>

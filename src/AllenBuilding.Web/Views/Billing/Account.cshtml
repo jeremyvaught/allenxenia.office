@@ -1,60 +1,143 @@
 @model AllenBuilding.Application.Billing.BillingAccount
-@{ ViewData["Title"] = Model.Suite + " billing"; var manager = ViewData["Manager"] is true; var today = (DateOnly)ViewData["Today"]!; }
-<div class="page"><p class="mb-2 text-sm text-muted">@(manager ? "MANAGE BILLING" : "YOUR BILLING RECORDS")</p><h1 class="mb-3 text-4xl font-semibold">@Model.Suite billing</h1>
-    @if (manager) { <p class="mb-3 break-words text-muted">@Model.PayerEmail</p><p class="mb-4 break-all text-sm text-muted">Original membership @Model.MembershipId</p> }
-    @if (Model.CollectionAvailable) { <p class="mb-5 max-w-3xl text-muted">These are original issued charges and recorded debt credits. Review verified balances and individual payment records before paying.</p><a asp-controller="Payments" asp-action="Index" asp-route-accountId="@Model.Id" class="button mb-8">Review a payment</a> }
-    else { <p class="mb-8 max-w-3xl text-muted">Payment collection is unavailable. Recorded charges show their original issued amounts; payment status and outstanding balances are not available yet.</p> }
+@using AllenBuilding.Application.Billing
+@using AllenBuilding.Domain.Billing
+@{
+    ViewData["Title"] = "Suite " + Model.Suite + " billing";
+    var manager = ViewData["Manager"] is true;
+    var today = (DateOnly)ViewData["Today"]!;
+    var current = Model.CurrentTerms(today);
+    var overdue = Model.OverdueMinorUnits(today);
+    var open = manager && Model.EndedAt is null;
+    const string tile = "rounded-xl border border-line bg-panel p-5";
+    const string opener = "inline-flex min-h-11 cursor-pointer items-center underline";
+    var us = System.Globalization.CultureInfo.GetCultureInfo("en-US");
+    // Offer the first month, from this one on, that has no rent charge yet.
+    var next = new DateOnly(today.Year, today.Month, 1);
+    for (var tries = 0; tries < 12 && Model.Obligations.Any(x => x.Kind == ChargeKind.BaseRent && x.PeriodStartsOn == next); tries++) { next = next.AddMonths(1); }
+}
+<div class="page">
+    @if (manager) { <a asp-action="Manage" class="mb-4 flex min-h-11 items-center underline">Back to billing</a> } else { <a asp-controller="Portal" asp-action="Index" class="mb-4 flex min-h-11 items-center underline">Back to your office</a> }
+    <h1 class="mb-2 text-4xl font-semibold">Suite @Model.Suite billing</h1>
+    @if (manager) { <p class="mb-6 break-words text-muted">@Model.PayerEmail</p> }
+    else if (Model.CollectionAvailable) { <p class="mb-5 max-w-3xl text-muted">Your rent terms and charges. Check the amount before paying.</p><a asp-controller="Payments" asp-action="Index" asp-route-accountId="@Model.Id" class="button mb-6">Review a payment</a> }
+    else { <p class="mb-6 max-w-3xl text-muted">Your rent terms, your charges and what you owe. The portal does not take payments; a payment made to building management shows here once a manager records it.</p> }
     @if (ViewData["AutopayAvailable"] is true) { <a asp-controller="Autopay" asp-action="Index" asp-route-accountId="@Model.Id" class="quiet-button mb-6">Manage monthly autopay</a> }
-    <section class="mb-8"><h2 class="mb-4 text-2xl font-semibold">Calendar rent terms</h2>
-        @if (Model.Terms.Count == 0) { <p>No rent terms have been recorded.</p> }
-        <ul class="grid gap-4 md:grid-cols-2">@foreach (var terms in Model.Terms) { <li class="rounded-2xl border border-line bg-panel p-5"><h3 class="text-xl font-semibold">@BillingDisplay.Usd(terms.AmountMinorUnits) USD / month</h3><p class="mt-3 text-muted">Due day @terms.DueDay (last day in shorter months).</p><p class="mt-2 text-muted">From @terms.StartsOn.ToString("yyyy-MM-dd") until @(terms.EndsOn?.ToString("yyyy-MM-dd") ?? "no end date") (end exclusive).</p>@if (terms.SupersededBy is not null) { <p class="mt-2 text-sm text-muted">Replaced for future periods. Issued obligations retain their original amount and due date.</p> }<p class="mt-3 break-all text-xs text-muted">Agreement @terms.Id</p></li> }</ul>
-        <p class="mt-3 text-sm text-muted">Showing up to 50 agreements. Only whole months covered by the terms can be issued as calendar rent.</p>
-    </section>
-    <section class="mb-8"><h2 class="mb-4 text-2xl font-semibold">Issued obligations</h2>
-        @if (Model.Obligations.Count == 0) { <p>No obligations have been issued.</p> }
-        <ul class="grid gap-4 md:grid-cols-2">@foreach (var obligation in Model.Obligations) { <li class="min-w-0 rounded-2xl border border-line bg-panel p-5"><h3 class="break-words font-semibold">@obligation.Description</h3><p class="my-2 text-2xl font-semibold">@BillingDisplay.Usd(obligation.IssuedMinorUnits) <span class="text-sm font-normal">USD issued</span></p><p class="text-muted">Due @obligation.DueOn.ToString("yyyy-MM-dd")</p>@if (obligation.PeriodStartsOn is { } start) { <p class="mt-2 text-sm text-muted">Period @start.ToString("yyyy-MM-dd") to @obligation.PeriodEndsOn?.ToString("yyyy-MM-dd") (end exclusive).</p> }@if (obligation.CreditedMinorUnits > 0) { <p class="mt-3">Recorded credits: @BillingDisplay.Usd(obligation.CreditedMinorUnits) USD</p><p>Charge after credits: @BillingDisplay.Usd(obligation.NetChargeMinorUnits) USD</p>@if (obligation.NetChargeMinorUnits is > 0 and < 50) { <p class="mt-2 text-sm text-muted">This small balance remains owed. It needs an eligible combined payment or an approved write-off.</p> } }<p class="mt-3 text-sm text-muted">@(Model.CollectionAvailable ? "View verified balances before paying" : "Payment status unavailable")</p></li> }</ul>
-        <p class="mt-3 text-sm text-muted">Showing up to 100 obligations, ordered by due date.</p>
-    </section>
-    @if (manager && Model.Closure is { } closure)
+
+    <ul class="mb-10 grid gap-4 sm:grid-cols-3">
+        <li class="@tile"><span class="block text-3xl font-semibold">@BillingDisplay.Usd(Model.BalanceMinorUnits)</span><span class="mt-1 block text-sm text-muted">@(manager ? "Owed in total" : "You owe in total")</span></li>
+        <li class="@tile"><span class="block text-3xl font-semibold">@BillingDisplay.Usd(overdue)</span><span class="mt-1 block text-sm text-muted">Of that, overdue</span></li>
+        <li class="@tile">
+            @if (current is null) { <span class="block text-3xl font-semibold">Not set</span><span class="mt-1 block text-sm text-muted">Monthly rent</span> }
+            else { <span class="block text-3xl font-semibold">@BillingDisplay.Usd(current.AmountMinorUnits)</span><span class="mt-1 block text-sm text-muted">Monthly rent, due on the @BillingDisplay.Ordinal(current.DueDay)@(current.StartsOn > today ? ", from " + BillingDisplay.Day(current.StartsOn) : "")</span> }
+        </li>
+    </ul>
+
+    @if (manager && Model.EndedAt is not null)
     {
-        <section aria-label="Pending billing closure" class="mb-6 rounded-2xl border border-line bg-panel p-6"><h2 class="mb-3 text-xl font-semibold">Tenancy access ended · Billing closure pending</h2>
-            <p class="mb-3">Access ended @OfficeTime.Timestamp(Model.EndedAt). Provider cleanup and already-dispatched payments still require canonical reconciliation. Existing debt and credits remain.</p>
-            <p class="mb-4 break-words text-muted">Reason: @closure.Reason</p><a asp-controller="FinancialExceptions" asp-action="Index" class="quiet-button">Review financial exceptions</a></section>
+        <section aria-label="Tenancy ended" class="mb-10 rounded-2xl border border-line bg-panel p-6"><h2 class="mb-3 text-xl font-semibold">This tenancy has ended</h2>
+            <p class="mb-3">Ended @OfficeTime.Timestamp(Model.EndedAt). No new charges or rent terms can be added. What is already owed stays on record.</p>
+            @if (Model.Closure is { } closure) { <p class="break-words text-muted">Reason: @closure.Reason</p> }
+            @if (Model.Closure is not null && ViewData["FinancialReview"] is true) { <p class="mt-3 text-muted">Payment-provider cleanup for this account is still pending.</p><a asp-controller="FinancialExceptions" asp-action="Index" class="quiet-button mt-4">Review financial exceptions</a> }
+        </section>
     }
-    @if (manager && Model.EndedAt is null)
+
+    @if (open && Model.Terms.Count > 0)
     {
-        <div class="grid items-start gap-6 lg:grid-cols-2">
-            <section class="rounded-2xl border border-line bg-panel p-6"><h2 class="mb-3 text-xl font-semibold">Set or replace rent terms</h2><p class="mb-5 text-muted">Changes require a separate review. A replacement starts on the first of a month; existing charges stay unchanged.</p>
-                <form asp-action="PrepareTerms" method="post" class="space-y-4"><input name="OperationId" value="@Guid.NewGuid()" type="hidden" /><input name="AccountId" value="@Model.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" />
-                    <label for="rent-amount" class="block">Monthly rent (USD)</label><input id="rent-amount" name="Amount" type="number" inputmode="decimal" min="0.50" max="999999.99" step="0.01" required class="field" />
-                    <label for="due-day" class="block">Manager-set due day</label><input id="due-day" name="DueDay" type="number" inputmode="numeric" min="1" max="31" value="1" required class="field" />
-                    <label for="starts" class="block">Terms start on</label><input id="starts" name="StartsOn" type="date" required class="field" />
-                    <label for="ends" class="block">Terms end before (optional)</label><input id="ends" name="EndsOn" type="date" class="field" />
-                    <label for="replaces" class="block">Agreement to replace</label><select id="replaces" name="ReplacesId" class="field"><option value="">None — add terms without overlap</option>@foreach (var terms in Model.Terms.Where(x => x.SupersededBy == null)) { <option value="@terms.Id">@terms.StartsOn.ToString("yyyy-MM-dd") · @BillingDisplay.Usd(terms.AmountMinorUnits) · @terms.Id</option> }</select>
-                    <button class="button">Review rent terms</button>
-                </form>
-            </section>
-            <div class="space-y-6"><section class="rounded-2xl border border-line bg-panel p-6"><h2 class="mb-3 text-xl font-semibold">Issue a one-time charge</h2><p class="mb-5 text-muted">Use an explicit charge for opening or closing partial months. This records a debt without collecting a payment.</p>
-                <form asp-action="PrepareCharge" method="post" class="space-y-4"><input name="OperationId" value="@Guid.NewGuid()" type="hidden" /><input name="AccountId" value="@Model.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" />
-                    <label for="charge-amount" class="block">One-time amount (USD)</label><input id="charge-amount" name="Amount" type="number" inputmode="decimal" min="0.50" max="999999.99" step="0.01" required class="field" />
-                    <label for="description" class="block">Charge description</label><input id="description" name="Description" maxlength="120" required class="field" />
-                    <label for="charge-due" class="block">Charge due on</label><input id="charge-due" name="DueOn" type="date" required class="field" />
-                    <button class="button">Review one-time charge</button>
-                </form></section>
-                <section class="rounded-2xl border border-line bg-panel p-6"><h2 class="mb-3 text-xl font-semibold">Issue a calendar rent period</h2><p class="mb-5 text-muted">Review the amount and due date for a whole month. A period already issued returns its original obligation.</p>
-                    <form asp-action="PrepareRent" method="post" class="space-y-4"><input name="OperationId" value="@Guid.NewGuid()" type="hidden" /><input name="AccountId" value="@Model.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" />
-                        <label for="rent-year" class="block">Rent year</label><input id="rent-year" name="Year" type="number" inputmode="numeric" min="1" max="9998" value="@today.Year" required class="field" />
-                        <label for="rent-month" class="block">Rent month</label><select id="rent-month" name="Month" class="field">@for (var month = 1; month <= 12; month++) { <option value="@month" selected="@(month == today.Month)">@month</option> }</select>
-                        <button class="button">Review calendar rent</button>
+        <section aria-labelledby="rent-heading" class="mb-10 rounded-2xl border border-line bg-panel p-6">
+            <h2 id="rent-heading" class="mb-2 text-xl font-semibold">Charge rent for a month</h2>
+            <p class="mb-5 text-muted">Adds one rent charge at the agreed amount and due date. A month is never charged twice.</p>
+            <form asp-action="PrepareRent" method="post" class="grid items-end gap-4 sm:grid-cols-[1fr_1fr_auto]"><input name="OperationId" value="@Guid.NewGuid()" type="hidden" /><input name="AccountId" value="@Model.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" />
+                <div><label for="rent-month" class="mb-2 block">Rent month</label><select id="rent-month" name="Month" class="field">@for (var month = 1; month <= 12; month++) { <option value="@month" selected="@(month == next.Month)">@us.DateTimeFormat.GetMonthName(month)</option> }</select></div>
+                <div><label for="rent-year" class="mb-2 block">Rent year</label><input id="rent-year" name="Year" type="number" inputmode="numeric" min="1" max="9998" value="@next.Year" required class="field" /></div>
+                <button class="button">Review rent charge</button>
+            </form>
+        </section>
+    }
+
+    <section aria-labelledby="charges-heading" class="mb-10">
+        <h2 id="charges-heading" class="mb-4 text-2xl font-semibold">Charges</h2>
+        @if (Model.Obligations.Count == 0) { <p class="rounded-xl border border-line bg-panel p-6">No charges yet.</p> }
+        else
+        {
+            <ul class="divide-y divide-line rounded-2xl border border-line bg-panel">
+            @foreach (var charge in Model.Obligations)
+            {
+                var status = BillingDisplay.Status(charge, today);
+                <li class="min-w-0 p-5">
+                    <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-1"><h3 class="break-words font-semibold">@BillingDisplay.Charge(charge.Description)</h3><span class="rounded-lg bg-brand-soft px-3 py-1 text-sm">@status</span></div>
+                    <p class="mt-1 text-sm text-muted">@BillingDisplay.Usd(charge.IssuedMinorUnits) charged · Due @BillingDisplay.Day(charge.DueOn)@(charge.BalanceMinorUnits > 0 && charge.BalanceMinorUnits < charge.IssuedMinorUnits ? " · " + BillingDisplay.Usd(charge.BalanceMinorUnits) + " still owed" : "")</p>
+                    @if (charge.PaidMinorUnits != 0) { <p class="mt-2 text-sm">Paid through the portal: @BillingDisplay.Usd(charge.PaidMinorUnits)</p> }
+                    @foreach (var credit in charge.Credits ?? [])
+                    {
+                        <p class="mt-2 break-words text-sm">@(credit.Kind == ObligationCreditKind.WriteOff ? "Written off" : "Credited") @BillingDisplay.Usd(credit.AmountMinorUnits) on @OfficeTime.Date(credit.RecordedAt)@(credit.Reason is null ? "" : " · " + credit.Reason)</p>
+                    }
+                    @if (charge.BalanceMinorUnits is > 0 and < 50 && Model.CollectionAvailable) { <p class="mt-2 text-sm text-muted">This small balance is still owed. It can be paid together with another charge.</p> }
+                    @if (open && charge.BalanceMinorUnits > 0)
+                    {
+                        <details class="mt-2">
+                            <summary class="@opener">Record a credit</summary>
+                            <form asp-action="PrepareCredit" method="post" class="mt-3 max-w-xl space-y-3"><input name="OperationId" value="@Guid.NewGuid()" type="hidden" /><input name="AccountId" value="@Model.Id" type="hidden" /><input name="ObligationId" value="@charge.Id" type="hidden" /><input name="Version" value="@charge.Version" type="hidden" />
+                                <p class="text-sm text-muted">Use this when the tenant paid outside the portal, for example by check, or when management agrees to reduce the charge. The tenant sees the amount and date, not the reason.</p>
+                                <label for="credit-amount-@charge.Id" class="block">Amount to credit (USD)</label><input id="credit-amount-@charge.Id" name="Amount" type="number" inputmode="decimal" min="0.01" max="@((charge.BalanceMinorUnits / 100m).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture))" step="0.01" value="@((charge.BalanceMinorUnits / 100m).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture))" required class="field" />
+                                <label for="credit-kind-@charge.Id" class="block">Type</label><select id="credit-kind-@charge.Id" name="Kind" class="field"><option value="Credit">Credit, such as a payment received outside the portal</option><option value="WriteOff">Write-off: this amount will not be collected</option></select>
+                                <label for="credit-reason-@charge.Id" class="block">Reason for the credit</label><input id="credit-reason-@charge.Id" name="Reason" maxlength="2000" required class="field" />
+                                <button class="quiet-button">Review credit</button>
+                            </form>
+                        </details>
+                    }
+                </li>
+            }
+            </ul>
+            @if (Model.Obligations.Count == 100) { <p class="mt-3 text-sm text-muted">Showing the 100 most recent charges.</p> }
+        }
+    </section>
+
+    @if (Model.Terms.Count > 1 || (!open && Model.Terms.Count == 1))
+    {
+        <section aria-labelledby="terms-heading" class="mb-10">
+            <h2 id="terms-heading" class="mb-4 text-2xl font-semibold">Rent terms</h2>
+            <ul class="divide-y divide-line rounded-2xl border border-line bg-panel">@foreach (var terms in Model.Terms) { <li class="p-5"><p class="font-semibold">@BillingDisplay.Usd(terms.AmountMinorUnits) a month, due on the @BillingDisplay.Ordinal(terms.DueDay)</p><p class="mt-1 text-sm text-muted">From @BillingDisplay.Day(terms.StartsOn)@(terms.EndsOn is { } ends ? " until " + BillingDisplay.Day(ends.AddDays(-1)) : ", with no end date")@(terms.SupersededBy is not null ? " · replaced by later terms" : "")</p></li> }</ul>
+        </section>
+    }
+
+    @if (open)
+    {
+        <section aria-labelledby="more-heading" class="mb-6">
+            <h2 id="more-heading" class="mb-4 text-2xl font-semibold">@(Model.Terms.Count == 0 ? "Set up this account" : "Other changes")</h2>
+            <div class="divide-y divide-line rounded-2xl border border-line bg-panel">
+                <details class="p-5" open="@(Model.Terms.Count == 0)">
+                    <summary class="@opener">@(Model.Terms.Count == 0 ? "Set rent terms" : "Change rent terms")</summary>
+                    <p class="mt-3 max-w-xl text-muted">Rent is charged for whole months. New terms that replace existing ones must start on the first of a month; charges already added do not change.</p>
+                    <form asp-action="PrepareTerms" method="post" class="mt-3 max-w-xl space-y-4"><input name="OperationId" value="@Guid.NewGuid()" type="hidden" /><input name="AccountId" value="@Model.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" />
+                        <div><label for="rent-amount" class="mb-2 block">Monthly rent (USD)</label><input id="rent-amount" name="Amount" type="number" inputmode="decimal" min="0.50" max="999999.99" step="0.01" required class="field" /></div>
+                        <div><label for="due-day" class="mb-2 block">Day of the month rent is due</label><input id="due-day" name="DueDay" type="number" inputmode="numeric" min="1" max="31" value="1" required class="field" /></div>
+                        <div><label for="starts" class="mb-2 block">Terms start on</label><input id="starts" name="StartsOn" type="date" required class="field" /></div>
+                        <div><label for="ends" class="mb-2 block">Terms end before (optional)</label><input id="ends" name="EndsOn" type="date" class="field" /></div>
+                        @if (Model.Terms.Any(x => x.SupersededBy == null))
+                        {
+                            <div><label for="replaces" class="mb-2 block">Terms to replace</label><select id="replaces" name="ReplacesId" class="field"><option value="">None: these are additional terms for a different period</option>@foreach (var terms in Model.Terms.Where(x => x.SupersededBy == null)) { <option value="@terms.Id">@BillingDisplay.Usd(terms.AmountMinorUnits) a month from @BillingDisplay.Day(terms.StartsOn)</option> }</select></div>
+                        }
+                        <button class="@(Model.Terms.Count == 0 ? "button" : "quiet-button")">Review rent terms</button>
                     </form>
-                </section>
+                </details>
+                <details class="p-5">
+                    <summary class="@opener">Add a one-time charge</summary>
+                    <p class="mt-3 max-w-xl text-muted">For anything that is not a whole month of rent, such as a first partial month, a late fee or replacement keys.</p>
+                    <form asp-action="PrepareCharge" method="post" class="mt-3 max-w-xl space-y-4"><input name="OperationId" value="@Guid.NewGuid()" type="hidden" /><input name="AccountId" value="@Model.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" />
+                        <div><label for="charge-amount" class="mb-2 block">One-time amount (USD)</label><input id="charge-amount" name="Amount" type="number" inputmode="decimal" min="0.50" max="999999.99" step="0.01" required class="field" /></div>
+                        <div><label for="description" class="mb-2 block">Charge description</label><input id="description" name="Description" maxlength="120" required class="field" /></div>
+                        <div><label for="charge-due" class="mb-2 block">Charge due on</label><input id="charge-due" name="DueOn" type="date" required class="field" /></div>
+                        <button class="quiet-button">Review one-time charge</button>
+                    </form>
+                </details>
+                <details class="p-5">
+                    <summary class="@opener">End this tenancy</summary>
+                    <p class="mt-3 max-w-xl text-muted">Removes this tenant's portal access right away and stops new charges on this account. What is already owed stays on record. To remove access only, use Building access.</p>
+                    <form asp-action="PrepareEnd" method="post" class="mt-3 max-w-xl space-y-4"><input type="hidden" name="OperationId" value="@Guid.NewGuid()" /><input type="hidden" name="AccountId" value="@Model.Id" /><input type="hidden" name="Version" value="@Model.Version" /><input type="hidden" name="MembershipVersion" value="@Model.MembershipVersion" />
+                        <div><label for="end-reason" class="mb-2 block">Reason for ending tenancy</label><textarea id="end-reason" name="Reason" required maxlength="2000" class="field"></textarea></div><button class="quiet-button">Review tenancy end</button></form>
+                </details>
             </div>
-        </div>
-        <section class="mt-6 rounded-2xl border border-line bg-panel p-6"><h2 class="mb-3 text-xl font-semibold">End this tenancy</h2>
-            <p class="mb-4 text-muted">This ends tenancy access and new ordinary billing immediately, while provider cleanup remains pending. Access-only revocation is separately available in building management.</p>
-            <form asp-action="PrepareEnd" method="post" class="space-y-4"><input type="hidden" name="OperationId" value="@Guid.NewGuid()" /><input type="hidden" name="AccountId" value="@Model.Id" /><input type="hidden" name="Version" value="@Model.Version" /><input type="hidden" name="MembershipVersion" value="@Model.MembershipVersion" />
-                <label for="end-reason" class="block">Reason for ending tenancy</label><textarea id="end-reason" name="Reason" required maxlength="2000" class="field"></textarea><button class="quiet-button">Review tenancy end</button></form></section>
-        <a asp-controller="Account" asp-action="Reauthenticate" class="mt-6 flex min-h-11 items-center underline">Verify sign-in for sensitive changes</a>
+        </section>
+        <a asp-controller="Account" asp-action="Reauthenticate" class="flex min-h-11 items-center underline">Verify your sign-in to make changes</a>
     }
-    <a asp-action="@(manager ? "Manage" : "Index")" class="mt-6 flex min-h-11 items-center underline">Return to billing accounts</a>
 </div>
