@@ -1,11 +1,11 @@
 @model AllenBuilding.Application.Notifications.NotificationRow
 @using AllenBuilding.Domain.Tenancy
 <li id="notification-@Model.Id" class="rounded-xl border border-line bg-panel p-5">
-    <div class="flex flex-wrap justify-between gap-3"><h3 class="text-xl font-semibold">@(Model.Kind switch { "MaintenanceUpdate" => "Maintenance update", "SecurityNotice" => "Security notice", "PasswordReset" => "Password reset", _ => "Invitation" })</h3><span>@(Model.State switch { MessageState.NeedsReview => "Failed", MessageState.Queued => "Waiting to send", MessageState.Sending => "Sending", _ => Model.State.ToString() })</span></div>
+    <div class="flex flex-wrap justify-between gap-3"><h3 class="text-xl font-semibold">@(Model.About is { Event: { } happened } ? MaintenanceText.History(happened) : Model.Kind switch { "MaintenanceUpdate" => "Maintenance update", "SecurityNotice" => "Security notice", "PasswordReset" => "Password reset", _ => "Invitation" })</h3><span>@(Model.State switch { MessageState.NeedsReview => "Failed", MessageState.Queued => "Waiting to send", MessageState.Sending => "Sending", _ => Model.State.ToString() })</span></div>
     <p class="mt-2 text-sm text-muted">@OfficeTime.Timestamp(Model.CreatedAt)@(Model.Attempts > 0 ? " · tried " + Model.Attempts + (Model.Attempts == 1 ? " time" : " times") : "")</p>
     @if (Model.About is { } about)
     {
-        <p class="mt-2 break-words">@(about.Event is null ? "Update" : MaintenanceText.History(about.Event)) · <a asp-controller="Maintenance" asp-action="ManageDetails" asp-route-id="@about.WorkOrderId" class="underline">@about.Title</a> · Suite @about.Suite · @(about.ToRequester ? "sent to the tenant" : "sent to a manager")</p>
+        <p class="mt-2 break-words"><a asp-controller="Maintenance" asp-action="ManageDetails" asp-route-id="@about.WorkOrderId" class="underline">@about.Title</a> · Suite @about.Suite · @(about.ToRequester ? "sent to the tenant" : about.ManagerName is null ? "sent to a manager" : "sent to " + about.ManagerName)</p>
     }
     @if (Model.ResetRecipient is not null) { <p class="mt-2 break-words">Account: @Model.ResetRecipient</p> }
     @if (Model.State == MessageState.NeedsReview)

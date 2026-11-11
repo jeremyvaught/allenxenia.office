@@ -65,9 +65,9 @@
                 @foreach (var action in choices)
                 {
                     var cancelling = action == MaintenanceAction.Cancel;
-                    @if (cancelling) { @:<details@(draft?.Action == action ? " open" : "") class="mb-5 border-b border-line pb-5"><summary class="inline-flex min-h-11 cursor-pointer items-center underline">Cancel this request</summary>
+                    @if (cancelling) { @:<details@(draft?.Action == action ? " open" : "") class="mb-5 border-b border-line pb-5 last:mb-0 last:border-b-0 last:pb-0"><summary class="inline-flex min-h-11 cursor-pointer items-center underline">Cancel this request</summary>
                     }
-                    <form asp-action="ManageChange" method="post" class="@(cancelling ? "mt-3 space-y-3" : "mb-5 space-y-3 border-b border-line pb-5")">
+                    <form asp-action="ManageChange" method="post" class="@(cancelling ? "mt-3 space-y-3" : "mb-5 space-y-3 border-b border-line pb-5 last:mb-0 last:border-b-0 last:pb-0")">
                         <input name="OperationId" value="@(draft?.Action == action ? draft.OperationId : Guid.NewGuid())" type="hidden" /><input name="WorkOrderId" value="@Model.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" /><input name="Action" value="@action" type="hidden" />
                         @if (action == MaintenanceAction.Assign)
                         {

@@ -316,6 +316,8 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await manager.getByLabel('Minimum age (days)').fill('0');
     await manager.getByLabel('Order', { exact: true }).selectOption('Newest');
     await manager.getByRole('button', { name: 'Apply filters', exact: true }).click();
+    // The same link is on the page before the filters apply, so wait for the filtered page before measuring it.
+    await manager.waitForURL(/Sort=Newest/);
     await expect(manager.getByRole('link', { name: new RegExp(behalfTitle) })).toBeVisible();
     expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await manager.screenshot({ path: `artifacts/browser/queue-${testInfo.project.name}.png`, fullPage: true });

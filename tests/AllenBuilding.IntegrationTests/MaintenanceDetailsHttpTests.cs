@@ -262,6 +262,16 @@ public sealed class MaintenanceDetailsHttpTests
         Assert.Contains("Request submitted", delivery);
         Assert.Contains("sent to a manager", delivery);
         Assert.DoesNotContain("canary", delivery);
+        Assert.Contains("Recent emails", delivery);
+        // A manager with a display name is named, so one row per manager can be told apart.
+        using (var naming = host.Services.CreateScope())
+        {
+            var users = naming.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<AllenBuilding.Infrastructure.Identity.OfficeUser>>();
+            var account = (await users.FindByIdAsync(managerId))!;
+            account.DisplayName = "Pat Manager";
+            Assert.True((await naming.ServiceProvider.GetRequiredService<OfficeDbContext>().SaveChangesAsync()) == 1);
+        }
+        Assert.Contains("sent to Pat Manager", await manager.GetStringAsync("/Notifications"));
 
         page = await Step("Close");
         Assert.Contains("Work verified", page);

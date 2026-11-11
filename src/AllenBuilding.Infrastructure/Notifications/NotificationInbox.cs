@@ -82,11 +82,17 @@ public sealed class NotificationInbox(OfficeDbContext db, IDataProtectionProvide
         var events = await db.WorkOrderHistory.AsNoTracking()
             .Where(x => historyIds.Contains(x.Id) && x.Visibility == HistoryVisibility.TenantVisible)
             .Select(x => new { x.Id, x.WorkOrderId, x.Action }).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var recipients = references.Select(x => x.Recipient).Distinct().ToList();
+        var names = await db.Users.AsNoTracking().Where(x => recipients.Contains(x.Id) && x.DisplayName != "")
+            .Select(x => new { x.Id, x.DisplayName }).ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
         foreach (var reference in references)
             if (orders.TryGetValue(reference.Order, out var order))
+            {
+                var toRequester = reference.Recipient == order.RequesterUserId;
                 result[reference.Message] = new(order.Id, order.Title, order.Suite,
                     reference.History is { } id && events.TryGetValue(id, out var happened) && happened.WorkOrderId == order.Id ? happened.Action : null,
-                    reference.Recipient == order.RequesterUserId);
+                    toRequester, toRequester ? null : names.GetValueOrDefault(reference.Recipient));
+            }
         return result;
     }
 }
