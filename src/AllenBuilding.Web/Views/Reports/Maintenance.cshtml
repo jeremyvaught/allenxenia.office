@@ -4,7 +4,7 @@
     string Label(MaintenanceAgeBucket bucket) => bucket switch { MaintenanceAgeBucket.Under7Days => "Under 7 days", MaintenanceAgeBucket.From7To30Days => "7 to under 30 days", MaintenanceAgeBucket.AtLeast30Days => "30 days or more", MaintenanceAgeBucket.AwaitingVerification => "Awaiting verification", _ => "All active work" };
 }
 <div class="page">
-    <p class="mb-2 text-sm text-muted">BUILDING MANAGEMENT · REPORTS</p><h1 class="mb-4 text-4xl font-semibold">Maintenance aging</h1>
+    <nav aria-label="Reports" class="mb-4 flex flex-wrap gap-x-5 text-sm"><a asp-action="Maintenance" class="flex min-h-11 items-center underline">Maintenance aging report</a><a asp-action="Completion" class="flex min-h-11 items-center underline">Completion time report</a></nav><h1 class="mb-4 text-4xl font-semibold">Maintenance aging</h1>
     <p class="mb-3 max-w-3xl text-muted">Active work includes submitted, triaged, assigned and in-progress requests. Completed work awaiting verification is counted separately. Closed and cancelled requests are excluded.</p>
     <p class="mb-6 text-sm text-muted">Snapshot @OfficeTime.Timestamp(Model.ObservedAt, true) · Age uses elapsed time since original submission, including reopened requests. Each page reflects current records when loaded.</p>
     <section aria-label="Maintenance aging totals" class="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

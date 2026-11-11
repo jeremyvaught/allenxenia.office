@@ -86,7 +86,7 @@ test('first manager login needs only a password, with optional single-verificati
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.getByRole('link', { name: 'Continue to your office', exact: true }).click();
     await expect(page).toHaveURL('http://127.0.0.1:5088/Portal');
-    await expect(page.getByRole('link', { name: 'Manage maintenance', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Maintenance', exact: true })).toBeVisible();
   } finally { await context.close(); }
 });
 
@@ -144,7 +144,7 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await login(manager, account.managerEmail, account.password);
     await manager.getByLabel('Verification code').fill(code(account.key));
     await manager.getByRole('button', { name: 'Verify sign-in', exact: true }).click();
-    await manager.getByRole('link', { name: 'Contractor contacts' }).click();
+    await manager.getByRole('link', { name: 'Contractors', exact: true }).click();
     await manager.getByRole('link', { name: 'Add a contractor' }).click();
     await expect(manager.getByLabel('Trade', { exact: true }).locator('option', { hasText: 'Heating and cooling' })).toHaveCount(1);
     await manager.getByLabel('Contact name').fill('Reliable plumbing');
@@ -316,7 +316,7 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await manager.screenshot({ path: `artifacts/browser/queue-${testInfo.project.name}.png`, fullPage: true });
     await manager.goto('/Portal');
-    await manager.getByRole('link', { name: 'Maintenance aging report', exact: true }).click();
+    await manager.getByRole('link', { name: 'Reports', exact: true }).click();
     await expect(manager.getByRole('heading', { level: 1 })).toHaveText('Maintenance aging');
     await expect(manager.getByRole('link', { name: new RegExp(behalfTitle) })).toBeVisible();
     await expect(manager.getByRole('link', { name: new RegExp(`Leaking sink ${testInfo.project.name}`) })).toHaveCount(0);
@@ -476,6 +476,7 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Access unavailable');
 
     await manager.goto('/Portal');
+    await manager.getByRole('link', { name: 'Reports', exact: true }).click();
     await manager.getByRole('link', { name: 'Completion time report', exact: true }).click();
     await expect(manager.getByRole('heading', { level: 1 })).toHaveText('Maintenance completion times');
     await expect(manager.getByRole('heading', { name: 'Repair completion', exact: true })).toBeVisible();

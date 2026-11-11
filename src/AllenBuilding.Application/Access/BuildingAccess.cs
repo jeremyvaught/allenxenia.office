@@ -8,6 +8,8 @@ public sealed record BuildingAccessOverview(
     IReadOnlyList<Building> Buildings, IReadOnlyList<Suite> Suites, IReadOnlyList<AccessRow> Access, IReadOnlyList<InvitationRow> Invitations);
 
 public sealed record BuildingOption(Guid Id, string Name);
+// What a manager should look at first: open work by stage and invitations still waiting.
+public sealed record ManagerSummary(int AwaitingTriage, int InProgress, int AwaitingVerification, int PendingInvitations);
 
 public enum SuiteCode { Success, ValidationFailed, Forbidden, Conflict }
 public sealed record SuiteResult(SuiteCode Code, string? Name = null);
@@ -17,6 +19,7 @@ public interface IBuildingAccessStore
     Task<BuildingAccessOverview> ReadOverviewAsync(Actor actor, DateTimeOffset now, CancellationToken cancellationToken);
     Task<IReadOnlyList<BuildingOption>> ReadManagedBuildingsAsync(Actor actor, CancellationToken cancellationToken);
     Task<IReadOnlyList<Membership>> ReadActiveMembershipsAsync(string userId, DateTimeOffset now, CancellationToken cancellationToken);
+    Task<ManagerSummary> ReadManagerSummaryAsync(Actor actor, DateTimeOffset now, CancellationToken cancellationToken);
     // Takes the authority locks, re-reads the actor and records the audit in one transaction.
     Task<SuiteResult> AddSuiteAsync(Guid buildingId, string name, CancellationToken cancellationToken);
 }
@@ -38,6 +41,9 @@ public sealed class BuildingAccessActions(ICurrentActor current, IBuildingAccess
     // Memberships that are in force now and still hold their active grant.
     public Task<IReadOnlyList<Membership>> ActiveMembershipsAsync(Actor actor, CancellationToken cancellationToken) =>
         store.ReadActiveMembershipsAsync(actor.UserId, time.GetUtcNow(), cancellationToken);
+
+    public Task<ManagerSummary> ManagerSummaryAsync(Actor actor, CancellationToken cancellationToken) =>
+        store.ReadManagerSummaryAsync(actor, time.GetUtcNow(), cancellationToken);
 
     public Task<SuiteResult> AddSuiteAsync(Guid buildingId, string name, CancellationToken cancellationToken) =>
         string.IsNullOrWhiteSpace(name)

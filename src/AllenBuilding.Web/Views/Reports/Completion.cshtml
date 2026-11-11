@@ -4,7 +4,7 @@
     string Duration(double? seconds) => seconds is null ? "No completed samples" : seconds >= 86400 ? $"{seconds / 86400:0.0} days" : seconds >= 3600 ? $"{seconds / 3600:0.0} hours" : seconds >= 60 ? $"{seconds / 60:0.0} minutes" : $"{seconds:0.0} seconds";
 }
 <div class="page">
-    <p class="mb-2 text-sm text-muted">BUILDING MANAGEMENT · REPORTS</p><h1 class="mb-4 text-4xl font-semibold">Maintenance completion times</h1>
+    <nav aria-label="Reports" class="mb-4 flex flex-wrap gap-x-5 text-sm"><a asp-action="Maintenance" class="flex min-h-11 items-center underline">Maintenance aging report</a><a asp-action="Completion" class="flex min-h-11 items-center underline">Completion time report</a></nav><h1 class="mb-4 text-4xl font-semibold">Maintenance completion times</h1>
     <p class="mb-4 max-w-3xl text-muted">Each submission or reopening starts a workflow cycle. Completion measures time to the first completed repair in that cycle; verification measures time from completion to the manager’s close. Open work and cancellations are counted separately.</p>
     <p class="mb-6 text-sm text-muted">Snapshot @OfficeTime.Timestamp(Model.ObservedAt, true) · All recorded history in the selected building scope.</p>
     <form method="get" class="mb-8 grid items-end gap-4 rounded-2xl border border-line bg-panel p-5 sm:grid-cols-2">
