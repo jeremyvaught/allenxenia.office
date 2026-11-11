@@ -1,64 +1,36 @@
 using AllenBuilding.Application.Access;
-using AllenBuilding.Domain.Tenancy;
 using AllenBuilding.Infrastructure.Identity;
-using AllenBuilding.Infrastructure.Persistence;
 using AllenBuilding.Web.Models;
 using AllenBuilding.Web.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace AllenBuilding.Web.Controllers;
 
 [Authorize(Policy = OfficeSecurity.ManagerPolicy), ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class ManagementController(
-    ICurrentActor current, OfficeDbContext db, AccountInvitations invitations, AccessRevocation revocation, AccountAccess access,
-    TimeProvider time) : Controller
+    BuildingAccessActions buildingAccess, AccountInvitations invitations, AccessRevocation revocation, AccountAccess access) : Controller
 {
     [HttpGet]
     public async Task<IActionResult> Index()
     {
-        var actor = (await current.GetAsync())!;
-        ViewData["Buildings"] = await db.Buildings.AsNoTracking().Where(x => actor.ManagedBuildings.Contains(x.Id)).ToListAsync();
-        ViewData["Access"] = await (from membership in db.Memberships.AsNoTracking()
-                                    join suite in db.Suites on membership.SuiteId equals suite.Id
-                                    join user in db.Users on membership.UserId equals user.Id
-                                    where actor.ManagedBuildings.Contains(suite.BuildingId) && membership.RevokedAt == null
-                                    orderby suite.Name, membership.Id
-                                    select new AccessRow(membership.Id, membership.Version, suite.Name, user.Email!)).Take(100).ToListAsync();
-        var now = time.GetUtcNow();
-        ViewData["Invitations"] = await (from invitation in db.Invitations.AsNoTracking()
-                                         join suite in db.Suites on invitation.SuiteId equals suite.Id
-                                         join user in db.Users on invitation.UserId equals user.Id
-                                         where actor.ManagedBuildings.Contains(suite.BuildingId) && invitation.AcceptedAt == null
-                                         orderby invitation.ExpiresAt descending, invitation.Id
-                                         select new InvitationRow(invitation.Id, invitation.Version, suite.Name, user.Email!, invitation.ExpiresAt,
-                                             invitation.RevokedAt != null ? "Revoked" : invitation.ExpiresAt <= now ? "Expired" : "Pending"))
-            .Take(100).ToListAsync();
-        return View(await db.Suites.AsNoTracking().Where(x => actor.ManagedBuildings.Contains(x.BuildingId))
-            .OrderBy(x => x.Name).ThenBy(x => x.Id).Take(100).ToListAsync());
+        var overview = await buildingAccess.OverviewAsync(HttpContext.RequestAborted);
+        return overview is null ? Challenge() : View(overview);
     }
 
     [Authorize(Policy = OfficeSecurity.RecentManagerPolicy), HttpPost]
     public async Task<IActionResult> AddSuite(SuiteForm form)
     {
-        var initial = (await current.GetAsync())!;
-        await using var transaction = await AuthorityLocks.BeginAsync(db);
-        await AuthorityLocks.UserAsync(db, initial.UserId);
-        await AuthorityLocks.ManagerAsync(db, initial.UserId, form.BuildingId);
-        var actor = await current.GetAsync();
-        if (actor is not { RecentMfa: true })
-            return Forbid();
-        if (!ModelState.IsValid || !actor.ManagedBuildings.Contains(form.BuildingId) || string.IsNullOrWhiteSpace(form.Name))
+        if (!ModelState.IsValid)
             return BadRequest();
-        if (await db.Suites.AnyAsync(x => x.BuildingId == form.BuildingId && x.Name == form.Name.Trim()))
+        var result = await buildingAccess.AddSuiteAsync(form.BuildingId, form.Name, HttpContext.RequestAborted);
+        if (result.Code == SuiteCode.Forbidden)
+            return Forbid();
+        if (result.Code == SuiteCode.Conflict)
             return Conflict();
-        var suite = new Suite { BuildingId = form.BuildingId, Name = form.Name.Trim() };
-        db.Suites.Add(suite);
-        invitations.Audit(actor.UserId, "SuiteCreated", suite.Id.ToString());
-        await db.SaveChangesAsync();
-        await transaction.CommitAsync();
-        TempData["Notice"] = $"Suite {suite.Name} added. You can now invite a tenant or grant access to this suite.";
+        if (result.Code != SuiteCode.Success)
+            return BadRequest();
+        TempData["Notice"] = $"Suite {result.Name} added. You can now invite a tenant or grant access to this suite.";
         return RedirectToAction(nameof(Index));
     }
 
@@ -67,7 +39,7 @@ public sealed class ManagementController(
     {
         if (!ModelState.IsValid)
             return BadRequest();
-        var result = await revocation.RevokeAsync(form.MembershipId, form.Version, form.Reason);
+        var result = await revocation.RevokeAsync(form.MembershipId, form.Version, form.Reason, HttpContext.RequestAborted);
         if (result == AllenBuilding.Application.Maintenance.MaintenanceCode.Unavailable)
             return NotFound();
         if (result == AllenBuilding.Application.Maintenance.MaintenanceCode.Conflict)
@@ -83,7 +55,7 @@ public sealed class ManagementController(
     {
         if (!ModelState.IsValid)
             return BadRequest();
-        var result = await access.GrantAsync(new(form.OperationId, form.SuiteId, form.Email, form.Reason));
+        var result = await access.GrantAsync(new(form.OperationId, form.SuiteId, form.Email, form.Reason), HttpContext.RequestAborted);
         if (result.Code == AllenBuilding.Application.Access.AccessCode.Unavailable)
             return NotFound();
         if (result.Code == AllenBuilding.Application.Access.AccessCode.Conflict)
@@ -99,7 +71,7 @@ public sealed class ManagementController(
     {
         if (!ModelState.IsValid)
             return BadRequest();
-        var code = await invitations.ChangeAsync(form.InvitationId, form.Version, form.Revoke, form.Reason);
+        var code = await invitations.ChangeAsync(form.InvitationId, form.Version, form.Revoke, form.Reason, HttpContext.RequestAborted);
         if (code == AllenBuilding.Application.Access.AccessCode.Unavailable)
             return NotFound();
         if (code == AllenBuilding.Application.Access.AccessCode.Conflict)
@@ -117,7 +89,7 @@ public sealed class ManagementController(
     {
         if (!ModelState.IsValid)
             return BadRequest();
-        var id = await invitations.IssueAsync(form.SuiteId, form.Email);
+        var id = await invitations.IssueAsync(form.SuiteId, form.Email, HttpContext.RequestAborted);
         if (id is null)
             return Conflict("Unable to create this invitation. Check the suite and account, then try again.");
         TempData["Notice"] = "Invitation recorded and queued for delivery. Check Notification delivery for its status.";

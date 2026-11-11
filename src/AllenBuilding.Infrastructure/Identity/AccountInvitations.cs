@@ -136,8 +136,8 @@ public sealed class AccountInvitations(OfficeDbContext db, UserManager<OfficeUse
         NextAttemptAt = time.GetUtcNow()
     });
 
-    public void Audit(string actor, string action, string subject, string? reason = null) => db.AccountAudits.Add(new AccountAudit
-    { ActorId = actor, Action = action, SubjectId = subject, Reason = reason, OccurredAt = time.GetUtcNow() });
+    public void Audit(string actor, string action, string subject, string? reason = null) =>
+        new AuditTrail(db, time).Record(actor, action, subject, reason);
     private static string Purpose(Invitation invitation) => invitation.TokenVersion is { } version
         ? $"Invitation:{invitation.Id:D}:{version:D}" : $"Invitation:{invitation.Id:D}";
 

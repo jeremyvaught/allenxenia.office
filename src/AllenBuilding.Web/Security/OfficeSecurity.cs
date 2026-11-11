@@ -76,6 +76,9 @@ public static class OfficeSecurity
         services.AddScoped<IAuthorizationHandler, ManagerAuthorization>();
         services.AddScoped<AccessRevocation>();
         services.AddScoped<AccountAccess>();
+        services.AddScoped<AuditTrail>();
+        services.AddScoped<IBuildingAccessStore, BuildingAccessStore>();
+        services.AddScoped<BuildingAccessActions>();
         services.AddAuthorization(options =>
         {
             options.AddPolicy(ManagerPolicy, policy => policy.RequireAuthenticatedUser().AddRequirements(new ManagerRequirement(false)));

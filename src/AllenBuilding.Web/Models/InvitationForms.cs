@@ -50,4 +50,3 @@ public sealed class InvitationChangeForm
     public bool Revoke { get; set; }
     [Required, StringLength(2000)] public string Reason { get; set; } = "";
 }
-public sealed record InvitationRow(Guid Id, Guid Version, string Suite, string Email, DateTimeOffset ExpiresAt, string Status);
