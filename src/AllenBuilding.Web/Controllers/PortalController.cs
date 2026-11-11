@@ -42,7 +42,7 @@ public sealed class PortalController(
         ManagerDashboard? managing = null;
         if (manager && await maintenance.QueueAsync(new(Sort: QueueSort.Newest), aborted) is { } queue)
         {
-            var delivery = await notifications.ReadAsync(actor, 1, aborted);
+            var delivery = await notifications.ReadAsync(actor, 1, aborted, describe: false);
             managing = new(await buildingAccess.ManagerSummaryAsync(actor, aborted), delivery.NeedsAttention.Count, delivery.HasNextPage,
                 queue.Items.Take(5).ToArray(), queue.ObservedAt);
         }

@@ -131,11 +131,21 @@ public sealed class MaintenanceStore(
         if (order is null)
             return null;
         var suite = await db.Suites.AsNoTracking().Where(x => x.Id == order.SuiteId).Select(x => x.Name).SingleAsync(cancellationToken);
-        var history = await db.WorkOrderHistory.AsNoTracking().Where(x => x.WorkOrderId == order.Id &&
+        var entries = await db.WorkOrderHistory.AsNoTracking().Where(x => x.WorkOrderId == order.Id &&
                 (management || x.Visibility == HistoryVisibility.TenantVisible))
             .OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.Id).Take(100)
-            .Select(x => new HistoryEntry(x.Action, x.Status, x.Note, x.Visibility == HistoryVisibility.Internal, x.OccurredAt))
+            .Select(x => new { x.ActorId, x.Action, x.Status, x.Note, x.Visibility, x.OccurredAt })
             .ToListAsync(cancellationToken);
+        // Only the requester and managers of the building can act on a request. Managers see the
+        // requester's email; the requester sees a manager's display name, as assignments already show.
+        var people = entries.Select(x => x.ActorId).Append(order.RequesterUserId).Distinct().ToList();
+        var names = await db.Users.AsNoTracking().Where(x => people.Contains(x.Id))
+            .Select(x => new { x.Id, x.DisplayName, x.Email }).ToDictionaryAsync(x => x.Id, cancellationToken);
+        string Name(string id) => id == order.RequesterUserId
+            ? management && names.TryGetValue(id, out var requester) && !string.IsNullOrEmpty(requester.Email) ? requester.Email + " (tenant)" : "Tenant"
+            : names.TryGetValue(id, out var person) && person.DisplayName != "" ? person.DisplayName : "Building manager";
+        var history = entries.Select(x => new HistoryEntry(x.Action, x.Status, x.Note, x.Visibility == HistoryVisibility.Internal,
+            x.OccurredAt, Name(x.ActorId), x.ActorId == actor.UserId)).ToList();
         string? assignment = null;
         if (order.AssignedContractorId is { } contactId)
             assignment = await db.Contractors.Where(x => x.Id == contactId).Select(x => x.Name).SingleAsync(cancellationToken);
@@ -157,7 +167,8 @@ public sealed class MaintenanceStore(
             choices = managers.Concat(contractors.Select(x => new AssigneeChoice("contractor:" + x.Id.ToString("D"), x.Name + " (contractor)"))).ToList();
         }
         return new(order.Id, order.Version, suite, order.Title, order.Description, order.Location, order.Status,
-            order.Priority, order.Trade, order.Resolution, history, assignment, choices);
+            order.Priority, order.Trade, order.Resolution, history, assignment, choices,
+            management && names.TryGetValue(order.RequesterUserId, out var submitter) ? submitter.Email : null);
     }
 
     public async Task<IReadOnlyList<RequestMemberChoice>> MembersAsync(Actor actor, bool management, CancellationToken cancellationToken)

@@ -49,7 +49,7 @@ public static class NotificationInboxContract
             for (var i = 0; i < 120; i++)
                 db.Add(new AccountMessage { UserId = manager.Id, BuildingId = building.Id, Kind = "SecurityNotice", State = MessageState.Delivered, CreatedAt = clock.GetUtcNow().AddMinutes(-i), ProtectedPayload = "private" });
             await db.SaveChangesAsync();
-            var page = await new NotificationInbox(db, clock).ReadAsync(actor, 1);
+            var page = await new NotificationInbox(db, protection, clock).ReadAsync(actor, 1);
             Assert.Equal(failure.Id, Assert.Single(page.NeedsAttention).Id);
             Assert.Equal(tenant.Email, page.NeedsAttention[0].ResetRecipient);
             Assert.Equal(100, page.Recent.Count);
@@ -63,14 +63,14 @@ public static class NotificationInboxContract
             var users = scope.ServiceProvider.GetRequiredService<UserManager<OfficeUser>>();
             await new AccountInvitations(db, users, current, protection, clock).QueueResetAsync(tenant.Email!);
             Assert.Equal(MessageState.Suppressed, (await db.AccountMessages.AsNoTracking().SingleAsync(x => x.Id == failure.Id)).State);
-            Assert.Empty((await new NotificationInbox(db, clock).ReadAsync(actor, 1)).NeedsAttention);
+            Assert.Empty((await new NotificationInbox(db, protection, clock).ReadAsync(actor, 1)).NeedsAttention);
             var fresh = await db.AccountMessages.SingleAsync(x => x.UserId == tenant.Id && x.State == MessageState.Queued);
             fresh.State = MessageState.NeedsReview;
             await db.SaveChangesAsync();
-            Assert.Equal(fresh.Id, Assert.Single((await new NotificationInbox(db, clock).ReadAsync(actor, 1)).NeedsAttention).Id);
+            Assert.Equal(fresh.Id, Assert.Single((await new NotificationInbox(db, protection, clock).ReadAsync(actor, 1)).NeedsAttention).Id);
             db.ActiveGrants.Remove(await db.ActiveGrants.SingleAsync(x => x.MembershipId == member.Id));
             await db.SaveChangesAsync();
-            Assert.Empty((await new NotificationInbox(db, clock).ReadAsync(actor, 1)).NeedsAttention);
+            Assert.Empty((await new NotificationInbox(db, protection, clock).ReadAsync(actor, 1)).NeedsAttention);
         }
     }
 }

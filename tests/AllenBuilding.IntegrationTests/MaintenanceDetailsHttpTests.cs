@@ -180,6 +180,11 @@ public sealed class MaintenanceDetailsHttpTests
         Assert.Contains("name=\"Priority\"", page);
         Assert.DoesNotContain("Assign to me", page);
         Assert.Contains("Internal note — visible only to management", page);
+        // The page names the requester, makes the forward step the one solid button and tucks cancelling away.
+        Assert.Contains("Submitted by " + email, page);
+        Assert.Contains("class=\"button w-full\">Triage</button>", page);
+        Assert.Contains("class=\"quiet-button\">Add comment</button>", page);
+        Assert.Matches("<details class=[^>]*><summary[^>]*>Cancel this request</summary>", page);
 
         async Task<string> Step(string action, params (string Key, string Value)[] extra)
         {
@@ -208,7 +213,8 @@ public sealed class MaintenanceDetailsHttpTests
         Assert.Contains("Assigned to manager", page);
         page = await Step("Comment", ("Internal", "true"), ("Note", "Manager-only internal canary"));
         Assert.Contains("Manager-only internal canary", page);
-        Assert.Contains("&#xB7; Internal note", page);
+        Assert.Contains("Your internal note", page);
+        Assert.Contains("by you", page);
 
         page = await Step("Start");
         Assert.Contains("Work started", page);
@@ -226,9 +232,36 @@ public sealed class MaintenanceDetailsHttpTests
         Assert.Contains("Work completed", tenantPage);
         Assert.Contains("Replaced the thermostat", tenantPage);
         Assert.DoesNotContain("Manager-only internal canary", tenantPage);
-        Assert.DoesNotContain("Internal note", tenantPage);
+        Assert.DoesNotContain("internal note", tenantPage, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Next step", tenantPage);
         Assert.DoesNotContain("ManageChange", tenantPage);
+        Assert.DoesNotContain("Submitted by", tenantPage);
+        Assert.Contains("by Building manager", tenantPage);
+        Assert.Contains("class=\"button\">Add comment</button>", tenantPage);
+
+        // Each side sees who wrote a comment; the tenant's email is shown only to managers.
+        await Step("Comment", ("Note", "Manager reply canary"));
+        using (var commented = await AccountTestHost.PostAsync(tenant, tenantPath, "/Maintenance/Change",
+            ("OperationId", Guid.NewGuid().ToString()), ("WorkOrderId", id.ToString()), ("Version", (await Current(host)).Item2.ToString()),
+            ("Action", "Comment"), ("Note", "Tenant comment canary")))
+            Assert.Equal(HttpStatusCode.Redirect, commented.StatusCode);
+        tenantPage = await tenant.GetStringAsync(tenantPath);
+        Assert.Contains("Your comment", tenantPage);
+        Assert.Contains("Comment from Building manager", tenantPage);
+        Assert.DoesNotContain("(tenant)", tenantPage);
+        page = await manager.GetStringAsync(managerPath);
+        Assert.Contains($"Comment from {email} (tenant)", page);
+        Assert.Contains("Your comment", page);
+
+        // The delivery page says which request each email was about, never the hidden note.
+        var delivery = await manager.GetStringAsync("/Notifications");
+        Assert.Contains($"href=\"/Maintenance/ManageDetails/{id}\"", delivery);
+        Assert.Contains("Lifecycle request", delivery);
+        Assert.Contains("Work completed", delivery);
+        Assert.Contains("sent to the tenant", delivery);
+        Assert.Contains("Request submitted", delivery);
+        Assert.Contains("sent to a manager", delivery);
+        Assert.DoesNotContain("canary", delivery);
 
         page = await Step("Close");
         Assert.Contains("Work verified", page);
