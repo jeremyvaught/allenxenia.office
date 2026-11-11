@@ -1,0 +1,9 @@
+@model LoginForm
+<form asp-controller="Account" asp-action="Login" method="post" class="space-y-5">
+    <input asp-for="ReturnUrl" type="hidden" />
+    <div asp-validation-summary="All" role="alert"></div>
+    <div><label asp-for="Email" class="mb-2 block"></label><input asp-for="Email" class="field" autocomplete="username" /></div>
+    <div><label asp-for="Password" class="mb-2 block"></label><input asp-for="Password" class="field" autocomplete="current-password" /></div>
+    <button class="button w-full">Sign in</button>
+</form>
+<a asp-controller="Invitation" asp-action="Forgot" class="mt-4 flex min-h-11 items-center underline">Forgot your password?</a>
