@@ -23,6 +23,7 @@ public static class NotificationsRegistration
             services.GetRequiredService<TimeProvider>(), origin));
         builder.Services.AddScoped<INotificationQueue>(services => services.GetRequiredService<NotificationQueue>());
         builder.Services.AddScoped<NotificationDispatcher>();
+        builder.Services.AddScoped<NotificationInbox>();
         if (mode == "LocalInbox")
             builder.Services.AddSingleton<IEmailTransport>(new LocalInboxTransport(Path.Combine(builder.Environment.ContentRootPath, ".data", "mail")));
         else if (mode == "Smtp")

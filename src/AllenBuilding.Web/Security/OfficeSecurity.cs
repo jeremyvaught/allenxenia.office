@@ -74,6 +74,8 @@ public static class OfficeSecurity
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentActor, CurrentActor>();
         services.AddScoped<IAuthorizationHandler, ManagerAuthorization>();
+        services.AddScoped<AccessRevocation>();
+        services.AddScoped<AccountAccess>();
         services.AddAuthorization(options =>
         {
             options.AddPolicy(ManagerPolicy, policy => policy.RequireAuthenticatedUser().AddRequirements(new ManagerRequirement(false)));
