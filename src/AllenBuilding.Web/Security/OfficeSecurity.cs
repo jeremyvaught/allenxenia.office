@@ -41,6 +41,7 @@ public static class OfficeSecurity
         services.Configure<InvitationTokenOptions>(_ => { });
         services.AddScoped<BootstrapManager>();
         services.AddScoped<AccountInvitations>();
+        services.AddScoped<AccountSecurity>();
         services.AddScoped<OperatorEnrollment>();
         services.Replace(ServiceDescriptor.Scoped<IUserStore<OfficeUser>, ProtectedUserStore>());
         services.Configure<DataProtectionTokenProviderOptions>(options => options.TokenLifespan = TimeSpan.FromHours(2));
@@ -74,6 +75,11 @@ public static class OfficeSecurity
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentActor, CurrentActor>();
         services.AddScoped<IAuthorizationHandler, ManagerAuthorization>();
+        services.AddScoped<AccessRevocation>();
+        services.AddScoped<AccountAccess>();
+        services.AddScoped<AuditTrail>();
+        services.AddScoped<IBuildingAccessStore, BuildingAccessStore>();
+        services.AddScoped<BuildingAccessActions>();
         services.AddAuthorization(options =>
         {
             options.AddPolicy(ManagerPolicy, policy => policy.RequireAuthenticatedUser().AddRequirements(new ManagerRequirement(false)));
@@ -85,9 +91,11 @@ public static class OfficeSecurity
         if (production && string.IsNullOrWhiteSpace(keyPath))
             throw new InvalidOperationException("Production requires a persistent Protection:KeyDirectory and wrapping certificate.");
         keyPath ??= Path.Combine(builder.Environment.ContentRootPath, ".data", "keys");
-        if (production) ProtectionFiles.ValidateDirectory(keyPath, builder.Environment.ContentRootPath);
+        if (production)
+            ProtectionFiles.ValidateDirectory(keyPath, builder.Environment.ContentRootPath);
         Directory.CreateDirectory(keyPath);
-        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(keyPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(keyPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         var protection = services.AddDataProtection().SetApplicationName(ProtectionApplicationName)
             .PersistKeysToFileSystem(new DirectoryInfo(keyPath));
         var certificate = builder.Configuration["Protection:CertificatePath"];
@@ -97,14 +105,21 @@ public static class OfficeSecurity
         {
             try
             {
-                if (production) ProtectionFiles.ValidateCertificate(certificate, builder.Environment.ContentRootPath);
+                if (production)
+                    ProtectionFiles.ValidateCertificate(certificate, builder.Environment.ContentRootPath);
                 var wrapping = X509CertificateLoader.LoadPkcs12FromFile(certificate,
-                    builder.Configuration["Protection:CertificatePassword"], OperatingSystem.IsMacOS() ? X509KeyStorageFlags.DefaultKeySet : X509KeyStorageFlags.EphemeralKeySet);
-                if (!wrapping.HasPrivateKey) throw new InvalidOperationException();
+                    builder.Configuration["Protection:CertificatePassword"],
+                    OperatingSystem.IsMacOS() ? X509KeyStorageFlags.DefaultKeySet : X509KeyStorageFlags.EphemeralKeySet);
+                if (!wrapping.HasPrivateKey)
+                    throw new InvalidOperationException();
                 protection.ProtectKeysWithCertificate(wrapping);
             }
-            catch (Exception exception) when (exception is System.Security.Cryptography.CryptographicException or IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
-            { throw new InvalidOperationException("The wrapping certificate must be a readable private certificate with its private key; keep it outside releases with owner-only file/parent permissions."); }
+            catch (Exception exception) when (exception is System.Security.Cryptography.CryptographicException or IOException
+                or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
+            {
+                throw new InvalidOperationException(
+                    "The wrapping certificate must be a readable private certificate with its private key; keep it outside releases with owner-only file/parent permissions.");
+            }
         }
     }
 
@@ -117,11 +132,13 @@ public sealed class CurrentActor(IHttpContextAccessor http, SignInManager<Office
     public async Task<Actor?> GetAsync(CancellationToken cancellationToken = default)
     {
         var principal = http.HttpContext?.User;
-        if (principal?.Identity?.IsAuthenticated != true) return null;
+        if (principal?.Identity?.IsAuthenticated != true)
+            return null;
         var userId = signIn.UserManager.GetUserId(principal);
         var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
         var stamp = principal.FindFirstValue(signIn.UserManager.Options.ClaimsIdentity.SecurityStampClaimType);
-        if (user is null || stamp != user.SecurityStamp || !user.EmailConfirmed) return null;
+        if (user is null || stamp != user.SecurityStamp || !user.EmailConfirmed)
+            return null;
         var buildings = (await db.BuildingManagers.AsNoTracking().Where(x => x.UserId == user.Id)
             .Select(x => x.BuildingId).ToListAsync(cancellationToken)).ToHashSet();
         var mfa = principal.HasClaim("amr", "mfa") && user.TwoFactorEnabled && !user.MustReplaceRecoveryCodes;

@@ -20,13 +20,16 @@ public sealed class RentAccount
     public Guid Version { get; private set; }
     public static RentAccount Open(Guid id, Guid membershipId)
     {
-        if (id == Guid.Empty || membershipId == Guid.Empty) throw new ArgumentException("A rent account and original membership are required.");
+        if (id == Guid.Empty || membershipId == Guid.Empty)
+            throw new ArgumentException("A rent account and original membership are required.");
         return new RentAccount { Id = id, MembershipId = membershipId, Version = Guid.NewGuid() };
     }
     public void EndTenancy(DateTimeOffset now)
     {
-        if (EndedAt is not null || now == default) throw new InvalidOperationException("The tenancy has already ended or the end time is invalid.");
-        EndedAt = now.ToUniversalTime(); Version = Guid.NewGuid();
+        if (EndedAt is not null || now == default)
+            throw new InvalidOperationException("The tenancy has already ended or the end time is invalid.");
+        EndedAt = now.ToUniversalTime();
+        Version = Guid.NewGuid();
     }
     public void TermsChanged() => Version = Guid.NewGuid();
     public void AuthorizationChanged() => Version = Guid.NewGuid();
@@ -52,7 +55,8 @@ public sealed class RentAgreement
     {
         BillingRules.IssuedAmount(amount);
         if (accountId == Guid.Empty || dueDay is < 1 or > 31 || startsOn == default || (endsOn is { } end && end <= startsOn) ||
-            string.IsNullOrWhiteSpace(actor) || actor.Length > 450) throw new ArgumentException("Invalid rent terms.");
+            string.IsNullOrWhiteSpace(actor) || actor.Length > 450)
+            throw new ArgumentException("Invalid rent terms.");
         return new RentAgreement
         {
             Id = Guid.NewGuid(),
@@ -77,7 +81,9 @@ public sealed class RentAgreement
         if (replacement.AccountId != AccountId || replacement.StartsOn.Day != 1 || replacement.StartsOn < StartsOn ||
             (EndsOn is { } end && replacement.StartsOn >= end) || SupersededBy is not null)
             throw new InvalidOperationException("These terms cannot replace this agreement.");
-        EndsOn = replacement.StartsOn; SupersededBy = replacement.Id; Version = Guid.NewGuid();
+        EndsOn = replacement.StartsOn;
+        SupersededBy = replacement.Id;
+        Version = Guid.NewGuid();
     }
 }
 
@@ -125,7 +131,8 @@ public sealed class Obligation
 
     public static Obligation Issue(Guid accountId, Money amount, string description, DateOnly dueOn, string actor, DateTimeOffset now)
     {
-        BillingRules.IssuedAmount(amount); description = description?.Trim() ?? "";
+        BillingRules.IssuedAmount(amount);
+        description = description?.Trim() ?? "";
         if (accountId == Guid.Empty || description.Length is < 1 or > 120 || dueOn == default || string.IsNullOrWhiteSpace(actor) || actor.Length > 450)
             throw new ArgumentException("Invalid charge.");
         return new Obligation
@@ -146,11 +153,14 @@ public sealed class Obligation
     public static Obligation Rent(BillingPeriod period, RentAgreement agreement, RentPeriod calendar, string actor, DateTimeOffset now)
     {
         if (period.AccountId != agreement.AccountId || period.AccountId != calendar.AccountId ||
-            calendar != RentCalendar.ForMonth(agreement.AccountId, calendar.StartsOn.Year, calendar.StartsOn.Month, agreement.DueDay) || period.StartsOn != calendar.StartsOn || period.EndsOn != calendar.EndsOn || !agreement.Covers(calendar))
+            calendar != RentCalendar.ForMonth(agreement.AccountId, calendar.StartsOn.Year, calendar.StartsOn.Month, agreement.DueDay) ||
+            period.StartsOn != calendar.StartsOn || period.EndsOn != calendar.EndsOn || !agreement.Covers(calendar))
             throw new InvalidOperationException("Partial months require an explicit opening or closing charge.");
         var obligation = Issue(period.AccountId, new Money(agreement.AmountMinorUnits, agreement.Currency),
             $"Rent {calendar.StartsOn:yyyy-MM}", calendar.DueOn, actor, now);
-        obligation.Kind = ChargeKind.BaseRent; obligation.PeriodId = period.Id; obligation.AgreementId = agreement.Id;
+        obligation.Kind = ChargeKind.BaseRent;
+        obligation.PeriodId = period.Id;
+        obligation.AgreementId = agreement.Id;
         return obligation;
     }
 }

@@ -17,54 +17,85 @@ public sealed class AssistantTenantHttpTests
     [Fact]
     public async Task Direct_record_search_finds_old_original_membership_matches_without_a_model_call_or_wildcard_expansion()
     {
-        var model = new Model(); await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true };
-        await host.InitializeAsync(); var fixture = await Seed(host); using var browser = host.Browser(); await Login(browser); Guid oldId;
+        var model = new Model();
+        await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true };
+        await host.InitializeAsync();
+        var fixture = await Seed(host);
+        using var browser = host.Browser();
+        await Login(browser);
+        Guid oldId;
         Assert.Contains("Find a maintenance request", await browser.GetStringAsync("/Assistant"));
         using (var scope = host.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); var now = DateTimeOffset.UtcNow;
-            var old = WorkOrder.Submit(fixture.First.SuiteId, fixture.First.Id, fixture.First.UserId, "Older 100%_! sink", "Synthetic details", "Kitchen", now.AddHours(-12)); oldId = old.Id; db.Add(old);
-            for (var index = 0; index < 121; index++) db.Add(WorkOrder.Submit(fixture.First.SuiteId, fixture.First.Id, fixture.First.UserId, "New ordinary work " + index, "Synthetic details", "Hall", now));
-            db.Add(WorkOrder.Submit(fixture.Second.SuiteId, fixture.Second.Id, fixture.Second.UserId, "Other-membership-canary 100%_! sink", "Synthetic details", "Kitchen", now)); await db.SaveChangesAsync();
+            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+            var now = DateTimeOffset.UtcNow;
+            var old = WorkOrder.Submit(fixture.First.SuiteId, fixture.First.Id, fixture.First.UserId, "Older 100%_! sink", "Synthetic details", "Kitchen", now.AddHours(-12));
+            oldId = old.Id;
+            db.Add(old);
+            for (var index = 0; index < 121; index++)
+                db.Add(WorkOrder.Submit(fixture.First.SuiteId, fixture.First.Id, fixture.First.UserId, "New ordinary work " + index, "Synthetic details", "Hall", now));
+            db.Add(WorkOrder.Submit(fixture.Second.SuiteId, fixture.Second.Id, fixture.Second.UserId, "Other-membership-canary 100%_! sink", "Synthetic details", "Kitchen", now));
+            await db.SaveChangesAsync();
         }
         using var found = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Find", ("membershipId", fixture.First.Id.ToString()), ("search", "100%_!"));
-        Assert.Equal(HttpStatusCode.OK, found.StatusCode); var html = await found.Content.ReadAsStringAsync();
-        Assert.Contains("Older 100%_! sink", html); Assert.Contains("/Maintenance/Details/" + oldId, html); Assert.Contains("Checked ", html);
-        Assert.DoesNotContain("Other-membership-canary", html); Assert.DoesNotContain("New ordinary work", html); Assert.Equal(0, model.Calls);
+        Assert.Equal(HttpStatusCode.OK, found.StatusCode);
+        var html = await found.Content.ReadAsStringAsync();
+        Assert.Contains("Older 100%_! sink", html);
+        Assert.Contains("/Maintenance/Details/" + oldId, html);
+        Assert.Contains("Checked ", html);
+        Assert.DoesNotContain("Other-membership-canary", html);
+        Assert.DoesNotContain("New ordinary work", html);
+        Assert.Equal(0, model.Calls);
         using var portal = await AccountTestHost.PostAsync(browser, "/Maintenance", "/Maintenance/Index", ("search", "SINK"));
-        Assert.Equal(HttpStatusCode.OK, portal.StatusCode); Assert.Contains("Older 100%_! sink", await portal.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.OK, portal.StatusCode);
+        Assert.Contains("Older 100%_! sink", await portal.Content.ReadAsStringAsync());
         using var invalid = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Find", ("membershipId", fixture.First.Id.ToString()), ("search", new string('x', 121)));
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
-        using var guessed = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Find", ("membershipId", fixture.Foreign.Id.ToString()), ("search", "sink")); Assert.Equal(HttpStatusCode.NotFound, guessed.StatusCode);
-        using var forged = await browser.PostAsync("/Assistant/Find", new FormUrlEncodedContent(new Dictionary<string, string> { ["membershipId"] = fixture.First.Id.ToString(), ["search"] = "sink" })); Assert.Equal(HttpStatusCode.BadRequest, forged.StatusCode);
+        using var guessed = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Find", ("membershipId", fixture.Foreign.Id.ToString()), ("search", "sink"));
+        Assert.Equal(HttpStatusCode.NotFound, guessed.StatusCode);
+        using var forged = await browser.PostAsync("/Assistant/Find", new FormUrlEncodedContent(new Dictionary<string, string> { ["membershipId"] = fixture.First.Id.ToString(), ["search"] = "sink" }));
+        Assert.Equal(HttpStatusCode.BadRequest, forged.StatusCode);
         Assert.Equal(0, model.Calls);
     }
     [Fact]
     public async Task Revocation_after_search_rendering_suppresses_the_entire_record_result()
     {
-        var model = new Model(); AccountTestHost host = null!; Fixture fixture = null!;
+        var model = new Model();
+        AccountTestHost host = null!;
+        Fixture fixture = null!;
         host = new AccountTestHost
         {
             AssistantModel = model,
             AssistantTenantHelpEnabled = true,
             BeforeAssistantRelease = async () =>
         {
-            using var scope = host.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+            using var scope = host.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
             (await db.Memberships.SingleAsync(x => x.Id == fixture.First.Id)).Revoke(fixture.EditorId, "End access", DateTimeOffset.UtcNow);
-            db.ActiveGrants.Remove(await db.ActiveGrants.SingleAsync(x => x.MembershipId == fixture.First.Id)); await db.SaveChangesAsync();
+            db.ActiveGrants.Remove(await db.ActiveGrants.SingleAsync(x => x.MembershipId == fixture.First.Id));
+            await db.SaveChangesAsync();
         }
         };
         await using (host)
         {
-            await host.InitializeAsync(); fixture = await Seed(host); await SeedRecords(host, fixture); using var browser = host.Browser(); await Login(browser);
+            await host.InitializeAsync();
+            fixture = await Seed(host);
+            await SeedRecords(host, fixture);
+            using var browser = host.Browser();
+            await Login(browser);
             using var denied = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Find", ("membershipId", fixture.First.Id.ToString()), ("search", "dripping"));
-            Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode); Assert.DoesNotContain("Selected dripping tap", await denied.Content.ReadAsStringAsync()); Assert.Equal(0, model.Calls);
+            Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode);
+            Assert.DoesNotContain("Selected dripping tap", await denied.Content.ReadAsStringAsync());
+            Assert.Equal(0, model.Calls);
         }
     }
     [Fact]
     public async Task Private_history_is_suppressed_if_access_changes_after_followup_generation_and_rendering()
     {
-        var model = new Model(); AccountTestHost host = null!; Fixture fixture = null!; var releases = 0;
+        var model = new Model();
+        AccountTestHost host = null!;
+        Fixture fixture = null!;
+        var releases = 0;
         host = new AccountTestHost
         {
             AssistantModel = model,
@@ -72,52 +103,83 @@ public sealed class AssistantTenantHttpTests
             AssistantFollowUpsEnabled = true,
             BeforeAssistantRelease = async () =>
             {
-                if (++releases != 3) return; // First output, follow-up context admission, follow-up output.
-                using var scope = host.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+                if (++releases != 3)
+                    return; // First output, follow-up context admission, follow-up output.
+                using var scope = host.Services.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
                 (await db.Memberships.SingleAsync(x => x.Id == fixture.First.Id)).Revoke(fixture.EditorId, "End access", DateTimeOffset.UtcNow);
-                db.ActiveGrants.Remove(await db.ActiveGrants.SingleAsync(x => x.MembershipId == fixture.First.Id)); await db.SaveChangesAsync();
+                db.ActiveGrants.Remove(await db.ActiveGrants.SingleAsync(x => x.MembershipId == fixture.First.Id));
+                await db.SaveChangesAsync();
             }
         };
         await using (host)
         {
-            await host.InitializeAsync(); fixture = await Seed(host); using var browser = host.Browser(); await Login(browser);
+            await host.InitializeAsync();
+            fixture = await Seed(host);
+            using var browser = host.Browser();
+            await Login(browser);
             using var first = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", ("question", "entry guidance"), ("membershipId", fixture.First.Id.ToString()));
-            Assert.Equal(HttpStatusCode.OK, first.StatusCode); var fields = AssistantHttpTests.ConversationFields(await first.Content.ReadAsStringAsync());
+            Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+            var fields = AssistantHttpTests.ConversationFields(await first.Content.ReadAsStringAsync());
             using var denied = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", fields.Concat(new[] { ("question", "Another detail"), ("membershipId", fixture.First.Id.ToString()) }).ToArray());
-            Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode); Assert.Equal(2, model.Calls);
-            var html = await denied.Content.ReadAsStringAsync(); Assert.DoesNotContain("generated-private-canary", html); Assert.DoesNotContain("entry guidance", html);
+            Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode);
+            Assert.Equal(2, model.Calls);
+            var html = await denied.Content.ReadAsStringAsync();
+            Assert.DoesNotContain("generated-private-canary", html);
+            Assert.DoesNotContain("entry guidance", html);
         }
     }
     [Fact]
     public async Task Focus_probe_checks_retained_sources_and_original_scope_without_returning_the_transcript()
     {
-        var model = new Model(); await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true, AssistantFollowUpsEnabled = true };
-        await host.InitializeAsync(); var fixture = await Seed(host); using var browser = host.Browser(); await Login(browser);
+        var model = new Model();
+        await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true, AssistantFollowUpsEnabled = true };
+        await host.InitializeAsync();
+        var fixture = await Seed(host);
+        using var browser = host.Browser();
+        await Login(browser);
         using var first = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", ("question", "entry guidance"), ("membershipId", fixture.First.Id.ToString()));
         var conversation = AssistantHttpTests.ConversationFields(await first.Content.ReadAsStringAsync()).Single(x => x.Key == "conversationId").Value;
         var probe = $"/Assistant/Access?membershipId={fixture.First.Id}&conversationId={conversation}";
-        using var active = await browser.GetAsync(probe); Assert.Equal(HttpStatusCode.NoContent, active.StatusCode); Assert.Empty(await active.Content.ReadAsStringAsync());
+        using var active = await browser.GetAsync(probe);
+        Assert.Equal(HttpStatusCode.NoContent, active.StatusCode);
+        Assert.Empty(await active.Content.ReadAsStringAsync());
         using (var scope = host.Services.CreateScope())
         { var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); (await db.HelpArticles.SingleAsync(x => x.Id == fixture.FirstArticle)).Withdraw(); await db.SaveChangesAsync(); }
-        using var denied = await browser.GetAsync(probe); Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode); Assert.DoesNotContain("generated-private-canary", await denied.Content.ReadAsStringAsync());
+        using var denied = await browser.GetAsync(probe);
+        Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode);
+        Assert.DoesNotContain("generated-private-canary", await denied.Content.ReadAsStringAsync());
         Assert.Equal(1, model.Calls);
     }
     [Fact]
     public async Task Followup_details_prepare_one_canonical_draft_without_client_history_or_automatic_execution()
     {
-        var model = new Model(); await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true, AssistantActionsEnabled = true, AssistantFollowUpsEnabled = true };
-        await host.InitializeAsync(); var fixture = await Seed(host); using var browser = host.Browser(); await Login(browser);
+        var model = new Model();
+        await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true, AssistantActionsEnabled = true, AssistantFollowUpsEnabled = true };
+        await host.InitializeAsync();
+        var fixture = await Seed(host);
+        using var browser = host.Browser();
+        await Login(browser);
         using var first = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", ("question", "The sink is leaking"), ("membershipId", fixture.First.Id.ToString()));
-        Assert.Equal(HttpStatusCode.OK, first.StatusCode); var fields = AssistantHttpTests.ConversationFields(await first.Content.ReadAsStringAsync());
-        model.Route = "new_request"; model.Draft = new(AssistantReviewKind.Request, "Leaking sink", "The sink is leaking", "Kitchen");
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        var fields = AssistantHttpTests.ConversationFields(await first.Content.ReadAsStringAsync());
+        model.Route = "new_request";
+        model.Draft = new(AssistantReviewKind.Request, "Leaking sink", "The sink is leaking", "Kitchen");
         using var second = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", fields.Concat(new[] { ("question", "In the kitchen"), ("membershipId", fixture.First.Id.ToString()) }).ToArray());
-        Assert.Equal(HttpStatusCode.OK, second.StatusCode); var html = await second.Content.ReadAsStringAsync();
-        Assert.Equal("The sink is leaking", Assert.Single(model.Input!.History!).Question); Assert.Contains("Earlier messages", html); Assert.DoesNotContain("data-assistant-form", html);
-        var path = ReviewPath(html); Assert.Contains("Kitchen", await browser.GetStringAsync(path));
-        using var scope = host.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
-        Assert.Single(await db.AssistantMaintenanceReviews.ToListAsync()); Assert.Empty(await db.WorkOrders.ToListAsync());
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        var html = await second.Content.ReadAsStringAsync();
+        Assert.Equal("The sink is leaking", Assert.Single(model.Input!.History!).Question);
+        Assert.Contains("Earlier messages", html);
+        Assert.DoesNotContain("data-assistant-form", html);
+        var path = ReviewPath(html);
+        Assert.Contains("Kitchen", await browser.GetStringAsync(path));
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+        Assert.Single(await db.AssistantMaintenanceReviews.ToListAsync());
+        Assert.Empty(await db.WorkOrders.ToListAsync());
         using var repeated = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", fields.Select(x => x.Key == "sequence" ? (x.Key, "2") : x).Concat(new[] { ("question", "Submit now"), ("membershipId", fixture.First.Id.ToString()) }).ToArray());
-        Assert.Equal(HttpStatusCode.Conflict, repeated.StatusCode); Assert.Equal(2, model.Calls);
+        Assert.Equal(HttpStatusCode.Conflict, repeated.StatusCode);
+        Assert.Equal(2, model.Calls);
     }
     [Theory]
     [InlineData("membership")]
@@ -126,26 +188,38 @@ public sealed class AssistantTenantHttpTests
     [InlineData("expiry")]
     public async Task Retained_private_context_is_not_reused_after_scope_or_provenance_changes(string change)
     {
-        var model = new Model(); await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true, AssistantFollowUpsEnabled = true };
-        await host.InitializeAsync(); var fixture = await Seed(host); using var browser = host.Browser(); await Login(browser);
+        var model = new Model();
+        await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true, AssistantFollowUpsEnabled = true };
+        await host.InitializeAsync();
+        var fixture = await Seed(host);
+        using var browser = host.Browser();
+        await Login(browser);
         using var first = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", ("question", "entry guidance"), ("membershipId", fixture.First.Id.ToString()));
-        Assert.Equal(HttpStatusCode.OK, first.StatusCode); var fields = AssistantHttpTests.ConversationFields(await first.Content.ReadAsStringAsync());
-        if (change == "expiry") host.Clock.Offset = TimeSpan.FromMinutes(31);
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        var fields = AssistantHttpTests.ConversationFields(await first.Content.ReadAsStringAsync());
+        if (change == "expiry")
+            host.Clock.Offset = TimeSpan.FromMinutes(31);
         if (change is "revocation" or "withdrawal")
         {
-            using var scope = host.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+            using var scope = host.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
             if (change == "revocation")
             {
                 (await db.Memberships.SingleAsync(x => x.Id == fixture.First.Id)).Revoke(fixture.EditorId, "End original access", DateTimeOffset.UtcNow);
                 db.ActiveGrants.Remove(await db.ActiveGrants.SingleAsync(x => x.MembershipId == fixture.First.Id));
             }
-            else foreach (var article in await db.HelpArticles.ToListAsync()) article.Withdraw();
+            else
+                foreach (var article in await db.HelpArticles.ToListAsync())
+                    article.Withdraw();
             await db.SaveChangesAsync();
         }
         using var denied = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", fields.Concat(new[]
         { ("question", "Another detail"), ("membershipId", (change == "membership" ? fixture.Second.Id : fixture.First.Id).ToString()) }).ToArray());
-        Assert.True(denied.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Conflict); Assert.Equal(1, model.Calls);
-        var html = await denied.Content.ReadAsStringAsync(); Assert.DoesNotContain("generated-private-canary", html); Assert.DoesNotContain("entry guidance", html);
+        Assert.True(denied.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Conflict);
+        Assert.Equal(1, model.Calls);
+        var html = await denied.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("generated-private-canary", html);
+        Assert.DoesNotContain("entry guidance", html);
     }
     [Theory]
     [InlineData("guest")]
@@ -153,34 +227,52 @@ public sealed class AssistantTenantHttpTests
     public async Task Unregistered_model_drafts_never_create_pending_or_business_records(string mode)
     {
         var model = new Model { Draft = new(AssistantReviewKind.Request, "Unregistered draft", "Synthetic leak", "Hall") };
-        await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true }; await host.InitializeAsync();
-        var fixture = await Seed(host); using var browser = host.Browser(); if (mode == "disabled") await Login(browser);
+        await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true };
+        await host.InitializeAsync();
+        var fixture = await Seed(host);
+        using var browser = host.Browser();
+        if (mode == "disabled")
+            await Login(browser);
         using var response = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", ("question", "A leak in the kitchen"),
             ("membershipId", mode == "guest" ? "" : fixture.First.Id.ToString()), ("conversationId", Guid.NewGuid().ToString()));
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode); Assert.False(model.Input!.CanPrepare);
-        using var scope = host.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
-        Assert.Empty(await db.WorkOrders.ToListAsync()); Assert.Empty(await db.AssistantMaintenanceReviews.ToListAsync());
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.False(model.Input!.CanPrepare);
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+        Assert.Empty(await db.WorkOrders.ToListAsync());
+        Assert.Empty(await db.AssistantMaintenanceReviews.ToListAsync());
     }
 
     [Fact]
     public async Task Model_request_draft_requires_separate_confirmation_and_returns_a_deterministic_receipt_without_another_model_call()
     {
         var model = new Model { Draft = new(AssistantReviewKind.Request, "Draft sink <script>", "Synthetic leak", "Kitchen") };
-        await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true, AssistantActionsEnabled = true }; await host.InitializeAsync();
-        var fixture = await Seed(host); using var browser = host.Browser(); await Login(browser);
+        await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true, AssistantActionsEnabled = true };
+        await host.InitializeAsync();
+        var fixture = await Seed(host);
+        using var browser = host.Browser();
+        await Login(browser);
         var path = await Prepare(browser, fixture.First.Id);
         using (var scope = host.Services.CreateScope())
         { var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); Assert.Empty(await db.WorkOrders.ToListAsync()); Assert.Single(await db.AssistantMaintenanceReviews.ToListAsync()); }
-        var html = await browser.GetStringAsync(path); Assert.Contains("Draft sink &lt;script&gt;", html); Assert.Contains("Confirm and submit request", html);
-        var values = ReviewFields(html); var calls = model.Calls;
+        var html = await browser.GetStringAsync(path);
+        Assert.Contains("Draft sink &lt;script&gt;", html);
+        Assert.Contains("Confirm and submit request", html);
+        var values = ReviewFields(html);
+        var calls = model.Calls;
         using var confirmed = await AccountTestHost.PostAsync(browser, path, "/Assistant/Confirm", values.Append(("title", "Tampered unreviewed title")).ToArray());
         Assert.Equal(HttpStatusCode.Redirect, confirmed.StatusCode);
-        using var replay = await AccountTestHost.PostAsync(browser, path, "/Assistant/Confirm", values); Assert.Equal(HttpStatusCode.Redirect, replay.StatusCode);
-        var receipt = await browser.GetStringAsync(path); Assert.Contains("Request submitted", receipt); Assert.DoesNotContain("Confirm and submit request", receipt);
+        using var replay = await AccountTestHost.PostAsync(browser, path, "/Assistant/Confirm", values);
+        Assert.Equal(HttpStatusCode.Redirect, replay.StatusCode);
+        var receipt = await browser.GetStringAsync(path);
+        Assert.Contains("Request submitted", receipt);
+        Assert.DoesNotContain("Confirm and submit request", receipt);
         Assert.Equal(calls, model.Calls);
-        using var check = host.Services.CreateScope(); var saved = check.ServiceProvider.GetRequiredService<OfficeDbContext>();
+        using var check = host.Services.CreateScope();
+        var saved = check.ServiceProvider.GetRequiredService<OfficeDbContext>();
         Assert.Equal("Draft sink <script>", Assert.Single(await saved.WorkOrders.ToListAsync()).Title);
-        Assert.Single(await saved.WorkOrderHistory.ToListAsync()); Assert.Single(await saved.MaintenanceReceipts.ToListAsync());
+        Assert.Single(await saved.WorkOrderHistory.ToListAsync());
+        Assert.Single(await saved.MaintenanceReceipts.ToListAsync());
         Assert.Equal(AssistantReviewState.Completed, Assert.Single(await saved.AssistantMaintenanceReviews.ToListAsync()).State);
     }
 
@@ -192,48 +284,72 @@ public sealed class AssistantTenantHttpTests
     public async Task Superseded_cancelled_expired_or_foreign_origin_reviews_do_not_submit(string mode)
     {
         var model = new Model { Draft = new(AssistantReviewKind.Request, "Draft leak", "Synthetic water", "Hall") };
-        await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true, AssistantActionsEnabled = true }; await host.InitializeAsync();
-        var fixture = await Seed(host); using var browser = host.Browser(); await Login(browser); var path = await Prepare(browser, fixture.First.Id);
+        await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true, AssistantActionsEnabled = true };
+        await host.InitializeAsync();
+        var fixture = await Seed(host);
+        using var browser = host.Browser();
+        await Login(browser);
+        var path = await Prepare(browser, fixture.First.Id);
         var values = ReviewFields(await browser.GetStringAsync(path));
         if (mode is "edit" or "cancel")
         {
             using var changed = await AccountTestHost.PostAsync(browser, path, "/Assistant/Edit", values.Where(x => x.Key != "operationId").Concat(new[]
             { ("title", "Revised issue"), ("description", "Revised details"), ("location", "Kitchen"), ("cancel", (mode == "cancel").ToString()) }).ToArray());
             Assert.Equal(HttpStatusCode.Redirect, changed.StatusCode);
-            var revised = await browser.GetStringAsync(path); Assert.Contains(mode == "edit" ? "Revised issue" : "Draft cancelled", revised);
+            var revised = await browser.GetStringAsync(path);
+            Assert.Contains(mode == "edit" ? "Revised issue" : "Draft cancelled", revised);
         }
-        if (mode == "expire") { host.Clock.Offset = TimeSpan.FromMinutes(11); Assert.DoesNotContain("Confirm and submit request", await browser.GetStringAsync(path)); }
-        if (mode == "origin") browser.DefaultRequestHeaders.Add("Origin", "https://foreign.test");
+        if (mode == "expire")
+        { host.Clock.Offset = TimeSpan.FromMinutes(11); Assert.DoesNotContain("Confirm and submit request", await browser.GetStringAsync(path)); }
+        if (mode == "origin")
+            browser.DefaultRequestHeaders.Add("Origin", "https://foreign.test");
         using var response = await AccountTestHost.PostAsync(browser, path, "/Assistant/Confirm", values);
         Assert.Equal(mode == "origin" ? HttpStatusCode.BadRequest : HttpStatusCode.Conflict, response.StatusCode);
-        using var scope = host.Services.CreateScope(); Assert.Empty(await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().WorkOrders.ToListAsync());
+        using var scope = host.Services.CreateScope();
+        Assert.Empty(await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().WorkOrders.ToListAsync());
     }
 
     [Fact]
     public async Task Selected_request_comments_have_no_model_record_context_and_cannot_target_another_original_membership()
     {
         var model = new Model { Route = "requests", Draft = new(AssistantReviewKind.Comment, Comment: "Please call before arriving") };
-        await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true, AssistantActionsEnabled = true }; await host.InitializeAsync();
-        var fixture = await Seed(host); var records = await SeedRecords(host, fixture); using var browser = host.Browser(); await Login(browser);
+        await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true, AssistantActionsEnabled = true };
+        await host.InitializeAsync();
+        var fixture = await Seed(host);
+        var records = await SeedRecords(host, fixture);
+        using var browser = host.Browser();
+        await Login(browser);
         var page = $"/Assistant?membershipId={fixture.First.Id}&requestId={records.Request}";
-        var form = await browser.GetStringAsync(page); Assert.Contains("Selected dripping tap", form); Assert.DoesNotContain("Other-membership-canary", form);
+        var form = await browser.GetStringAsync(page);
+        Assert.Contains("Selected dripping tap", form);
+        Assert.DoesNotContain("Other-membership-canary", form);
         using var response = await AccountTestHost.PostAsync(browser, page, "/Assistant/Ask", ("question", "Add a comment asking to call first"), ("membershipId", fixture.First.Id.ToString()), ("requestId", records.Request.ToString()), ("conversationId", Guid.NewGuid().ToString()));
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode); var path = ReviewPath(await response.Content.ReadAsStringAsync());
-        Assert.True(model.Input!.CommentTarget); Assert.True(model.Input.CanPrepare);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var path = ReviewPath(await response.Content.ReadAsStringAsync());
+        Assert.True(model.Input!.CommentTarget);
+        Assert.True(model.Input.CanPrepare);
         Assert.DoesNotContain(records.Request.ToString(), System.Text.Json.JsonSerializer.Serialize(model.Input));
         Assert.DoesNotContain("Selected dripping tap", System.Text.Json.JsonSerializer.Serialize(model.Input));
-        var fields = ReviewFields(await browser.GetStringAsync(path)); using var confirm = await AccountTestHost.PostAsync(browser, path, "/Assistant/Confirm", fields); Assert.Equal(HttpStatusCode.Redirect, confirm.StatusCode);
+        var fields = ReviewFields(await browser.GetStringAsync(path));
+        using var confirm = await AccountTestHost.PostAsync(browser, path, "/Assistant/Confirm", fields);
+        Assert.Equal(HttpStatusCode.Redirect, confirm.StatusCode);
         Assert.Contains("Comment added", await browser.GetStringAsync(path));
-        using var foreign = await browser.GetAsync($"/Assistant?membershipId={fixture.Second.Id}&requestId={records.Request}"); Assert.Equal(HttpStatusCode.NotFound, foreign.StatusCode);
-        using var scope = host.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
-        var history = Assert.Single(await db.WorkOrderHistory.ToListAsync()); Assert.Equal("Comment", history.Action); Assert.Equal(HistoryVisibility.TenantVisible, history.Visibility);
+        using var foreign = await browser.GetAsync($"/Assistant?membershipId={fixture.Second.Id}&requestId={records.Request}");
+        Assert.Equal(HttpStatusCode.NotFound, foreign.StatusCode);
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+        var history = Assert.Single(await db.WorkOrderHistory.ToListAsync());
+        Assert.Equal("Comment", history.Action);
+        Assert.Equal(HistoryVisibility.TenantVisible, history.Visibility);
         Assert.Equal(WorkOrderStatus.Triaged, (await db.WorkOrders.SingleAsync(x => x.Id == records.Request)).Status);
     }
 
     [Fact]
     public async Task Review_routes_require_authentication_ownership_and_antiforgery_and_revoke_draft_before_output()
     {
-        var model = new Model { Draft = new(AssistantReviewKind.Request, "Private draft", "Synthetic water", "Hall") }; AccountTestHost host = null!; Fixture fixture = null!;
+        var model = new Model { Draft = new(AssistantReviewKind.Request, "Private draft", "Synthetic water", "Hall") };
+        AccountTestHost host = null!;
+        Fixture fixture = null!;
         var revoke = false;
         host = new AccountTestHost
         {
@@ -242,78 +358,118 @@ public sealed class AssistantTenantHttpTests
             AssistantActionsEnabled = true,
             BeforeAssistantRelease = async () =>
         {
-            if (!revoke) return;
-            using var scope = host.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+            if (!revoke)
+                return;
+            using var scope = host.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
             (await db.Memberships.SingleAsync(x => x.Id == fixture.First.Id)).Revoke(fixture.EditorId, "Access ended", DateTimeOffset.UtcNow);
-            db.ActiveGrants.Remove(await db.ActiveGrants.SingleAsync(x => x.MembershipId == fixture.First.Id)); await db.SaveChangesAsync();
+            db.ActiveGrants.Remove(await db.ActiveGrants.SingleAsync(x => x.MembershipId == fixture.First.Id));
+            await db.SaveChangesAsync();
         }
         };
         await using (host)
         {
-            await host.InitializeAsync(); fixture = await Seed(host); using var browser = host.Browser(); await Login(browser);
-            var path = await Prepare(browser, fixture.First.Id); var fields = ReviewFields(await browser.GetStringAsync(path));
-            using var forged = await browser.PostAsync("/Assistant/Confirm", new FormUrlEncodedContent(fields.Select(x => new KeyValuePair<string, string>(x.Key, x.Value)))); Assert.Equal(HttpStatusCode.BadRequest, forged.StatusCode);
-            using var wrongConversation = await browser.GetAsync(path.Replace(fields.Single(x => x.Key == "conversationId").Value, Guid.NewGuid().ToString())); Assert.Equal(HttpStatusCode.NotFound, wrongConversation.StatusCode);
-            using var guest = host.Browser(); using var denied = await guest.GetAsync(path); Assert.Equal(HttpStatusCode.Redirect, denied.StatusCode);
-            revoke = true; using var changed = await browser.GetAsync(path); Assert.Equal(HttpStatusCode.NotFound, changed.StatusCode); Assert.DoesNotContain("Private draft", await changed.Content.ReadAsStringAsync());
-            using var scope = host.Services.CreateScope(); Assert.Empty(await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().WorkOrders.ToListAsync());
+            await host.InitializeAsync();
+            fixture = await Seed(host);
+            using var browser = host.Browser();
+            await Login(browser);
+            var path = await Prepare(browser, fixture.First.Id);
+            var fields = ReviewFields(await browser.GetStringAsync(path));
+            using var forged = await browser.PostAsync("/Assistant/Confirm", new FormUrlEncodedContent(fields.Select(x => new KeyValuePair<string, string>(x.Key, x.Value))));
+            Assert.Equal(HttpStatusCode.BadRequest, forged.StatusCode);
+            using var wrongConversation = await browser.GetAsync(path.Replace(fields.Single(x => x.Key == "conversationId").Value, Guid.NewGuid().ToString()));
+            Assert.Equal(HttpStatusCode.NotFound, wrongConversation.StatusCode);
+            using var guest = host.Browser();
+            using var denied = await guest.GetAsync(path);
+            Assert.Equal(HttpStatusCode.Redirect, denied.StatusCode);
+            revoke = true;
+            using var changed = await browser.GetAsync(path);
+            Assert.Equal(HttpStatusCode.NotFound, changed.StatusCode);
+            Assert.DoesNotContain("Private draft", await changed.Content.ReadAsStringAsync());
+            using var scope = host.Services.CreateScope();
+            Assert.Empty(await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().WorkOrders.ToListAsync());
         }
     }
 
-    private static async Task<string> Prepare(HttpClient browser, Guid membership)
+    internal static async Task<string> Prepare(HttpClient browser, Guid membership)
     {
         using var response = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", ("question", "A sink leaks in the kitchen. Water under the basin."),
-            ("membershipId", membership.ToString()), ("conversationId", Guid.NewGuid().ToString())); Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            ("membershipId", membership.ToString()), ("conversationId", Guid.NewGuid().ToString()));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return ReviewPath(await response.Content.ReadAsStringAsync());
     }
-    private static string ReviewPath(string html) => System.Net.WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Match(html, "href=\"(/Assistant/Review/[^\"]+)\"").Groups[1].Value);
-    private static (string Key, string Value)[] ReviewFields(string html) => new[] { "id", "conversationId", "version", "operationId" }.Select(name =>
+    internal static string ReviewPath(string html) => System.Net.WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Match(html, "href=\"(/Assistant/Review/[^\"]+)\"").Groups[1].Value);
+    internal static (string Key, string Value)[] ReviewFields(string html) => new[] { "id", "conversationId", "version", "operationId" }.Select(name =>
         (name, WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Match(html, "name=\"" + name + "\"[^>]*value=\"([^\"]+)\"").Groups[1].Value))).ToArray();
     [Theory]
     [InlineData("requests")]
     [InlineData("billing")]
     public async Task Record_cards_use_the_selected_membership_and_never_send_record_values_to_the_model(string route)
     {
-        var model = new Model { Route = route }; await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true }; await host.InitializeAsync();
-        var fixture = await Seed(host); var records = await SeedRecords(host, fixture); using var browser = host.Browser(); await Login(browser);
+        var model = new Model { Route = route };
+        await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true };
+        await host.InitializeAsync();
+        var fixture = await Seed(host);
+        var records = await SeedRecords(host, fixture);
+        using var browser = host.Browser();
+        await Login(browser);
         using var response = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", ("question", "Show my records"), ("membershipId", fixture.First.Id.ToString()));
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode); var html = await response.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
         Assert.Contains(route == "requests" ? "Selected dripping tap" : "Selected rent charge", html);
-        Assert.DoesNotContain("Other-membership-canary", html); Assert.DoesNotContain("Second confidential suite", html);
-        if (route == "requests") { Assert.Contains("Status: Triaged", html); Assert.Contains("/Maintenance/Details/" + records.Request, html); }
+        Assert.DoesNotContain("Other-membership-canary", html);
+        Assert.DoesNotContain("Second confidential suite", html);
+        if (route == "requests")
+        { Assert.Contains("Status: Triaged", html); Assert.Contains("/Maintenance/Details/" + records.Request, html); }
         else
         {
-            Assert.Contains("Issued: $1,125.00 USD", html); Assert.Contains("Recorded credits: $125.00 USD", html);
-            Assert.Contains("Charge after credits: $1,000.00 USD", html); Assert.Contains("not an outstanding balance", html);
+            Assert.Contains("Issued: $1,125.00 USD", html);
+            Assert.Contains("Recorded credits: $125.00 USD", html);
+            Assert.Contains("Charge after credits: $1,000.00 USD", html);
+            Assert.Contains("not an outstanding balance", html);
             Assert.Contains("/Billing/Account/" + records.Account, html);
         }
         var providerInput = System.Text.Json.JsonSerializer.Serialize(model.Input);
-        Assert.DoesNotContain("Selected dripping tap", providerInput); Assert.DoesNotContain("Selected rent charge", providerInput);
-        Assert.DoesNotContain("112500", providerInput); Assert.DoesNotContain(records.Account.ToString(), providerInput);
-        using var scope = host.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
-        Assert.Equal(7, await db.WorkOrders.CountAsync()); Assert.Equal(2, await db.Obligations.CountAsync()); Assert.Empty(await db.WorkOrderHistory.ToListAsync());
+        Assert.DoesNotContain("Selected dripping tap", providerInput);
+        Assert.DoesNotContain("Selected rent charge", providerInput);
+        Assert.DoesNotContain("112500", providerInput);
+        Assert.DoesNotContain(records.Account.ToString(), providerInput);
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+        Assert.Equal(7, await db.WorkOrders.CountAsync());
+        Assert.Equal(2, await db.Obligations.CountAsync());
+        Assert.Empty(await db.WorkOrderHistory.ToListAsync());
     }
 
     [Fact]
     public async Task Revoked_membership_suppresses_record_cards_even_without_knowledge_sources()
     {
-        var model = new Model { Route = "requests" }; AccountTestHost host = null!; Fixture fixture = null!;
+        var model = new Model { Route = "requests" };
+        AccountTestHost host = null!;
+        Fixture fixture = null!;
         host = new AccountTestHost
         {
             AssistantModel = model,
             AssistantTenantHelpEnabled = true,
             BeforeAssistantRelease = async () =>
         {
-            using var scope = host.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+            using var scope = host.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
             (await db.Memberships.SingleAsync(x => x.Id == fixture.First.Id)).Revoke(fixture.EditorId, "Access ended", DateTimeOffset.UtcNow);
-            db.ActiveGrants.Remove(await db.ActiveGrants.SingleAsync(x => x.MembershipId == fixture.First.Id)); await db.SaveChangesAsync();
+            db.ActiveGrants.Remove(await db.ActiveGrants.SingleAsync(x => x.MembershipId == fixture.First.Id));
+            await db.SaveChangesAsync();
         }
         };
         await using (host)
         {
-            await host.InitializeAsync(); fixture = await Seed(host); await SeedRecords(host, fixture); using var browser = host.Browser(); await Login(browser);
+            await host.InitializeAsync();
+            fixture = await Seed(host);
+            await SeedRecords(host, fixture);
+            using var browser = host.Browser();
+            await Login(browser);
             using var response = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", ("question", "records"), ("membershipId", fixture.First.Id.ToString()));
-            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode); Assert.Empty(model.Input!.Sources);
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+            Assert.Empty(model.Input!.Sources);
             Assert.DoesNotContain("Selected dripping tap", await response.Content.ReadAsStringAsync());
         }
     }
@@ -321,17 +477,28 @@ public sealed class AssistantTenantHttpTests
     [Fact]
     public async Task A_selected_original_membership_filters_before_generation_and_uses_private_citations_and_secure_routes()
     {
-        var model = new Model(); await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true }; await host.InitializeAsync();
-        var fixture = await Seed(host); using var browser = host.Browser(); await Login(browser);
-        var form = await browser.GetStringAsync("/Assistant"); Assert.Contains(fixture.First.Id.ToString(), form); Assert.Contains(fixture.Second.Id.ToString(), form);
+        var model = new Model();
+        await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true };
+        await host.InitializeAsync();
+        var fixture = await Seed(host);
+        using var browser = host.Browser();
+        await Login(browser);
+        var form = await browser.GetStringAsync("/Assistant");
+        Assert.Contains(fixture.First.Id.ToString(), form);
+        Assert.Contains(fixture.Second.Id.ToString(), form);
         using var response = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", ("question", "entry"), ("membershipId", fixture.First.Id.ToString()));
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode); var html = await response.Content.ReadAsStringAsync();
-        Assert.True(model.Input!.Tenant); Assert.Contains(model.Input.Sources, x => x.ArticleId == fixture.FirstArticle);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.True(model.Input!.Tenant);
+        Assert.Contains(model.Input.Sources, x => x.ArticleId == fixture.FirstArticle);
         Assert.DoesNotContain(model.Input.Sources, x => x.ArticleId == fixture.SecondArticle);
-        Assert.Contains("/Knowledge/TenantArticle/" + fixture.FirstArticle, html); Assert.Contains("/Maintenance/Create", html);
-        Assert.Contains("no-store", response.Headers.CacheControl!.ToString()); Assert.DoesNotContain("Second confidential suite", html);
+        Assert.Contains("/Knowledge/TenantArticle/" + fixture.FirstArticle, html);
+        Assert.Contains("/Maintenance/Create", html);
+        Assert.Contains("no-store", response.Headers.CacheControl!.ToString());
+        Assert.DoesNotContain("Second confidential suite", html);
         Assert.Contains("name=\"returnUrl\" value=\"/Assistant\"", html);
-        using var scope = host.Services.CreateScope(); Assert.Empty(await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().WorkOrders.ToListAsync());
+        using var scope = host.Services.CreateScope();
+        Assert.Empty(await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().WorkOrders.ToListAsync());
     }
 
     [Theory]
@@ -341,33 +508,47 @@ public sealed class AssistantTenantHttpTests
     [InlineData("expire")]
     public async Task Revocation_or_source_change_after_html_render_discards_protected_output_even_with_another_active_membership(string change)
     {
-        var model = new Model(); AccountTestHost host = null!; Fixture fixture = null!;
+        var model = new Model();
+        AccountTestHost host = null!;
+        Fixture fixture = null!;
         host = new AccountTestHost
         {
             AssistantModel = model,
             AssistantTenantHelpEnabled = true,
             BeforeAssistantRelease = async () =>
             {
-                using var scope = host.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+                using var scope = host.Services.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
                 if (change == "revoke")
                 {
                     (await db.Memberships.SingleAsync(x => x.Id == fixture.First.Id)).Revoke(fixture.EditorId, "Synthetic access ended", DateTimeOffset.UtcNow);
                     db.ActiveGrants.Remove(await db.ActiveGrants.SingleAsync(x => x.MembershipId == fixture.First.Id));
                 }
-                if (change == "stamp") (await db.Users.SingleAsync(x => x.Id == fixture.First.UserId)).SecurityStamp = Guid.NewGuid().ToString();
-                if (change == "withdraw") (await db.HelpArticles.SingleAsync(x => x.Id == fixture.FirstArticle)).Withdraw();
-                if (change == "expire") host.Clock.Offset = TimeSpan.FromHours(2);
+                if (change == "stamp")
+                    (await db.Users.SingleAsync(x => x.Id == fixture.First.UserId)).SecurityStamp = Guid.NewGuid().ToString();
+                if (change == "withdraw")
+                    (await db.HelpArticles.SingleAsync(x => x.Id == fixture.FirstArticle)).Withdraw();
+                if (change == "expire")
+                    host.Clock.Offset = TimeSpan.FromHours(2);
                 await db.SaveChangesAsync();
             }
         };
         await using (host)
         {
-            await host.InitializeAsync(); fixture = await Seed(host); using var browser = host.Browser(); await Login(browser);
+            await host.InitializeAsync();
+            fixture = await Seed(host);
+            using var browser = host.Browser();
+            await Login(browser);
             using var response = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", ("question", "entry"), ("membershipId", fixture.First.Id.ToString()));
-            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode); Assert.Equal(1, model.Calls);
-            var html = await response.Content.ReadAsStringAsync(); Assert.Contains("Access changed", html);
-            Assert.DoesNotContain("generated-private-canary", html); Assert.DoesNotContain("First confidential suite", html); Assert.DoesNotContain(fixture.FirstArticle.ToString(), html);
-            using var scope = host.Services.CreateScope(); Assert.True(await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().ActiveGrants.AnyAsync(x => x.MembershipId == fixture.Second.Id));
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+            Assert.Equal(1, model.Calls);
+            var html = await response.Content.ReadAsStringAsync();
+            Assert.Contains("Access changed", html);
+            Assert.DoesNotContain("generated-private-canary", html);
+            Assert.DoesNotContain("First confidential suite", html);
+            Assert.DoesNotContain(fixture.FirstArticle.ToString(), html);
+            using var scope = host.Services.CreateScope();
+            Assert.True(await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().ActiveGrants.AnyAsync(x => x.MembershipId == fixture.Second.Id));
         }
     }
 
@@ -378,44 +559,62 @@ public sealed class AssistantTenantHttpTests
     [InlineData("disabled")]
     public async Task Invalid_scope_is_rejected_before_provider_input(string mode)
     {
-        var model = new Model(); await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = mode != "disabled" }; await host.InitializeAsync();
-        var fixture = await Seed(host); using var browser = host.Browser();
-        if (mode != "guest") await Login(browser);
+        var model = new Model();
+        await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = mode != "disabled" };
+        await host.InitializeAsync();
+        var fixture = await Seed(host);
+        using var browser = host.Browser();
+        if (mode != "guest")
+            await Login(browser);
         if (mode == "revoked")
         {
-            using var scope = host.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+            using var scope = host.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
             (await db.Memberships.SingleAsync(x => x.Id == fixture.First.Id)).Revoke(fixture.EditorId, "Access ended", DateTimeOffset.UtcNow);
-            db.ActiveGrants.Remove(await db.ActiveGrants.SingleAsync(x => x.MembershipId == fixture.First.Id)); await db.SaveChangesAsync();
+            db.ActiveGrants.Remove(await db.ActiveGrants.SingleAsync(x => x.MembershipId == fixture.First.Id));
+            await db.SaveChangesAsync();
         }
         using var response = await AccountTestHost.PostAsync(browser, "/Assistant", "/Assistant/Ask", ("question", "entry"),
             ("membershipId", (mode == "foreign" ? fixture.Foreign.Id : fixture.First.Id).ToString()));
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode); Assert.Equal(0, model.Calls);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(0, model.Calls);
     }
 
     [Fact]
     public async Task Current_access_probe_ends_old_output_and_never_returns_private_content()
     {
-        var model = new Model(); await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true }; await host.InitializeAsync();
-        var fixture = await Seed(host); using var browser = host.Browser(); await Login(browser);
-        using var accessible = await browser.GetAsync("/Assistant/Access?membershipId=" + fixture.First.Id); Assert.Equal(HttpStatusCode.NoContent, accessible.StatusCode);
-        using var foreign = await browser.GetAsync("/Assistant/Access?membershipId=" + fixture.Foreign.Id); Assert.Equal(HttpStatusCode.NotFound, foreign.StatusCode);
-        Assert.DoesNotContain("confidential", await foreign.Content.ReadAsStringAsync()); Assert.Equal(0, model.Calls);
+        var model = new Model();
+        await using var host = new AccountTestHost { AssistantModel = model, AssistantTenantHelpEnabled = true };
+        await host.InitializeAsync();
+        var fixture = await Seed(host);
+        using var browser = host.Browser();
+        await Login(browser);
+        using var accessible = await browser.GetAsync("/Assistant/Access?membershipId=" + fixture.First.Id);
+        Assert.Equal(HttpStatusCode.NoContent, accessible.StatusCode);
+        using var foreign = await browser.GetAsync("/Assistant/Access?membershipId=" + fixture.Foreign.Id);
+        Assert.Equal(HttpStatusCode.NotFound, foreign.StatusCode);
+        Assert.DoesNotContain("confidential", await foreign.Content.ReadAsStringAsync());
+        Assert.Equal(0, model.Calls);
     }
 
-    private static async Task Login(HttpClient browser)
+    internal static async Task Login(HttpClient browser)
     {
         using var response = await AccountTestHost.PostAsync(browser, "/Account/Login", "/Account/Login", ("Email", "assistant-tenant@example.test"), ("Password", AccountTestHost.Password));
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
     }
-    private static async Task<Fixture> Seed(AccountTestHost host)
+    internal static async Task<Fixture> Seed(AccountTestHost host)
     {
-        var (editor, firstBuilding) = await host.SeedManagerAsync(); using var scope = host.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+        var (editor, firstBuilding) = await host.SeedManagerAsync();
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
         var users = scope.ServiceProvider.GetRequiredService<UserManager<OfficeUser>>();
         var tenant = new OfficeUser { UserName = "assistant-tenant@example.test", Email = "assistant-tenant@example.test", EmailConfirmed = true };
         var outsider = new OfficeUser { UserName = "assistant-outsider@example.test", Email = "assistant-outsider@example.test", EmailConfirmed = true };
-        Assert.True((await users.CreateAsync(tenant, AccountTestHost.Password)).Succeeded); Assert.True((await users.CreateAsync(outsider, AccountTestHost.Password)).Succeeded);
+        Assert.True((await users.CreateAsync(tenant, AccountTestHost.Password)).Succeeded);
+        Assert.True((await users.CreateAsync(outsider, AccountTestHost.Password)).Succeeded);
         var secondBuilding = new Building { Name = "Second building" };
-        var firstSuite = new Suite { BuildingId = firstBuilding, Name = "First confidential suite" }; var secondSuite = new Suite { BuildingId = secondBuilding.Id, Name = "Second confidential suite" };
+        var firstSuite = new Suite { BuildingId = firstBuilding, Name = "First confidential suite" };
+        var secondSuite = new Suite { BuildingId = secondBuilding.Id, Name = "Second confidential suite" };
         var first = Membership.Grant(firstSuite.Id, tenant.Id, DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddHours(1));
         var second = Membership.Grant(secondSuite.Id, tenant.Id, DateTimeOffset.UtcNow.AddDays(-1));
         var foreign = Membership.Grant(firstSuite.Id, outsider.Id, DateTimeOffset.UtcNow.AddDays(-1));
@@ -426,23 +625,36 @@ public sealed class AssistantTenantHttpTests
         var ids = new List<Guid>();
         foreach (var building in new[] { firstBuilding, secondBuilding.Id })
         {
-            var id = Guid.NewGuid(); var revision = HelpRevision.Create(id, "Entry guidance", "Private entry instructions for " + building, ArticleAudience.ActiveTenant, editor, new(2027, 1, 1), DateTimeOffset.UtcNow);
-            var article = HelpArticle.Create(id, building, revision.Id); article.Publish(revision.Id); db.AddRange(article, revision); ids.Add(id);
+            var id = Guid.NewGuid();
+            var revision = HelpRevision.Create(id, "Entry guidance", "Private entry instructions for " + building, ArticleAudience.ActiveTenant, editor, new(2027, 1, 1), DateTimeOffset.UtcNow);
+            var article = HelpArticle.Create(id, building, revision.Id);
+            article.Publish(revision.Id);
+            db.AddRange(article, revision);
+            ids.Add(id);
         }
-        await db.SaveChangesAsync(); return new(first, second, foreign, ids[0], ids[1], editor);
+        await db.SaveChangesAsync();
+        return new(first, second, foreign, ids[0], ids[1], editor);
     }
-    private sealed record Fixture(Membership First, Membership Second, Membership Foreign, Guid FirstArticle, Guid SecondArticle, string EditorId);
-    private static async Task<(Guid Request, Guid Account)> SeedRecords(AccountTestHost host, Fixture fixture)
+    internal sealed record Fixture(Membership First, Membership Second, Membership Foreign, Guid FirstArticle, Guid SecondArticle, string EditorId);
+    internal static async Task<(Guid Request, Guid Account)> SeedRecords(AccountTestHost host, Fixture fixture)
     {
-        using var scope = host.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); var now = DateTimeOffset.UtcNow;
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+        var now = DateTimeOffset.UtcNow;
         var request = WorkOrder.Submit(fixture.First.SuiteId, fixture.First.Id, fixture.First.UserId, "Selected dripping tap", "Synthetic water leak", "Kitchen", now.AddDays(-1));
-        request.Triage(Priority.Normal, Trade.Plumbing, now); db.Add(request);
-        for (var i = 0; i < 6; i++) db.Add(WorkOrder.Submit(fixture.Second.SuiteId, fixture.Second.Id, fixture.Second.UserId, "Other-membership-canary " + i, "Synthetic description", "Elsewhere", now));
-        var first = RentAccount.Open(Guid.NewGuid(), fixture.First.Id); var second = RentAccount.Open(Guid.NewGuid(), fixture.Second.Id);
+        request.Triage(Priority.Normal, Trade.Plumbing, now);
+        db.Add(request);
+        for (var i = 0; i < 6; i++)
+            db.Add(WorkOrder.Submit(fixture.Second.SuiteId, fixture.Second.Id, fixture.Second.UserId, "Other-membership-canary " + i, "Synthetic description", "Elsewhere", now));
+        var first = RentAccount.Open(Guid.NewGuid(), fixture.First.Id);
+        var second = RentAccount.Open(Guid.NewGuid(), fixture.Second.Id);
         var charge = Obligation.Issue(first.Id, new Money(112500), "Selected rent charge", new(2026, 11, 1), fixture.EditorId, now);
         var other = Obligation.Issue(second.Id, new Money(99999), "Other-membership-canary charge", new(2026, 11, 1), fixture.EditorId, now);
         var credit = ObligationCredit.RecordLocal(Guid.NewGuid(), fixture.EditorId, new(charge.Id, first.Id, charge.Version, charge.AmountMinorUnits), 12500, ObligationCreditKind.Credit, "Synthetic credit", now);
-        charge.FinancialStateChanged(); db.AddRange(first, second, charge, other, credit); await db.SaveChangesAsync(); return (request.Id, first.Id);
+        charge.FinancialStateChanged();
+        db.AddRange(first, second, charge, other, credit);
+        await db.SaveChangesAsync();
+        return (request.Id, first.Id);
     }
     private sealed class Model : IAssistantModel
     {
@@ -452,7 +664,8 @@ public sealed class AssistantTenantHttpTests
         public int Calls { get; private set; }
         public Task<AssistantModelReply> AnswerAsync(AssistantModelInput input, CancellationToken cancellationToken)
         {
-            Input = input; Calls++;
+            Input = input;
+            Calls++;
             return Task.FromResult(new AssistantModelReply(AssistantModelCode.Success, "generated-private-canary", input.Sources.Select(x => x.ArticleId).ToArray(), Route, Draft: Draft));
         }
     }

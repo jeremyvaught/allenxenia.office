@@ -17,29 +17,37 @@ if (!directory.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.O
 Directory.CreateDirectory(directory);
 var database = Path.Combine(directory, "office.db");
 if (File.Exists(database)) throw new InvalidOperationException("Refusing to overwrite an existing database.");
-var services = new ServiceCollection(); services.AddLogging();
+var services = new ServiceCollection();
+services.AddLogging();
 services.AddDbContext<SqliteOfficeDbContext>(options => options.UseSqlite($"Data Source={database};Foreign Keys=True"));
 services.AddScoped<OfficeDbContext>(sp => sp.GetRequiredService<SqliteOfficeDbContext>());
 services.AddDataProtection().SetApplicationName("AllenXeniaOffice.Build").PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(directory, "keys")));
 services.AddIdentityCore<OfficeUser>().AddRoles<IdentityRole>().AddEntityFrameworkStores<OfficeDbContext>().AddDefaultTokenProviders();
 services.Replace(ServiceDescriptor.Scoped<IUserStore<OfficeUser>, ProtectedUserStore>());
-await using var provider = services.BuildServiceProvider(); using var scope = provider.CreateScope();
-var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); var users = scope.ServiceProvider.GetRequiredService<UserManager<OfficeUser>>();
+await using var provider = services.BuildServiceProvider();
+using var scope = provider.CreateScope();
+var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+var users = scope.ServiceProvider.GetRequiredService<UserManager<OfficeUser>>();
 await db.Database.MigrateAsync();
 const string password = "Synthetic-browser-2026!";
 var fixtures = new Dictionary<string, object>();
 foreach (var project in new[] { "chromium", "mobile", "webkit-mobile" })
 {
-    var building = new Building { Name = $"Browser test {project}" }; var suite = new Suite { BuildingId = building.Id, Name = "Synthetic office" };
-    db.AddRange(building, suite); await db.SaveChangesAsync();
+    var building = new Building { Name = $"Browser test {project}" };
+    var suite = new Suite { BuildingId = building.Id, Name = "Synthetic office" };
+    db.AddRange(building, suite);
+    await db.SaveChangesAsync();
     var tenant = new OfficeUser { Email = $"tenant-{project}@example.test", UserName = $"tenant-{project}@example.test", EmailConfirmed = true };
     var manager = new OfficeUser { Email = $"manager-{project}@example.test", UserName = $"manager-{project}@example.test", EmailConfirmed = true };
     foreach (var user in new[] { tenant, manager })
-        if (!(await users.CreateAsync(user, password)).Succeeded) throw new InvalidOperationException("Fixture account creation failed.");
-    await users.ResetAuthenticatorKeyAsync(manager); await users.SetTwoFactorEnabledAsync(manager, true);
+        if (!(await users.CreateAsync(user, password)).Succeeded)
+            throw new InvalidOperationException("Fixture account creation failed.");
+    await users.ResetAuthenticatorKeyAsync(manager);
+    await users.SetTwoFactorEnabledAsync(manager, true);
     var membership = Membership.Grant(suite.Id, tenant.Id, DateTimeOffset.UtcNow.AddDays(-1));
     db.AddRange(membership, new ActiveGrant { UserId = tenant.Id, SuiteId = suite.Id, MembershipId = membership.Id },
-        new BuildingManager { UserId = manager.Id, BuildingId = building.Id }); await db.SaveChangesAsync();
+        new BuildingManager { UserId = manager.Id, BuildingId = building.Id });
+    await db.SaveChangesAsync();
     var oldMembership = Membership.Grant(suite.Id, tenant.Id, DateTimeOffset.UtcNow.AddYears(-1));
     oldMembership.Revoke(manager.Id, "Previous tenancy ended", DateTimeOffset.UtcNow.AddDays(-2));
     var account = RentAccount.Open(Guid.NewGuid(), oldMembership.Id);
@@ -59,27 +67,37 @@ foreach (var project in new[] { "chromium", "mobile", "webkit-mobile" })
     var payBinding = BillingCustomerBinding.Create(payAccount.Id, "acct_browser_payments", false, "cus_pay_" + project.Replace('-', '_'), DateTimeOffset.UtcNow);
     var payDebt = Obligation.Issue(payAccount.Id, new Money(1000), "Current payment charge", new DateOnly(2026, 10, 1), manager.Id, DateTimeOffset.UtcNow);
     var paySmall = Obligation.Issue(payAccount.Id, new Money(1000), "Earlier small remainder", new DateOnly(2026, 9, 1), manager.Id, DateTimeOffset.UtcNow);
-    var payCredit = ObligationCredit.RecordLocal(Guid.NewGuid(), manager.Id, new(paySmall.Id, payAccount.Id, paySmall.Version, 1000), 975, ObligationCreditKind.Credit, "Approved earlier credit", DateTimeOffset.UtcNow); paySmall.FinancialStateChanged();
-    db.AddRange(paySuite, payMember, payAccount, payBinding, payDebt, paySmall, payCredit, new ActiveGrant { UserId = tenant.Id, SuiteId = paySuite.Id, MembershipId = payMember.Id }); await db.SaveChangesAsync();
+    var payCredit = ObligationCredit.RecordLocal(Guid.NewGuid(), manager.Id, new(paySmall.Id, payAccount.Id, paySmall.Version, 1000), 975, ObligationCreditKind.Credit, "Approved earlier credit", DateTimeOffset.UtcNow);
+    paySmall.FinancialStateChanged();
+    db.AddRange(paySuite, payMember, payAccount, payBinding, payDebt, paySmall, payCredit, new ActiveGrant { UserId = tenant.Id, SuiteId = paySuite.Id, MembershipId = payMember.Id });
+    await db.SaveChangesAsync();
     var autoSuite = new Suite { BuildingId = building.Id, Name = "Autopay test office" };
-    var autoMember = Membership.Grant(autoSuite.Id, tenant.Id, DateTimeOffset.UtcNow.AddDays(-1)); var autoAccount = RentAccount.Open(Guid.NewGuid(), autoMember.Id);
+    var autoMember = Membership.Grant(autoSuite.Id, tenant.Id, DateTimeOffset.UtcNow.AddDays(-1));
+    var autoAccount = RentAccount.Open(Guid.NewGuid(), autoMember.Id);
     var autoBinding = BillingCustomerBinding.Create(autoAccount.Id, "acct_browser_payments", false, "cus_auto_" + project.Replace('-', '_'), DateTimeOffset.UtcNow);
     var autoTerms = RentAgreement.Create(autoAccount.Id, new Money(100000), 31, new DateOnly(2026, 1, 1), null, manager.Id, DateTimeOffset.UtcNow);
-    db.AddRange(autoSuite, autoMember, autoAccount, autoBinding, autoTerms, new ActiveGrant { UserId = tenant.Id, SuiteId = autoSuite.Id, MembershipId = autoMember.Id }); await db.SaveChangesAsync();
+    db.AddRange(autoSuite, autoMember, autoAccount, autoBinding, autoTerms, new ActiveGrant { UserId = tenant.Id, SuiteId = autoSuite.Id, MembershipId = autoMember.Id });
+    await db.SaveChangesAsync();
     var setupNow = DateTimeOffset.FromUnixTimeSeconds(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
     var setupSuite = new Suite { BuildingId = building.Id, Name = "Saved setup test office" };
-    var setupMember = Membership.Grant(setupSuite.Id, tenant.Id, setupNow.AddDays(-1)); var setupAccount = RentAccount.Open(Guid.NewGuid(), setupMember.Id);
+    var setupMember = Membership.Grant(setupSuite.Id, tenant.Id, setupNow.AddDays(-1));
+    var setupAccount = RentAccount.Open(Guid.NewGuid(), setupMember.Id);
     var setupBinding = BillingCustomerBinding.Create(setupAccount.Id, "acct_browser_payments", false, "cus_setup_" + project.Replace('-', '_'), setupNow);
     var setupTerms = RentAgreement.Create(setupAccount.Id, new Money(100000), 31, new DateOnly(2026, 1, 1), null, manager.Id, setupNow);
     var setupAuth = AutopayAuthorization.Consent(Guid.NewGuid(), tenant.Id, setupAccount, setupBinding, AutopaySchedule.Select(setupTerms, setupNow, []), true, setupNow);
-    var setupWork = AutopayWork.Enqueue(setupAuth, AutopayWorkStage.Setup, setupNow, new("https://browser.example.test", "pmc_browser_payments")); setupWork.Claim(setupNow); setupWork.BeginDispatch(setupNow);
+    var setupWork = AutopayWork.Enqueue(setupAuth, AutopayWorkStage.Setup, setupNow, new("https://browser.example.test", "pmc_browser_payments"));
+    setupWork.Claim(setupNow);
+    setupWork.BeginDispatch(setupNow);
     setupAuth.ObserveVerifiedSetup(new("acct_browser_payments", false, setupAccount.Id, setupBinding.CustomerId, setupAuth.ConsentHash, "cs_setup_" + project.Replace('-', '_'), setupNow.AddHours(24), AutopaySetupState.Waiting, null, true, false, setupNow), false);
     setupWork.Complete(setupWork.LeaseToken, CollectionWorkOutcome.Waiting, setupNow);
-    db.AddRange(setupSuite, setupMember, setupAccount, setupBinding, setupTerms, setupAuth, setupWork, new AutopaySlot { AccountId = setupAccount.Id, AuthorizationId = setupAuth.Id }, new ActiveGrant { UserId = tenant.Id, SuiteId = setupSuite.Id, MembershipId = setupMember.Id }); await db.SaveChangesAsync();
+    db.AddRange(setupSuite, setupMember, setupAccount, setupBinding, setupTerms, setupAuth, setupWork, new AutopaySlot { AccountId = setupAccount.Id, AuthorizationId = setupAuth.Id }, new ActiveGrant { UserId = tenant.Id, SuiteId = setupSuite.Id, MembershipId = setupMember.Id });
+    await db.SaveChangesAsync();
     var newManager = new OfficeUser { Email = $"first-manager-{project}@example.test", UserName = $"first-manager-{project}@example.test", EmailConfirmed = true };
-    if (!(await users.CreateAsync(newManager, password)).Succeeded) throw new InvalidOperationException("Fixture first-manager creation failed.");
+    if (!(await users.CreateAsync(newManager, password)).Succeeded)
+        throw new InvalidOperationException("Fixture first-manager creation failed.");
     var newBuilding = new Building { Name = $"First sign-in {project}" };
-    db.AddRange(newBuilding, new BuildingManager { UserId = newManager.Id, BuildingId = newBuilding.Id }); await db.SaveChangesAsync();
+    db.AddRange(newBuilding, new BuildingManager { UserId = newManager.Id, BuildingId = newBuilding.Id });
+    await db.SaveChangesAsync();
     fixtures[project] = new { membershipId = membership.Id, paymentAccountId = payAccount.Id, autopayAccountId = autoAccount.Id, autopaySetupAccountId = setupAccount.Id, tenantEmail = tenant.Email, managerEmail = manager.Email, firstManagerEmail = newManager.Email, password, key = await users.GetAuthenticatorKeyAsync(manager) };
 }
 var path = Path.Combine(directory, "accounts.json");

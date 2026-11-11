@@ -83,7 +83,8 @@ public sealed class MaintenanceTests
     [Fact]
     public void Unsupported_transition_or_enum_cannot_change_version()
     {
-        var request = NewRequest(); var originalVersion = request.Version;
+        var request = NewRequest();
+        var originalVersion = request.Version;
         Assert.Throws<InvalidOperationException>(() => request.Close(Now));
         Assert.Throws<ArgumentException>(() => request.Triage((Priority)99, Trade.General, Now));
         Assert.Equal(WorkOrderStatus.Submitted, request.Status);

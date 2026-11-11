@@ -56,7 +56,8 @@ public sealed class WorkOrder
         Require(WorkOrderStatus.Submitted);
         if (!Enum.IsDefined(priority) || !Enum.IsDefined(trade))
             throw new ArgumentException("Choose a supported priority and trade.");
-        Priority = priority; Trade = trade;
+        Priority = priority;
+        Trade = trade;
         Status = WorkOrderStatus.Triaged;
         Changed(now);
     }
@@ -70,7 +71,8 @@ public sealed class WorkOrder
         var normalizedManager = managerId is null ? null : Required(managerId, 450);
         AssignedManagerId = normalizedManager;
         AssignedContractorId = contractorId;
-        if (Status != WorkOrderStatus.InProgress) Status = WorkOrderStatus.Assigned;
+        if (Status != WorkOrderStatus.InProgress)
+            Status = WorkOrderStatus.Assigned;
         Changed(now);
     }
 
@@ -87,7 +89,8 @@ public sealed class WorkOrder
     {
         Require(WorkOrderStatus.InProgress);
         var validated = Required(resolution, 2000);
-        Resolution = validated; Status = WorkOrderStatus.Completed;
+        Resolution = validated;
+        Status = WorkOrderStatus.Completed;
         Changed(now);
     }
 
@@ -113,7 +116,10 @@ public sealed class WorkOrder
             throw new InvalidOperationException("Only finished requests can be reopened.");
         Required(explanation, 2000);
         Status = WorkOrderStatus.Submitted;
-        Priority = null; Trade = null; AssignedManagerId = null; AssignedContractorId = null;
+        Priority = null;
+        Trade = null;
+        AssignedManagerId = null;
+        AssignedContractorId = null;
         Resolution = null;
         Changed(now);
     }
@@ -126,12 +132,14 @@ public sealed class WorkOrder
 
     private void Require(WorkOrderStatus required)
     {
-        if (Status != required) throw new InvalidOperationException($"Request must be {required} for this action.");
+        if (Status != required)
+            throw new InvalidOperationException($"Request must be {required} for this action.");
     }
 
     private void Changed(DateTimeOffset now)
     {
-        Version = Guid.NewGuid(); UpdatedAt = now.ToUniversalTime();
+        Version = Guid.NewGuid();
+        UpdatedAt = now.ToUniversalTime();
     }
 
     private static string Required(string value, int maximum)

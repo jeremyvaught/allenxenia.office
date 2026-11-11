@@ -13,7 +13,8 @@ public sealed class MaintenanceController(MaintenanceActions actions) : Controll
     [AcceptVerbs("GET", "POST"), RequestSizeLimit(10000)]
     public async Task<IActionResult> Index(string? search)
     {
-        if (!ModelState.IsValid || !MaintenanceActions.ValidSearch(search)) return BadRequest();
+        if (!ModelState.IsValid || !MaintenanceActions.ValidSearch(search))
+            return BadRequest();
         ViewData["Search"] = search?.Trim();
         return View(await actions.ListAsync(false, HttpContext.RequestAborted, search));
     }
@@ -21,9 +22,11 @@ public sealed class MaintenanceController(MaintenanceActions actions) : Controll
     [Authorize(Policy = OfficeSecurity.ManagerPolicy), HttpGet]
     public async Task<IActionResult> Manage(MaintenanceQueueQuery query)
     {
-        if (!ModelState.IsValid || !query.IsValid) return BadRequest();
+        if (!ModelState.IsValid || !query.IsValid)
+            return BadRequest();
         var page = await actions.QueueAsync(query);
-        if (page is null) return NotFound();
+        if (page is null)
+            return NotFound();
         ViewData["Manager"] = true;
         ViewData["ObservedAt"] = page.ObservedAt;
         return View(page);
@@ -36,7 +39,8 @@ public sealed class MaintenanceController(MaintenanceActions actions) : Controll
     [HttpGet]
     public async Task<IActionResult> Create()
     {
-        if (!await Choices()) return RedirectToAction("Index", "Portal");
+        if (!await Choices())
+            return RedirectToAction("Index", "Portal");
         return View(new NewRequestForm());
     }
 
@@ -45,8 +49,10 @@ public sealed class MaintenanceController(MaintenanceActions actions) : Controll
     {
         if (!ModelState.IsValid)
         {
-            if (!await Choices()) return NotFound();
-            Response.StatusCode = 400; return View(form);
+            if (!await Choices())
+                return NotFound();
+            Response.StatusCode = 400;
+            return View(form);
         }
         var result = await actions.SubmitAsync(new(form.OperationId, form.MembershipId, form.Title, form.Description, form.Location));
         return Outcome(result, false);
@@ -65,7 +71,9 @@ public sealed class MaintenanceController(MaintenanceActions actions) : Controll
         if (!ModelState.IsValid)
         {
             await Choices(true);
-            ViewData["Manager"] = true; Response.StatusCode = 400; return View("Create", form);
+            ViewData["Manager"] = true;
+            Response.StatusCode = 400;
+            return View("Create", form);
         }
         return Outcome(await actions.SubmitOnBehalfAsync(new(form.OperationId, form.MembershipId, form.Title, form.Description, form.Location)), true);
     }
@@ -79,10 +87,14 @@ public sealed class MaintenanceController(MaintenanceActions actions) : Controll
     private async Task<IActionResult> ApplyChange(ChangeRequestForm form, bool management)
     {
         var result = ModelState.IsValid ? await actions.ChangeAsync(form.Command(), management) : new MaintenanceResult(MaintenanceCode.ValidationFailed);
-        if (result.Code is not (MaintenanceCode.Conflict or MaintenanceCode.ValidationFailed)) return Outcome(result, management);
+        if (result.Code is not (MaintenanceCode.Conflict or MaintenanceCode.ValidationFailed))
+            return Outcome(result, management);
         var current = await actions.ReadAsync(form.WorkOrderId, management, HttpContext.RequestAborted);
-        if (current is null) return NotFound();
-        ViewData["Manager"] = management; ViewData["ActionDraft"] = form; ViewData["ActionError"] = result.Code;
+        if (current is null)
+            return NotFound();
+        ViewData["Manager"] = management;
+        ViewData["ActionDraft"] = form;
+        ViewData["ActionError"] = result.Code;
         Response.StatusCode = result.Code == MaintenanceCode.Conflict ? 409 : 400;
         return View("Details", current);
     }
@@ -90,7 +102,8 @@ public sealed class MaintenanceController(MaintenanceActions actions) : Controll
     private async Task<IActionResult> DetailsView(Guid id, bool management)
     {
         var details = await actions.ReadAsync(id, management);
-        if (details is null) return NotFound();
+        if (details is null)
+            return NotFound();
         ViewData["Manager"] = management;
         return View("Details", details);
     }
@@ -107,8 +120,10 @@ public sealed class MaintenanceController(MaintenanceActions actions) : Controll
 
     private IActionResult Error(MaintenanceCode code)
     {
-        if (code == MaintenanceCode.Unavailable) return NotFound();
-        if (code == MaintenanceCode.AuthenticationRequired) return Challenge();
+        if (code == MaintenanceCode.Unavailable)
+            return NotFound();
+        if (code == MaintenanceCode.AuthenticationRequired)
+            return Challenge();
         Response.StatusCode = code == MaintenanceCode.Conflict ? 409 : 400;
         return View("ActionError", code);
     }

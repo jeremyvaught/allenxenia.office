@@ -17,7 +17,8 @@ public sealed class Membership
     {
         if (suiteId == Guid.Empty || string.IsNullOrWhiteSpace(userId) || userId.Length > 450)
             throw new ArgumentException("A suite and user are required.");
-        if (endsAt <= startsAt) throw new ArgumentException("End must follow the start.");
+        if (endsAt <= startsAt)
+            throw new ArgumentException("End must follow the start.");
         return new Membership
         {
             Id = Guid.NewGuid(),
@@ -35,8 +36,11 @@ public sealed class Membership
     {
         if (string.IsNullOrWhiteSpace(actorId) || string.IsNullOrWhiteSpace(reason) || reason.Trim().Length > 2000)
             throw new ArgumentException("Actor and a reason of at most 2000 characters are required.");
-        if (RevokedAt is not null) return;
-        RevokedAt = now.ToUniversalTime(); RevokedBy = actorId; RevocationReason = reason.Trim();
+        if (RevokedAt is not null)
+            return;
+        RevokedAt = now.ToUniversalTime();
+        RevokedBy = actorId;
+        RevocationReason = reason.Trim();
         Version = Guid.NewGuid();
     }
 }

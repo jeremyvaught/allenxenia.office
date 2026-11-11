@@ -15,17 +15,26 @@ public static class FinancialExceptionContract
     {
         var now = DateTimeOffset.UtcNow;
         OfficeUser User(string kind) => new() { UserName = "financial-" + kind + "-" + Guid.NewGuid().ToString("N"), Email = kind + "@example.test", TwoFactorEnabled = true };
-        var manager = User("manager"); var otherManager = User("other-manager"); var outsider = User("outsider"); var payer = User("payer");
-        var building = new Building { Name = "Financial management" }; var foreign = new Building { Name = "Foreign financial management" };
-        var suite = new Suite { BuildingId = building.Id, Name = "Managed financial suite" }; var hiddenSuite = new Suite { BuildingId = foreign.Id, Name = "Hidden financial suite" };
-        var membership = Membership.Grant(suite.Id, payer.Id, now.AddYears(-1)); membership.Revoke(manager.Id, "Original access ended", now);
+        var manager = User("manager");
+        var otherManager = User("other-manager");
+        var outsider = User("outsider");
+        var payer = User("payer");
+        var building = new Building { Name = "Financial management" };
+        var foreign = new Building { Name = "Foreign financial management" };
+        var suite = new Suite { BuildingId = building.Id, Name = "Managed financial suite" };
+        var hiddenSuite = new Suite { BuildingId = foreign.Id, Name = "Hidden financial suite" };
+        var membership = Membership.Grant(suite.Id, payer.Id, now.AddYears(-1));
+        membership.Revoke(manager.Id, "Original access ended", now);
         var hiddenMembership = Membership.Grant(hiddenSuite.Id, payer.Id, now.AddYears(-1));
-        var account = RentAccount.Open(Guid.NewGuid(), membership.Id); var hiddenAccount = RentAccount.Open(Guid.NewGuid(), hiddenMembership.Id);
+        var account = RentAccount.Open(Guid.NewGuid(), membership.Id);
+        var hiddenAccount = RentAccount.Open(Guid.NewGuid(), hiddenMembership.Id);
         var binding = BillingCustomerBinding.Create(account.Id, "acct_cases", false, "cus_" + Guid.NewGuid().ToString("N"), now);
         var hiddenBinding = BillingCustomerBinding.Create(hiddenAccount.Id, "acct_cases", false, "cus_" + Guid.NewGuid().ToString("N"), now);
         var debt = Obligation.Issue(account.Id, new Money(1000), "Reviewed case debt", new DateOnly(2026, 10, 1), payer.Id, now);
         var attempt = PaymentAttempt.Admit(Guid.NewGuid(), payer.Id, binding, [new(debt.Id, account.Id, debt.Version, 1000)], now);
-        var work = CollectionWork.Enqueue(attempt, new("https://cases.example.test", "pmc_cases")); attempt.BeginDispatch(now); attempt.AttachHandoff("cs_" + attempt.Id.ToString("N"), now.AddHours(1), now);
+        var work = CollectionWork.Enqueue(attempt, new("https://cases.example.test", "pmc_cases"));
+        attempt.BeginDispatch(now);
+        attempt.AttachHandoff("cs_" + attempt.Id.ToString("N"), now.AddHours(1), now);
         var issue = FinancialException.Open(attempt, FinancialFailure.ProviderUnknown, null, now);
         await using (var db = create())
         {
@@ -42,54 +51,76 @@ public static class FinancialExceptionContract
             }
             await db.SaveChangesAsync();
         }
-        var services = new ServiceCollection(); services.AddSingleton(TimeProvider.System); services.AddScoped<OfficeDbContext>(_ => create());
-        services.AddScoped<TestActor>(); services.AddScoped<ICurrentActor>(sp => sp.GetRequiredService<TestActor>());
+        var services = new ServiceCollection();
+        services.AddSingleton(TimeProvider.System);
+        services.AddScoped<OfficeDbContext>(_ => create());
+        services.AddScoped<TestActor>();
+        services.AddScoped<ICurrentActor>(sp => sp.GetRequiredService<TestActor>());
         services.AddSingleton(new FinancialRecoveryPolicy(true));
-        services.AddScoped<IFinancialExceptionStore, FinancialExceptionStore>(); services.AddScoped<FinancialExceptionActions>();
+        services.AddScoped<IFinancialExceptionStore, FinancialExceptionStore>();
+        services.AddScoped<FinancialExceptionActions>();
         await using var provider = services.BuildServiceProvider();
         var actor = new Actor(manager.Id, new HashSet<Guid> { building.Id }, true, true);
         var second = new Actor(otherManager.Id, new HashSet<Guid> { building.Id }, true, true);
         var tenant = new Actor(payer.Id, new HashSet<Guid>(), false, false);
         async Task<T> As<T>(Actor principal, Func<FinancialExceptionActions, Task<T>> action)
         {
-            using var scope = provider.CreateScope(); scope.ServiceProvider.GetRequiredService<TestActor>().Actor = principal;
+            using var scope = provider.CreateScope();
+            scope.ServiceProvider.GetRequiredService<TestActor>().Actor = principal;
             return await action(scope.ServiceProvider.GetRequiredService<FinancialExceptionActions>());
         }
-        var rows = await As(actor, x => x.ReadAsync()); Assert.Single(rows); Assert.Equal(issue.Id, rows.Single().Id);
-        Assert.True(rows.Single().CanReconcile); Assert.Equal(CollectionWorkState.Queued, rows.Single().WorkState); Assert.Equal(0, rows.Single().AutomaticAttempts);
-        Assert.Equal(2, rows.Single().Owners.Count); Assert.Equal(debt.Id, rows.Single().Items.Single().ObligationId);
-        Assert.Empty(await As(tenant, x => x.ReadAsync())); Assert.Empty(await As(actor with { ChallengedMfa = false }, x => x.ReadAsync()));
+        var rows = await As(actor, x => x.ReadAsync());
+        Assert.Single(rows);
+        Assert.Equal(issue.Id, rows.Single().Id);
+        Assert.True(rows.Single().CanReconcile);
+        Assert.Equal(CollectionWorkState.Queued, rows.Single().WorkState);
+        Assert.Equal(0, rows.Single().AutomaticAttempts);
+        Assert.Equal(2, rows.Single().Owners.Count);
+        Assert.Equal(debt.Id, rows.Single().Items.Single().ObligationId);
+        Assert.Empty(await As(tenant, x => x.ReadAsync()));
+        Assert.Empty(await As(actor with { ChallengedMfa = false }, x => x.ReadAsync()));
         Assert.Single(await As(actor with { ManagedBuildings = new HashSet<Guid> { building.Id, foreign.Id } }, x => x.ReadAsync()));
         var assign = new FinancialCaseCommand(Guid.NewGuid(), issue.Id, issue.Version, FinancialCaseAction.Assign, " Review provider history ", otherManager.Id);
         Assert.Equal(BillingCode.Unavailable, (await As(tenant, x => x.ChangeAsync(assign))).Code);
         Assert.Equal(BillingCode.Unavailable, (await As(actor with { RecentMfa = false }, x => x.ChangeAsync(assign))).Code);
         Assert.Equal(BillingCode.Unavailable, (await As(actor, x => x.ChangeAsync(assign with { OwnerUserId = outsider.Id }))).Code);
-        var assigned = await As(actor, x => x.ChangeAsync(assign)); Assert.Equal(BillingCode.Success, assigned.Code);
+        var assigned = await As(actor, x => x.ChangeAsync(assign));
+        Assert.Equal(BillingCode.Success, assigned.Code);
         Assert.Equal(assigned, await As(actor, x => x.ChangeAsync(assign with { Reason = assign.Reason.Trim() })));
         Assert.Equal(BillingCode.Conflict, (await As(actor, x => x.ChangeAsync(assign with { Reason = "Different request" }))).Code);
         Assert.Equal(BillingCode.Conflict, (await As(actor, x => x.ChangeAsync(assign with { OperationId = Guid.NewGuid() }))).Code);
-        rows = await As(actor, x => x.ReadAsync()); Assert.Equal(otherManager.Id, rows.Single().OwnerUserId); Assert.Equal("Review provider history", rows.Single().History.Single().Reason);
+        rows = await As(actor, x => x.ReadAsync());
+        Assert.Equal(otherManager.Id, rows.Single().OwnerUserId);
+        Assert.Equal("Review provider history", rows.Single().History.Single().Reason);
         var escalate = new FinancialCaseCommand(Guid.NewGuid(), issue.Id, rows.Single().Version, FinancialCaseAction.Escalate, "Provider needs investigation");
         var contenders = await Task.WhenAll(Task.Run(() => As(actor, x => x.ChangeAsync(escalate))), Task.Run(() => As(second, x => x.ChangeAsync(escalate with { OperationId = Guid.NewGuid() }))));
-        Assert.Single(contenders, x => x.Code == BillingCode.Success); Assert.Single(contenders, x => x.Code == BillingCode.Conflict);
-        rows = await As(actor, x => x.ReadAsync()); Assert.Equal(FinancialExceptionState.Escalated, rows.Single().State);
+        Assert.Single(contenders, x => x.Code == BillingCode.Success);
+        Assert.Single(contenders, x => x.Code == BillingCode.Conflict);
+        rows = await As(actor, x => x.ReadAsync());
+        Assert.Equal(FinancialExceptionState.Escalated, rows.Single().State);
         var reconcile = new FinancialCaseCommand(Guid.NewGuid(), issue.Id, rows.Single().Version, FinancialCaseAction.Reconcile, "Verify original provider outcome");
         Assert.Equal(BillingCode.Unavailable, (await As(actor with { RecentMfa = false }, x => x.ChangeAsync(reconcile))).Code);
-        var requested = await As(actor, x => x.ChangeAsync(reconcile)); Assert.Equal(BillingCode.Success, requested.Code);
+        var requested = await As(actor, x => x.ChangeAsync(reconcile));
+        Assert.Equal(BillingCode.Success, requested.Code);
         Assert.Equal(requested, await As(actor, x => x.ChangeAsync(reconcile)));
         Assert.Equal(BillingCode.Conflict, (await As(actor, x => x.ChangeAsync(reconcile with { Reason = "Changed recovery intent" }))).Code);
         await using (var db = create())
         {
-            var queued = await db.CollectionWork.SingleAsync(x => x.AttemptId == attempt.Id); Assert.True(queued.ReadOnlyReconciliation);
-            Assert.Equal("pmc_cases", queued.PaymentMethodConfiguration); Assert.Equal(CollectionWorkState.Queued, queued.State);
-            Assert.Equal(0, queued.Failures); Assert.True(queued.CycleStartedAt >= now);
-            Assert.True(queued.Claim(DateTimeOffset.UtcNow)); await db.SaveChangesAsync();
+            var queued = await db.CollectionWork.SingleAsync(x => x.AttemptId == attempt.Id);
+            Assert.True(queued.ReadOnlyReconciliation);
+            Assert.Equal("pmc_cases", queued.PaymentMethodConfiguration);
+            Assert.Equal(CollectionWorkState.Queued, queued.State);
+            Assert.Equal(0, queued.Failures);
+            Assert.True(queued.CycleStartedAt >= now);
+            Assert.True(queued.Claim(DateTimeOffset.UtcNow));
+            await db.SaveChangesAsync();
         }
         Assert.Equal(BillingCode.Conflict, (await As(actor, x => x.ChangeAsync(reconcile with { OperationId = Guid.NewGuid(), Version = requested.AccountVersion!.Value }))).Code);
         await using (var db = create())
         {
             var queued = await db.CollectionWork.SingleAsync(x => x.AttemptId == attempt.Id);
-            Assert.True(queued.Complete(queued.LeaseToken, CollectionWorkOutcome.Review, DateTimeOffset.UtcNow)); await db.SaveChangesAsync();
+            Assert.True(queued.Complete(queued.LeaseToken, CollectionWorkOutcome.Review, DateTimeOffset.UtcNow));
+            await db.SaveChangesAsync();
         }
         await using (var db = create())
         {
@@ -99,15 +130,20 @@ public static class FinancialExceptionContract
                 .ApplyAsync(original.Id, original.Version, new(ProviderCollectionState.Paid, fact.SessionId, Settlement: fact), CancellationToken.None)).Code);
         }
         Assert.Empty(await As(actor, x => x.ReadAsync()));
-        rows = await As(actor, x => x.ReadAsync(true)); Assert.Single(rows); Assert.Equal(FinancialExceptionState.Resolved, rows.Single().State);
-        Assert.Equal("Paid", rows.Single().LastVerifiedState); Assert.NotNull(rows.Single().LastVerifiedAt);
+        rows = await As(actor, x => x.ReadAsync(true));
+        Assert.Single(rows);
+        Assert.Equal(FinancialExceptionState.Resolved, rows.Single().State);
+        Assert.Equal("Paid", rows.Single().LastVerifiedState);
+        Assert.NotNull(rows.Single().LastVerifiedAt);
         Assert.Equal(BillingCode.Conflict, (await As(actor, x => x.ChangeAsync(assign with { OperationId = Guid.NewGuid(), Version = rows.Single().Version }))).Code);
         await using (var db = create())
         {
             var changedActor = new CallbackActor(async () =>
             {
-                await using var revoker = create(); revoker.BuildingManagers.Remove(await revoker.BuildingManagers.SingleAsync(x => x.UserId == manager.Id && x.BuildingId == building.Id));
-                await revoker.SaveChangesAsync(); return actor;
+                await using var revoker = create();
+                revoker.BuildingManagers.Remove(await revoker.BuildingManagers.SingleAsync(x => x.UserId == manager.Id && x.BuildingId == building.Id));
+                await revoker.SaveChangesAsync();
+                return actor;
             });
             Assert.Empty(await new FinancialExceptionStore(db, changedActor, TimeProvider.System, new(true)).ReadAsync(actor, true, CancellationToken.None));
         }

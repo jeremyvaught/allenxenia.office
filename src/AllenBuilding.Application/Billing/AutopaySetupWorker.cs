@@ -25,19 +25,25 @@ public sealed class AutopaySetupWorker(IAutopaySetupQueue queue, IAutopaySetupGa
 {
     public async Task<bool> ProcessOneAsync(CancellationToken token = default)
     {
-        var lease = await queue.ClaimAsync(token); if (lease is null) return false;
+        var lease = await queue.ClaimAsync(token);
+        if (lease is null)
+            return false;
         using var operation = OfficeTelemetry.Begin(OfficeOperationKind.AutopaySetup, lease.Original.OriginalOperationId);
-        AutopaySetupObservation observation; IAutopaySetupGateway? gateway = null;
+        AutopaySetupObservation observation;
+        IAutopaySetupGateway? gateway = null;
         try
         {
-            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token); deadline.CancelAfter(TimeSpan.FromSeconds(30));
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(30));
             var now = time.GetUtcNow();
-            if (!lease.Original.Owns(lease.Token, now)) observation = new(AutopaySetupOutcome.Unknown);
+            if (!lease.Original.Owns(lease.Token, now))
+                observation = new(AutopaySetupOutcome.Unknown);
             else
             {
                 gateway = gateways.Open(lease);
                 var readOnly = lease.ReadOnly || lease.Authorization.SetupSessionId is not null || !lease.Original.WithinOriginalWriteWindow(now);
-                observation = await (readOnly ? gateway.ReadAsync(lease, deadline.Token) : gateway.CreateAsync(lease, deadline.Token)).WaitAsync(deadline.Token);
+                observation = await (readOnly ? gateway.ReadAsync(lease, deadline.Token) : gateway.CreateAsync(lease, deadline.Token))
+                    .WaitAsync(deadline.Token);
             }
         }
         catch (Exception) { observation = new(AutopaySetupOutcome.Unknown); }
@@ -45,7 +51,12 @@ public sealed class AutopaySetupWorker(IAutopaySetupQueue queue, IAutopaySetupGa
         // A provider response may arrive while shutdown is requested. Persist its outcome with an independent bounded token.
         using var completion = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var completed = await queue.CompleteAsync(lease, observation, completion.Token);
-        operation.Result = !completed ? OfficeOutcome.LeaseLost : observation.Outcome switch { AutopaySetupOutcome.Verified => OfficeOutcome.Success, AutopaySetupOutcome.Invalid => OfficeOutcome.Failure, _ => OfficeOutcome.Uncertain };
+        operation.Result = !completed ? OfficeOutcome.LeaseLost : observation.Outcome switch
+        {
+            AutopaySetupOutcome.Verified => OfficeOutcome.Success,
+            AutopaySetupOutcome.Invalid => OfficeOutcome.Failure,
+            _ => OfficeOutcome.Uncertain
+        };
         return true;
     }
 }

@@ -56,47 +56,68 @@ public sealed class AssistantMaintenanceReview
             CreatedAt = now.ToUniversalTime(),
             ExpiresAt = now.ToUniversalTime().AddMinutes(10)
         };
-        review.Fields(title, description, location, comment); return review;
+        review.Fields(title, description, location, comment);
+        return review;
     }
 
     public void BindHash(string hash)
     {
-        if (PayloadHash.Length != 0 || hash.Length != 64 || hash.Any(x => !Uri.IsHexDigit(x))) throw new ArgumentException("A canonical command hash is required.");
+        if (PayloadHash.Length != 0 || hash.Length != 64 || hash.Any(x => !Uri.IsHexDigit(x)))
+            throw new ArgumentException("A canonical command hash is required.");
         PayloadHash = hash;
     }
     public bool IsReady(DateTimeOffset now) => State == AssistantReviewState.Ready && now < ExpiresAt;
     public void Edit(string title, string description, string location, string comment, DateTimeOffset now)
     {
-        if (!IsReady(now)) throw new InvalidOperationException("This review cannot be edited.");
-        Fields(title, description, location, comment); Version = Guid.NewGuid(); OperationId = Guid.NewGuid(); PayloadHash = "";
+        if (!IsReady(now))
+            throw new InvalidOperationException("This review cannot be edited.");
+        Fields(title, description, location, comment);
+        Version = Guid.NewGuid();
+        OperationId = Guid.NewGuid();
+        PayloadHash = "";
         ExpiresAt = now.ToUniversalTime().AddMinutes(10);
     }
     public void Cancel()
     {
-        if (State != AssistantReviewState.Ready) throw new InvalidOperationException("This review cannot be cancelled.");
-        State = AssistantReviewState.Cancelled; Version = Guid.NewGuid();
+        if (State != AssistantReviewState.Ready)
+            throw new InvalidOperationException("This review cannot be cancelled.");
+        State = AssistantReviewState.Cancelled;
+        Version = Guid.NewGuid();
     }
     public void Revoke() { if (State == AssistantReviewState.Ready) { State = AssistantReviewState.Revoked; Version = Guid.NewGuid(); } }
     public void Complete(Guid resultId, Guid resultVersion, WorkOrderStatus status, DateTimeOffset now)
     {
-        if (!IsReady(now) || resultId == Guid.Empty || resultVersion == Guid.Empty || !Enum.IsDefined(status)) throw new InvalidOperationException("A valid ready review and committed result are required.");
-        State = AssistantReviewState.Completed; ResultId = resultId; ResultVersion = resultVersion; ResultStatus = status; CompletedAt = now.ToUniversalTime();
+        if (!IsReady(now) || resultId == Guid.Empty || resultVersion == Guid.Empty || !Enum.IsDefined(status))
+            throw new InvalidOperationException("A valid ready review and committed result are required.");
+        State = AssistantReviewState.Completed;
+        ResultId = resultId;
+        ResultVersion = resultVersion;
+        ResultStatus = status;
+        CompletedAt = now.ToUniversalTime();
         // Keep the reviewed version/operation for an exact retry after a lost response.
     }
     private void Fields(string title, string description, string location, string comment)
     {
         if (Kind == AssistantReviewKind.Request)
         {
-            if (WorkOrderId is not null || WorkOrderVersion is not null || !string.IsNullOrEmpty(comment)) throw new ArgumentException("A new request cannot target an existing request.");
+            if (WorkOrderId is not null || WorkOrderVersion is not null || !string.IsNullOrEmpty(comment))
+                throw new ArgumentException("A new request cannot target an existing request.");
             var validated = WorkOrder.Submit(Guid.NewGuid(), MembershipId, OwnerId, title, description, location, CreatedAt);
-            Title = validated.Title; Description = validated.Description; Location = validated.Location; Comment = "";
+            Title = validated.Title;
+            Description = validated.Description;
+            Location = validated.Location;
+            Comment = "";
         }
         else
         {
             if (WorkOrderId is null || WorkOrderId == Guid.Empty || WorkOrderVersion is null || WorkOrderVersion == Guid.Empty ||
                 !string.IsNullOrEmpty(title) || !string.IsNullOrEmpty(description) || !string.IsNullOrEmpty(location) ||
-                string.IsNullOrWhiteSpace(comment) || comment.Trim().Length > 2000) throw new ArgumentException("A comment requires an exact request version and text.");
-            Comment = comment.Trim(); Title = ""; Description = ""; Location = "";
+                string.IsNullOrWhiteSpace(comment) || comment.Trim().Length > 2000)
+                throw new ArgumentException("A comment requires an exact request version and text.");
+            Comment = comment.Trim();
+            Title = "";
+            Description = "";
+            Location = "";
         }
     }
 }

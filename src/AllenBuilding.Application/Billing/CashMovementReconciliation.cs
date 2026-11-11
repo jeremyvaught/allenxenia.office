@@ -18,8 +18,11 @@ public sealed class CashMovementReconciliation(ICashMovementStore store, ICashMo
 {
     public async Task<ReconciliationResult> ReconcileAsync(Guid attemptId, string sourceId, CancellationToken cancellationToken = default)
     {
-        if (attemptId == Guid.Empty || (!PaymentReferences.Valid(sourceId, "re_") && !CashMovement.DisputeReference(sourceId))) return new(ReconciliationCode.Unavailable);
-        var original = await store.LoadAsync(attemptId, cancellationToken); if (original is null || original.State != PaymentAttemptState.Settled) return new(ReconciliationCode.NeedsReview);
+        if (attemptId == Guid.Empty || (!PaymentReferences.Valid(sourceId, "re_") && !CashMovement.DisputeReference(sourceId)))
+            return new(ReconciliationCode.Unavailable);
+        var original = await store.LoadAsync(attemptId, cancellationToken);
+        if (original is null || original.State != PaymentAttemptState.Settled)
+            return new(ReconciliationCode.NeedsReview);
         var observation = await reader.ReadAsync(original, sourceId, cancellationToken);
         return await store.ApplyAsync(original.Id, original.Version, observation, cancellationToken);
     }

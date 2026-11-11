@@ -8,7 +8,8 @@ public sealed class PreferencesController : Controller
     [HttpPost("/preferences/theme"), ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public IActionResult Theme(string? value, string? returnUrl)
     {
-        if (value is not ("system" or "light" or "dark")) return BadRequest();
+        if (value is not ("system" or "light" or "dark"))
+            return BadRequest();
         Response.Cookies.Append(ThemeCookie, value, new CookieOptions
         {
             Path = "/",

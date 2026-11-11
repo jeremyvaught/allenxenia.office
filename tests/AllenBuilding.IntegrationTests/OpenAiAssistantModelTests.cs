@@ -13,14 +13,18 @@ public sealed class OpenAiAssistantModelTests
         var calls = 0;
         using var client = new HttpClient(new Handler(async request =>
         {
-            calls++; using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync()); var root = body.RootElement;
+            calls++;
+            using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+            var root = body.RootElement;
             Assert.Contains("prior exchanges", root.GetProperty("instructions").GetString());
             using var input = JsonDocument.Parse(root.GetProperty("input").GetString()!);
             Assert.Equal("The sink leaks", input.RootElement.GetProperty("History")[0].GetProperty("Question").GetString());
             Assert.Equal("Question", input.RootElement.EnumerateObject().Last().Name);
             Assert.Equal("Kitchen", input.RootElement.GetProperty("Question").GetString());
             Assert.Contains("newest user message", root.GetProperty("instructions").GetString());
-            Assert.False(root.GetProperty("store").GetBoolean()); Assert.False(root.TryGetProperty("previous_response_id", out _)); Assert.False(root.TryGetProperty("tools", out _));
+            Assert.False(root.GetProperty("store").GetBoolean());
+            Assert.False(root.TryGetProperty("previous_response_id", out _));
+            Assert.False(root.TryGetProperty("tools", out _));
             return Response(new { answer = "Open building help", sources = Array.Empty<string>(), route = "help" });
         }));
         var model = new OpenAiAssistantModel(client, "synthetic-key");
@@ -34,13 +38,17 @@ public sealed class OpenAiAssistantModelTests
         var calls = 0;
         using var client = new HttpClient(new Handler(async request =>
         {
-            calls++; using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync()); var root = body.RootElement;
+            calls++;
+            using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+            var root = body.RootElement;
             Assert.Contains("Payments and autopay collection are currently disabled", root.GetProperty("instructions").GetString());
             using var input = JsonDocument.Parse(root.GetProperty("input").GetString()!);
             Assert.True(input.RootElement.GetProperty("CanStageGuest").GetBoolean());
-            Assert.False(input.RootElement.GetProperty("Tenant").GetBoolean()); Assert.False(input.RootElement.GetProperty("CanPrepare").GetBoolean());
+            Assert.False(input.RootElement.GetProperty("Tenant").GetBoolean());
+            Assert.False(input.RootElement.GetProperty("CanPrepare").GetBoolean());
             Assert.Equal("request", Assert.Single(root.GetProperty("text").GetProperty("format").GetProperty("schema").GetProperty("properties").GetProperty("draft").GetProperty("anyOf")[1].GetProperty("properties").GetProperty("kind").GetProperty("enum").EnumerateArray()).GetString());
-            Assert.False(root.TryGetProperty("tools", out _)); Assert.False(root.GetProperty("store").GetBoolean());
+            Assert.False(root.TryGetProperty("tools", out _));
+            Assert.False(root.GetProperty("store").GetBoolean());
             return Response(new { answer = "Check the temporary draft and sign in", sources = Array.Empty<string>(), route = "new_request", draft = new { kind = "request", title = "Sink", description = "Dripping tap", location = "Kitchen", comment = "" } });
         }));
         var model = new OpenAiAssistantModel(client, "synthetic-key");
@@ -56,7 +64,8 @@ public sealed class OpenAiAssistantModelTests
     {
         using var client = new HttpClient(new Handler(async request =>
         {
-            using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync()); var root = body.RootElement;
+            using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+            var root = body.RootElement;
             Assert.False(root.TryGetProperty("tools", out _));
             var types = root.GetProperty("text").GetProperty("format").GetProperty("schema").GetProperty("properties").GetProperty("draft").GetProperty("anyOf")[1]
                 .GetProperty("properties").GetProperty("kind").GetProperty("enum");
@@ -70,7 +79,9 @@ public sealed class OpenAiAssistantModelTests
             });
         }));
         var result = await new OpenAiAssistantModel(client, "synthetic-key").AnswerAsync(new("Prepare my maintenance action", [], true, true, comment), default);
-        Assert.Equal(AssistantModelCode.Success, result.Code); Assert.NotNull(result.Draft); Assert.Equal(comment ? "Call first" : "", result.Draft.Comment);
+        Assert.Equal(AssistantModelCode.Success, result.Code);
+        Assert.NotNull(result.Draft);
+        Assert.Equal(comment ? "Call first" : "", result.Draft.Comment);
     }
     [Theory]
     [InlineData("guest")]
@@ -86,12 +97,14 @@ public sealed class OpenAiAssistantModelTests
             draft = new { kind = failure == "execute" ? "execute" : "comment", title = "", description = "", location = "", comment = "Call first" }
         }))));
         var result = await new OpenAiAssistantModel(client, "synthetic-key").AnswerAsync(new("Question", [], failure != "guest", failure != "guest"), default);
-        Assert.NotEqual(AssistantModelCode.Success, result.Code); Assert.Null(result.Draft);
+        Assert.NotEqual(AssistantModelCode.Success, result.Code);
+        Assert.Null(result.Draft);
     }
     [Fact]
     public async Task Bounded_stateless_request_pins_model_schema_and_storage_without_executable_tools()
     {
-        var id = Guid.NewGuid(); var sent = "";
+        var id = Guid.NewGuid();
+        var sent = "";
         using var client = new HttpClient(new Handler(async request =>
         {
             Assert.Equal("https://api.openai.com/v1/responses", request.RequestUri!.AbsoluteUri);
@@ -100,10 +113,15 @@ public sealed class OpenAiAssistantModelTests
             return Response(new { answer = "Published guidance", sources = new[] { id.ToString() }, route = "help" });
         }));
         var result = await new OpenAiAssistantModel(client, "synthetic-key").AnswerAsync(new("Where is entry?", [new(id, Guid.NewGuid(), "Entry", "Published directions")], false), default);
-        Assert.Equal(AssistantModelCode.Success, result.Code); Assert.Equal(id, Assert.Single(result.Sources!));
-        using var body = JsonDocument.Parse(sent); var root = body.RootElement;
-        Assert.Equal(OpenAiAssistantModel.Model, root.GetProperty("model").GetString()); Assert.False(root.GetProperty("store").GetBoolean()); Assert.False(root.GetProperty("stream").GetBoolean());
-        Assert.False(root.TryGetProperty("tools", out _)); Assert.False(root.TryGetProperty("previous_response_id", out _));
+        Assert.Equal(AssistantModelCode.Success, result.Code);
+        Assert.Equal(id, Assert.Single(result.Sources!));
+        using var body = JsonDocument.Parse(sent);
+        var root = body.RootElement;
+        Assert.Equal(OpenAiAssistantModel.Model, root.GetProperty("model").GetString());
+        Assert.False(root.GetProperty("store").GetBoolean());
+        Assert.False(root.GetProperty("stream").GetBoolean());
+        Assert.False(root.TryGetProperty("tools", out _));
+        Assert.False(root.TryGetProperty("previous_response_id", out _));
         Assert.False(root.GetProperty("text").GetProperty("format").GetProperty("schema").GetProperty("properties").TryGetProperty("draft", out _));
         Assert.True(root.GetProperty("text").GetProperty("format").GetProperty("strict").GetBoolean());
         Assert.False(root.GetProperty("text").GetProperty("format").GetProperty("schema").GetProperty("additionalProperties").GetBoolean());
@@ -130,7 +148,8 @@ public sealed class OpenAiAssistantModelTests
             _ => new(HttpStatusCode.TooManyRequests) { Content = new StringContent("private-canary") }
         })));
         var result = await new OpenAiAssistantModel(client, "synthetic-key").AnswerAsync(new("Question", [], false), default);
-        Assert.NotEqual(AssistantModelCode.Success, result.Code); Assert.Empty(result.Answer);
+        Assert.NotEqual(AssistantModelCode.Success, result.Code);
+        Assert.Empty(result.Answer);
     }
     [Fact]
     public async Task Input_budget_prevents_network_use_and_cancellation_propagates()
@@ -141,7 +160,8 @@ public sealed class OpenAiAssistantModelTests
         Assert.Equal(AssistantModelCode.Invalid, (await model.AnswerAsync(new(new string('x', 4001), [], false), default)).Code);
         Assert.Equal(AssistantModelCode.Invalid, (await model.AnswerAsync(new(new string('漢', 4000), [], false), default)).Code);
         Assert.Equal(0, calls);
-        using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => model.AnswerAsync(new("Question", [], false), cancelled.Token));
     }
     private static HttpResponseMessage Response(object answer, string status = "completed") => new(HttpStatusCode.OK)

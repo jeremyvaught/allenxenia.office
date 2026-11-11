@@ -20,7 +20,8 @@ public sealed class SmtpEmailOptions
 
     public void Validate()
     {
-        if (string.IsNullOrWhiteSpace(Host) || Host.Length > 253 || Host.Any(c => char.IsWhiteSpace(c) || char.IsControl(c) || c is '/' or '\\' or ':' or '@') ||
+        if (string.IsNullOrWhiteSpace(Host) || Host.Length > 253 ||
+            Host.Any(c => char.IsWhiteSpace(c) || char.IsControl(c) || c is '/' or '\\' or ':' or '@') ||
             Port is < 1 or > 65535 || Security is not ("StartTls" or "SslOnConnect") ||
             string.IsNullOrWhiteSpace(UserName) || UserName.Length > 512 || UserName.Any(char.IsControl) ||
             string.IsNullOrEmpty(Password) || Password.Length > 4096 ||
@@ -43,7 +44,9 @@ public sealed class SmtpEmailTransport : IEmailTransport
     // Runtime composition always uses MailKit's default hostname/chain verification.
     internal SmtpEmailTransport(SmtpEmailOptions options, Func<SmtpClient> clients)
     {
-        options.Validate(); _options = options; _clients = clients;
+        options.Validate();
+        _options = options;
+        _clients = clients;
     }
 
     public async Task<DeliveryResult> SendAsync(EmailEnvelope envelope, CancellationToken cancellationToken)
@@ -85,14 +88,18 @@ public sealed class SmtpEmailTransport : IEmailTransport
         catch (MailKit.Security.AuthenticationException) { return new(DeliveryOutcome.PermanentFailure, "SmtpAuthenticationRejected"); }
         catch (SslHandshakeException) { return new(DeliveryOutcome.PermanentFailure, "SmtpTlsRejected"); }
         catch (NotSupportedException) { return new(DeliveryOutcome.PermanentFailure, "SmtpCapabilityMissing"); }
-        catch (Exception error) when (error is IOException or SocketException or SmtpProtocolException or OperationCanceledException or ServiceNotConnectedException)
+        catch (Exception error) when (error is IOException or SocketException or SmtpProtocolException or
+            OperationCanceledException or ServiceNotConnectedException)
         {
             return new(sending ? DeliveryOutcome.Uncertain : DeliveryOutcome.Retryable, sending ? "SmtpAcceptanceUnknown" : "SmtpUnavailable");
         }
         finally
         {
             // No QUIT round trip can downgrade an already received acceptance.
-            if (client.IsConnected) try { await client.DisconnectAsync(quit: false, CancellationToken.None); } catch (Exception) { }
+            if (client.IsConnected)
+                try
+                { await client.DisconnectAsync(quit: false, CancellationToken.None); }
+                catch (Exception) { }
         }
     }
 }

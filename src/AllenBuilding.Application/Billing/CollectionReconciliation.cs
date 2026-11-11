@@ -16,9 +16,11 @@ public sealed class CollectionReconciliation(ICollectionReconciliationStore stor
 {
     public async Task<ReconciliationResult> ReconcileAsync(Guid attemptId, string sessionId, CancellationToken cancellationToken = default)
     {
-        if (attemptId == Guid.Empty || !PaymentReferences.Valid(sessionId, "cs_")) return new(ReconciliationCode.Unavailable);
+        if (attemptId == Guid.Empty || !PaymentReferences.Valid(sessionId, "cs_"))
+            return new(ReconciliationCode.Unavailable);
         var original = await store.LoadAsync(attemptId, cancellationToken);
-        if (original is null) return new(ReconciliationCode.Unavailable);
+        if (original is null)
+            return new(ReconciliationCode.Unavailable);
         var observation = await gateway.ReadAsync(original, sessionId, cancellationToken);
         // Gateway work has finished before the short projection transaction begins.
         return await store.ApplyAsync(original.Id, original.Version, observation, cancellationToken);

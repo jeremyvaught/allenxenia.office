@@ -9,7 +9,8 @@ public static class OfficeTime
     private static readonly TimeZoneInfo Zone = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
     public static string Timestamp(DateTimeOffset? instant, bool seconds = false)
     {
-        if (instant is null) return "";
+        if (instant is null)
+            return "";
         var local = TimeZoneInfo.ConvertTime(instant.Value, Zone);
         return local.ToString(seconds ? "MMM d, yyyy h:mm:ss tt" : "MMM d, yyyy h:mm tt", CultureInfo.GetCultureInfo("en-US")) +
             (Zone.IsDaylightSavingTime(local) ? " EDT" : " EST");

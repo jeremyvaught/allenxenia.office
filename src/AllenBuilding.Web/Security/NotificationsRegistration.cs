@@ -13,7 +13,9 @@ public static class NotificationsRegistration
         if (mode is not ("Disabled" or "Smtp") && !(local && mode == "LocalInbox"))
             throw new InvalidOperationException("Notifications:Mode must be Disabled, Smtp, or local LocalInbox.");
         var origin = new Uri(builder.Configuration["Notifications:PublicOrigin"] ?? (local ? "http://localhost:5081/" : "https://office.allenxenia.com/"));
-        if (!origin.IsAbsoluteUri || origin.Scheme is not ("http" or "https") || !string.IsNullOrEmpty(origin.UserInfo) || origin.AbsolutePath != "/" || !string.IsNullOrEmpty(origin.Query) || !string.IsNullOrEmpty(origin.Fragment) ||
+        if (!origin.IsAbsoluteUri || origin.Scheme is not ("http" or "https") ||
+            !string.IsNullOrEmpty(origin.UserInfo) || origin.AbsolutePath != "/" ||
+            !string.IsNullOrEmpty(origin.Query) || !string.IsNullOrEmpty(origin.Fragment) ||
             (!local && origin.Scheme != "https") || (local && !origin.IsLoopback))
             throw new InvalidOperationException("Notifications:PublicOrigin must be a root HTTPS origin, or a loopback origin for local use.");
         builder.Services.AddScoped<NotificationQueue>(services => new NotificationQueue(
@@ -21,17 +23,21 @@ public static class NotificationsRegistration
             services.GetRequiredService<TimeProvider>(), origin));
         builder.Services.AddScoped<INotificationQueue>(services => services.GetRequiredService<NotificationQueue>());
         builder.Services.AddScoped<NotificationDispatcher>();
-        if (mode == "LocalInbox") builder.Services.AddSingleton<IEmailTransport>(new LocalInboxTransport(Path.Combine(builder.Environment.ContentRootPath, ".data", "mail")));
+        builder.Services.AddScoped<NotificationInbox>();
+        if (mode == "LocalInbox")
+            builder.Services.AddSingleton<IEmailTransport>(new LocalInboxTransport(Path.Combine(builder.Environment.ContentRootPath, ".data", "mail")));
         else if (mode == "Smtp")
         {
             var options = builder.Configuration.GetSection("Notifications:Smtp").Get<SmtpEmailOptions>() ?? new SmtpEmailOptions();
             options.Validate();
             builder.Services.AddSingleton<IEmailTransport>(new SmtpEmailTransport(options));
         }
-        else builder.Services.AddSingleton<IEmailTransport, UnconfiguredEmailTransport>();
+        else
+            builder.Services.AddSingleton<IEmailTransport, UnconfiguredEmailTransport>();
         if (builder.Configuration.GetValue<bool>("Notifications:Enabled"))
         {
-            if (mode == "Disabled") throw new InvalidOperationException("A notification worker requires a configured transport.");
+            if (mode == "Disabled")
+                throw new InvalidOperationException("A notification worker requires a configured transport.");
             builder.Services.AddHostedService<NotificationWorker>();
         }
     }
@@ -49,10 +55,16 @@ public sealed class NotificationWorker(IServiceScopeFactory scopes, ILogger<Noti
                 using var scope = scopes.CreateScope();
                 // Bounded batch; a fresh scope on each timer iteration recovers after database errors.
                 for (var count = 0; count < 20 && !stoppingToken.IsCancellationRequested; count++)
-                    if (!await scope.ServiceProvider.GetRequiredService<NotificationDispatcher>().ProcessOneAsync(stoppingToken)) break;
+                    if (!await scope.ServiceProvider.GetRequiredService<NotificationDispatcher>().ProcessOneAsync(stoppingToken))
+                        break;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
-            catch (Exception) { logger.LogWarning("Notification dispatch could not complete; retrying on the next interval."); }
+            catch (Exception exception)
+            {
+                // Type name only: messages can carry connection details or private text.
+                logger.LogWarning("Notification dispatch could not complete; retrying on the next interval. Failure type: {FailureType}",
+                    exception.GetType().FullName);
+            }
         }
     }
 }

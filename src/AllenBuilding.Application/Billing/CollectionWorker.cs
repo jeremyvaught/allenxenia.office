@@ -3,7 +3,9 @@ using AllenBuilding.Domain.Billing;
 
 namespace AllenBuilding.Application.Billing;
 
-public sealed record CollectionLease(PaymentAttempt Original, Guid Token, CheckoutProfile Profile, string? OriginTraceId = null, string? OriginSpanId = null, bool ReadOnly = false);
+public sealed record CollectionLease(
+    PaymentAttempt Original, Guid Token, CheckoutProfile Profile, string? OriginTraceId = null, string? OriginSpanId = null,
+    bool ReadOnly = false);
 public interface ICollectionWorkQueue
 {
     Task<CollectionLease?> ClaimAsync(CancellationToken cancellationToken);
@@ -18,21 +20,32 @@ public sealed class CollectionWorker(ICollectionWorkQueue queue, ICollectionGate
 {
     public async Task<bool> ProcessOneAsync(CancellationToken cancellationToken = default)
     {
-        var lease = await queue.ClaimAsync(cancellationToken); if (lease is null) return false;
+        var lease = await queue.ClaimAsync(cancellationToken);
+        if (lease is null)
+            return false;
         using var operation = OfficeTelemetry.Begin(OfficeOperationKind.CollectionDispatch, lease.Original.OperationId,
             OfficeTelemetry.Origin(lease.OriginTraceId, lease.OriginSpanId));
         ProviderCollectionObservation observation;
         ICollectionGateway? gateway = null;
         try
         {
-            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); deadline.CancelAfter(TimeSpan.FromSeconds(30));
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deadline.CancelAfter(TimeSpan.FromSeconds(30));
             gateway = gateways.Open(lease.Original, lease.Profile);
-            if (lease.ReadOnly && lease.Original.SessionId is null) observation = new(ProviderCollectionState.Invalid);
-            else observation = lease.Original.SessionId is { } session
+            if (lease.ReadOnly && lease.Original.SessionId is null)
+                observation = new(ProviderCollectionState.Invalid);
+            else
+                observation = lease.Original.SessionId is { } session
                 ? await gateway.ReadAsync(lease.Original, session, deadline.Token).WaitAsync(deadline.Token)
                 : await gateway.CreateAsync(lease.Original, deadline.Token).WaitAsync(deadline.Token);
-            if (observation.State == ProviderCollectionState.Paid && observation.Settlement is { } settlement && (cash is not null || lease.ReadOnly && lease.Original.State == PaymentAttemptState.Settled))
-                observation = observation with { CashInventory = cash is null ? new(CashObservationState.Invalid) : await cash.ReadCapturedInventoryAsync(lease.Original, settlement, deadline.Token).WaitAsync(deadline.Token) };
+            if (observation.State == ProviderCollectionState.Paid && observation.Settlement is { } settlement &&
+                (cash is not null || lease.ReadOnly && lease.Original.State == PaymentAttemptState.Settled))
+                observation = observation with
+                {
+                    CashInventory = cash is null
+                        ? new(CashObservationState.Invalid)
+                        : await cash.ReadCapturedInventoryAsync(lease.Original, settlement, deadline.Token).WaitAsync(deadline.Token)
+                };
         }
         catch (OperationCanceledException) { observation = new(ProviderCollectionState.Unknown); }
         catch (Exception) { observation = new(ProviderCollectionState.Unknown); }

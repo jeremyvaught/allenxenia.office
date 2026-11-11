@@ -14,7 +14,8 @@ public sealed class Contractor
 
     public static Contractor Create(Guid id, Guid buildingId, string name, Trade trade, string email, string phone)
     {
-        if (id == Guid.Empty || buildingId == Guid.Empty) throw new ArgumentException("A building and contact are required.");
+        if (id == Guid.Empty || buildingId == Guid.Empty)
+            throw new ArgumentException("A building and contact are required.");
         var contact = new Contractor { Id = id, BuildingId = buildingId };
         contact.Update(name, trade, email, phone, true);
         return contact;
@@ -22,11 +23,18 @@ public sealed class Contractor
 
     public void Update(string name, Trade trade, string email, string phone, bool active)
     {
-        name = name?.Trim() ?? ""; email = email?.Trim() ?? ""; phone = phone?.Trim() ?? "";
+        name = name?.Trim() ?? "";
+        email = email?.Trim() ?? "";
+        phone = phone?.Trim() ?? "";
         if (name.Length is < 1 or > 160 || email.Length > 254 || phone.Length > 80 || !Enum.IsDefined(trade))
             throw new ArgumentException("Invalid contractor contact.");
         if (email.Length > 0 && (!System.Net.Mail.MailAddress.TryCreate(email, out var address) || address.Address != email))
             throw new ArgumentException("Enter an email address without a display name.");
-        Name = name; Trade = trade; Email = email; Phone = phone; Active = active; Version = Guid.NewGuid();
+        Name = name;
+        Trade = trade;
+        Email = email;
+        Phone = phone;
+        Active = active;
+        Version = Guid.NewGuid();
     }
 }

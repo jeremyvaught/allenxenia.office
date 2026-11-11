@@ -28,8 +28,10 @@ public sealed record MaintenanceAgingReport(MaintenanceAgingQuery Query, DateTim
     IReadOnlyList<MaintenanceAgingItem> Items, bool HasNext, IReadOnlyList<ReportBuilding> Buildings);
 public interface IManagementReportReader
 {
-    Task<RentBalanceReport?> RentBalancesAsync(Actor actor, RentBalanceQuery query, DateTimeOffset observedAt, DateOnly localDate, CancellationToken cancellationToken);
-    Task<MaintenanceAgingReport?> MaintenanceAgingAsync(Actor actor, MaintenanceAgingQuery query, DateTimeOffset observedAt, CancellationToken cancellationToken);
+    Task<RentBalanceReport?> RentBalancesAsync(
+        Actor actor, RentBalanceQuery query, DateTimeOffset observedAt, DateOnly localDate, CancellationToken cancellationToken);
+    Task<MaintenanceAgingReport?> MaintenanceAgingAsync(
+        Actor actor, MaintenanceAgingQuery query, DateTimeOffset observedAt, CancellationToken cancellationToken);
 }
 public sealed partial class ManagementReportQueries(ICurrentActor current, IManagementReportReader reader, TimeProvider time)
 {
@@ -37,20 +39,23 @@ public sealed partial class ManagementReportQueries(ICurrentActor current, IMana
     {
         using var operation = OfficeTelemetry.Begin(OfficeOperationKind.MaintenanceAging);
         operation.Result = OfficeOutcome.Denied;
-        if (!query.IsValid) { operation.Result = OfficeOutcome.Invalid; return null; }
+        if (!query.IsValid)
+        { operation.Result = OfficeOutcome.Invalid; return null; }
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5), time);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
         try
         {
             var actor = await current.GetAsync(linked.Token);
-            if (actor is not { ChallengedMfa: true } || actor.ManagedBuildings.Count == 0) return null;
+            if (actor is not { ChallengedMfa: true } || actor.ManagedBuildings.Count == 0)
+                return null;
             operation.Result = OfficeOutcome.Failure;
             var report = await reader.MaintenanceAgingAsync(actor, query, time.GetUtcNow(), linked.Token);
             // Release protected data only while the current ticket and every reported building remain authorized.
             var fresh = await current.GetAsync(linked.Token);
             var allowed = report is not null && fresh is { ChallengedMfa: true } && fresh.UserId == actor.UserId &&
                 report.Buildings.All(x => fresh.ManagedBuildings.Contains(x.Id));
-            operation.Result = allowed ? OfficeOutcome.Success : OfficeOutcome.Denied; return allowed ? report : null;
+            operation.Result = allowed ? OfficeOutcome.Success : OfficeOutcome.Denied;
+            return allowed ? report : null;
         }
         catch (OperationCanceledException) when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         { operation.Result = OfficeOutcome.Failure; throw new TimeoutException("The management report exceeded its deadline."); }

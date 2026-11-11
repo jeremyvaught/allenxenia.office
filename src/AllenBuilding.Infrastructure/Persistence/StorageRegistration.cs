@@ -7,7 +7,8 @@ namespace AllenBuilding.Infrastructure.Persistence;
 
 public static class StorageRegistration
 {
-    public static IServiceCollection AddOfficeStorage(this IServiceCollection services, IConfiguration configuration, IHostEnvironment environment, bool migrations = false)
+    public static IServiceCollection AddOfficeStorage(
+        this IServiceCollection services, IConfiguration configuration, IHostEnvironment environment, bool migrations = false)
     {
         var provider = configuration["Database:Provider"];
         if (provider == "Sqlite")
@@ -19,7 +20,8 @@ public static class StorageRegistration
             {
                 var directory = Path.Combine(environment.ContentRootPath, ".data");
                 Directory.CreateDirectory(directory);
-                if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+                if (!OperatingSystem.IsWindows())
+                    File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
                 connection = $"Data Source={Path.Combine(directory, "office.db")}";
             }
             var sqlite = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(connection) { ForeignKeys = true };
@@ -37,7 +39,8 @@ public static class StorageRegistration
             services.AddDbContext<MySqlOfficeDbContext>(o => o.UseMySQL(connection));
             services.AddScoped<OfficeDbContext>(sp => sp.GetRequiredService<MySqlOfficeDbContext>());
         }
-        else throw new InvalidOperationException("Database:Provider must explicitly be Sqlite or MySql.");
+        else
+            throw new InvalidOperationException("Database:Provider must explicitly be Sqlite or MySql.");
         return services;
     }
 }

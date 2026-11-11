@@ -15,17 +15,24 @@ public sealed class StripeCollectionGatewayTests
     {
         using var fixture = new Fixture();
         var first = await fixture.Gateway.CreateAsync(fixture.Attempt);
-        Assert.Equal(ProviderCollectionState.Open, first.State); Assert.Equal("checkout.stripe.com", first.Handoff!.Host);
+        Assert.Equal(ProviderCollectionState.Open, first.State);
+        Assert.Equal("checkout.stripe.com", first.Handoff!.Host);
         fixture.Time.Now = fixture.Time.Now.AddMinutes(2);
         Assert.Equal(ProviderCollectionState.Open, (await fixture.Gateway.CreateAsync(fixture.Attempt)).State);
-        var posts = fixture.Requests.Where(x => x.Method == "POST").ToArray(); Assert.Equal(2, posts.Length);
-        Assert.Equal(posts[0].Body, posts[1].Body); Assert.Equal(fixture.Attempt.ProviderIdempotencyKey, posts[0].Key);
-        Assert.Equal(posts[0].Key, posts[1].Key); Assert.Equal("2026-09-30.endive", posts[0].Version);
+        var posts = fixture.Requests.Where(x => x.Method == "POST").ToArray();
+        Assert.Equal(2, posts.Length);
+        Assert.Equal(posts[0].Body, posts[1].Body);
+        Assert.Equal(fixture.Attempt.ProviderIdempotencyKey, posts[0].Key);
+        Assert.Equal(posts[0].Key, posts[1].Key);
+        Assert.Equal("2026-09-30.endive", posts[0].Version);
         Assert.All(fixture.Requests, x => Assert.Null(x.ConnectAccount));
         var fields = Form(posts[0].Body);
-        Assert.Equal("payment", fields["mode"]); Assert.Equal("hosted_page", fields["ui_mode"]);
-        Assert.Equal("cus_gateway", fields["customer"]); Assert.Equal("pmc_reviewed", fields["payment_method_configuration"]);
-        Assert.Equal("false", fields["adaptive_pricing[enabled]"]); Assert.Equal("1000", fields["line_items[0][price_data][unit_amount]"]);
+        Assert.Equal("payment", fields["mode"]);
+        Assert.Equal("hosted_page", fields["ui_mode"]);
+        Assert.Equal("cus_gateway", fields["customer"]);
+        Assert.Equal("pmc_reviewed", fields["payment_method_configuration"]);
+        Assert.Equal("false", fields["adaptive_pricing[enabled]"]);
+        Assert.Equal("1000", fields["line_items[0][price_data][unit_amount]"]);
         Assert.DoesNotContain(fields.Keys, x => x.StartsWith("payment_method_types", StringComparison.Ordinal));
         Assert.Equal(fixture.Attempt.PayloadHash, fields["metadata[office_review_hash]"]);
         Assert.Equal(fixture.Attempt.PayloadHash, fields["payment_intent_data[metadata][office_review_hash]"]);
@@ -42,10 +49,14 @@ public sealed class StripeCollectionGatewayTests
     public async Task Wrong_provider_ownership_prevents_dispatch(string mismatch)
     {
         using var fixture = new Fixture();
-        if (mismatch == "merchant") fixture.AccountId = "acct_wrong";
-        if (mismatch == "customer-owner") fixture.Customer["metadata"]!["office_account_id"] = Guid.NewGuid().ToString("D");
-        if (mismatch == "customer-mode") fixture.Customer["livemode"] = true;
-        if (mismatch == "deleted-customer") fixture.Customer["deleted"] = true;
+        if (mismatch == "merchant")
+            fixture.AccountId = "acct_wrong";
+        if (mismatch == "customer-owner")
+            fixture.Customer["metadata"]!["office_account_id"] = Guid.NewGuid().ToString("D");
+        if (mismatch == "customer-mode")
+            fixture.Customer["livemode"] = true;
+        if (mismatch == "deleted-customer")
+            fixture.Customer["deleted"] = true;
         Assert.Equal(ProviderCollectionState.Invalid, (await fixture.Gateway.CreateAsync(fixture.Attempt)).State);
         Assert.DoesNotContain(fixture.Requests, x => x.Method == "POST");
     }
@@ -64,25 +75,45 @@ public sealed class StripeCollectionGatewayTests
         using var fixture = new Fixture();
         switch (mismatch)
         {
-            case "customer": fixture.Session["customer"] = "cus_wrong"; break;
-            case "mode": fixture.Session["livemode"] = true; break;
-            case "amount": fixture.Session["amount_total"] = 999; break;
-            case "subtotal": fixture.Session["amount_subtotal"] = 999; break;
-            case "currency": fixture.Session["currency"] = "eur"; break;
-            case "review": fixture.Session["metadata"]!["office_review_hash"] = "different"; break;
-            case "reference": fixture.Session["client_reference_id"] = Guid.NewGuid().ToString("D"); break;
-            case "handoff": fixture.Session["url"] = "https://checkout.stripe.com.attacker.test/"; break;
+            case "customer":
+                fixture.Session["customer"] = "cus_wrong";
+                break;
+            case "mode":
+                fixture.Session["livemode"] = true;
+                break;
+            case "amount":
+                fixture.Session["amount_total"] = 999;
+                break;
+            case "subtotal":
+                fixture.Session["amount_subtotal"] = 999;
+                break;
+            case "currency":
+                fixture.Session["currency"] = "eur";
+                break;
+            case "review":
+                fixture.Session["metadata"]!["office_review_hash"] = "different";
+                break;
+            case "reference":
+                fixture.Session["client_reference_id"] = Guid.NewGuid().ToString("D");
+                break;
+            case "handoff":
+                fixture.Session["url"] = "https://checkout.stripe.com.attacker.test/";
+                break;
         }
         var result = await fixture.Gateway.CreateAsync(fixture.Attempt);
-        Assert.Equal(ProviderCollectionState.Invalid, result.State); Assert.Null(result.Handoff); Assert.Null(result.Settlement);
+        Assert.Equal(ProviderCollectionState.Invalid, result.State);
+        Assert.Null(result.Handoff);
+        Assert.Null(result.Settlement);
     }
 
     [Fact]
     public async Task Canonical_capture_requires_expanded_exact_payment_and_charge_evidence()
     {
-        using var fixture = new Fixture(); fixture.Paid();
+        using var fixture = new Fixture();
+        fixture.Paid();
         var result = await fixture.Gateway.ReadAsync(fixture.Attempt, "cs_gateway");
-        Assert.Equal(ProviderCollectionState.Paid, result.State); Assert.Equal(1000, result.Settlement!.AmountMinorUnits);
+        Assert.Equal(ProviderCollectionState.Paid, result.State);
+        Assert.Equal(1000, result.Settlement!.AmountMinorUnits);
         Assert.Equal("pi_gateway", result.Settlement.PaymentId);
         Assert.Contains(fixture.Requests, x => x.Path.Contains("expand", StringComparison.Ordinal));
         Assert.Equal(PaymentAttemptState.Dispatching, fixture.Attempt.State); // Adapter never commits local state.
@@ -101,23 +132,46 @@ public sealed class StripeCollectionGatewayTests
     [InlineData("charge-intent")]
     public async Task Paid_label_alone_cannot_create_a_receipt(string mismatch)
     {
-        using var fixture = new Fixture(); fixture.Paid();
-        var intent = fixture.Session["payment_intent"]!; var charge = intent["latest_charge"]!;
+        using var fixture = new Fixture();
+        fixture.Paid();
+        var intent = fixture.Session["payment_intent"]!;
+        var charge = intent["latest_charge"]!;
         switch (mismatch)
         {
-            case "unexpanded": fixture.Session["payment_intent"] = "pi_gateway"; break;
-            case "received": intent["amount_received"] = 999; break;
-            case "intent-owner": intent["customer"] = "cus_wrong"; break;
-            case "intent-review": intent["metadata"]!["office_review_hash"] = "different"; break;
-            case "captured": charge["captured"] = false; break;
-            case "over-refunded": charge["amount_refunded"] = 1001; break;
-            case "refund-flag": charge["refunded"] = true; break;
-            case "charge-owner": charge["customer"] = "cus_wrong"; break;
-            case "charge-mode": charge["livemode"] = true; break;
-            case "charge-intent": charge["payment_intent"] = "pi_wrong"; break;
+            case "unexpanded":
+                fixture.Session["payment_intent"] = "pi_gateway";
+                break;
+            case "received":
+                intent["amount_received"] = 999;
+                break;
+            case "intent-owner":
+                intent["customer"] = "cus_wrong";
+                break;
+            case "intent-review":
+                intent["metadata"]!["office_review_hash"] = "different";
+                break;
+            case "captured":
+                charge["captured"] = false;
+                break;
+            case "over-refunded":
+                charge["amount_refunded"] = 1001;
+                break;
+            case "refund-flag":
+                charge["refunded"] = true;
+                break;
+            case "charge-owner":
+                charge["customer"] = "cus_wrong";
+                break;
+            case "charge-mode":
+                charge["livemode"] = true;
+                break;
+            case "charge-intent":
+                charge["payment_intent"] = "pi_wrong";
+                break;
         }
         var result = await fixture.Gateway.ReadAsync(fixture.Attempt, "cs_gateway");
-        Assert.Equal(ProviderCollectionState.Invalid, result.State); Assert.Null(result.Settlement);
+        Assert.Equal(ProviderCollectionState.Invalid, result.State);
+        Assert.Null(result.Settlement);
     }
 
     [Theory]
@@ -127,16 +181,25 @@ public sealed class StripeCollectionGatewayTests
     [InlineData("disputed")]
     public async Task Gross_capture_survives_later_returns_but_requires_a_complete_inventory_before_releasing_collection(string state)
     {
-        using var fixture = new Fixture(); fixture.Paid(); var version = fixture.Attempt.Version;
+        using var fixture = new Fixture();
+        fixture.Paid();
+        var version = fixture.Attempt.Version;
         var charge = fixture.Session["payment_intent"]!["latest_charge"]!;
-        if (state == "partial-refund") charge["amount_refunded"] = 200;
-        if (state == "full-refund") { charge["amount_refunded"] = 1000; charge["refunded"] = true; }
-        if (state == "disputed") charge["disputed"] = true;
+        if (state == "partial-refund")
+            charge["amount_refunded"] = 200;
+        if (state == "full-refund")
+        { charge["amount_refunded"] = 1000; charge["refunded"] = true; }
+        if (state == "disputed")
+            charge["disputed"] = true;
         var result = await fixture.Gateway.ReadAsync(fixture.Attempt, "cs_gateway");
-        Assert.Equal(ProviderCollectionState.Paid, result.State); Assert.Equal(1000, result.Settlement!.AmountMinorUnits);
-        Assert.Equal(CashObservationState.Invalid, result.CashInventory!.State); Assert.Null(result.CashInventory.Inventory);
-        Assert.Equal(version, fixture.Attempt.Version); Assert.Equal(PaymentAttemptState.Dispatching, fixture.Attempt.State);
-        Assert.Null(fixture.Attempt.PaymentId); Assert.All(fixture.Requests, x => Assert.Equal("GET", x.Method));
+        Assert.Equal(ProviderCollectionState.Paid, result.State);
+        Assert.Equal(1000, result.Settlement!.AmountMinorUnits);
+        Assert.Equal(CashObservationState.Invalid, result.CashInventory!.State);
+        Assert.Null(result.CashInventory.Inventory);
+        Assert.Equal(version, fixture.Attempt.Version);
+        Assert.Equal(PaymentAttemptState.Dispatching, fixture.Attempt.State);
+        Assert.Null(fixture.Attempt.PaymentId);
+        Assert.All(fixture.Requests, x => Assert.Equal("GET", x.Method));
     }
 
     [Fact]
@@ -153,20 +216,23 @@ public sealed class StripeCollectionGatewayTests
     [Fact]
     public async Task A_payment_racing_expiration_is_preserved_as_paid()
     {
-        using var fixture = new Fixture(); fixture.PayAfterExpire = true;
+        using var fixture = new Fixture();
+        fixture.PayAfterExpire = true;
         Assert.Equal(ProviderCollectionState.Paid, (await fixture.Gateway.ExpireAsync(fixture.Attempt, "cs_gateway")).State);
     }
 
     [Fact]
     public async Task Delayed_processing_is_neither_cash_nor_released_debt()
     {
-        using var fixture = new Fixture(); fixture.Paid();
+        using var fixture = new Fixture();
+        fixture.Paid();
         fixture.Session["payment_status"] = "unpaid";
         fixture.Session["payment_intent"]!["status"] = "processing";
         fixture.Session["payment_intent"]!["amount_received"] = 0;
         fixture.Session["payment_intent"]!["latest_charge"] = null;
         var result = await fixture.Gateway.ReadAsync(fixture.Attempt, "cs_gateway");
-        Assert.Equal(ProviderCollectionState.Processing, result.State); Assert.Null(result.Settlement);
+        Assert.Equal(ProviderCollectionState.Processing, result.State);
+        Assert.Null(result.Settlement);
         fixture.Session["status"] = "expired";
         Assert.Equal(ProviderCollectionState.Invalid, (await fixture.Gateway.ReadAsync(fixture.Attempt, "cs_gateway")).State);
     }
@@ -174,7 +240,8 @@ public sealed class StripeCollectionGatewayTests
     [Fact]
     public async Task Expiration_does_not_modify_another_attempts_session()
     {
-        using var fixture = new Fixture(); fixture.Session["metadata"]!["office_attempt_id"] = Guid.NewGuid().ToString("D");
+        using var fixture = new Fixture();
+        fixture.Session["metadata"]!["office_attempt_id"] = Guid.NewGuid().ToString("D");
         Assert.Equal(ProviderCollectionState.Invalid, (await fixture.Gateway.ExpireAsync(fixture.Attempt, "cs_gateway")).State);
         Assert.DoesNotContain(fixture.Requests, x => x.Method == "POST");
     }
@@ -182,7 +249,9 @@ public sealed class StripeCollectionGatewayTests
     [Fact]
     public async Task Pre_canceled_dispatch_never_contacts_provider()
     {
-        using var fixture = new Fixture(); using var cancellation = new CancellationTokenSource(); cancellation.Cancel();
+        using var fixture = new Fixture();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
         Assert.Equal(ProviderCollectionState.Unknown, (await fixture.Gateway.CreateAsync(fixture.Attempt, cancellation.Token)).State);
         Assert.Empty(fixture.Requests);
     }
@@ -195,9 +264,12 @@ public sealed class StripeCollectionGatewayTests
     [InlineData("cancel")]
     public async Task Provider_failure_or_lost_acknowledgment_preserves_uncertainty(string failure)
     {
-        using var fixture = new Fixture(); fixture.Failure = failure;
+        using var fixture = new Fixture();
+        fixture.Failure = failure;
         var result = await fixture.Gateway.CreateAsync(fixture.Attempt);
-        Assert.Equal(ProviderCollectionState.Unknown, result.State); Assert.Null(result.SessionId); Assert.Null(result.Settlement);
+        Assert.Equal(ProviderCollectionState.Unknown, result.State);
+        Assert.Null(result.SessionId);
+        Assert.Null(result.Settlement);
         Assert.Single(fixture.Requests, x => x.Method == "POST"); // SDK retries disabled; durable coordinator owns retry.
         Assert.Equal(PaymentAttemptState.Dispatching, fixture.Attempt.State);
     }
@@ -205,16 +277,20 @@ public sealed class StripeCollectionGatewayTests
     [Fact]
     public async Task Old_dispatch_requires_investigation_without_another_provider_write()
     {
-        using var fixture = new Fixture(); fixture.Time.Now = fixture.Time.Now.AddHours(23);
-        Assert.Equal(ProviderCollectionState.Invalid, (await fixture.Gateway.CreateAsync(fixture.Attempt)).State); Assert.Empty(fixture.Requests);
+        using var fixture = new Fixture();
+        fixture.Time.Now = fixture.Time.Now.AddHours(23);
+        Assert.Equal(ProviderCollectionState.Invalid, (await fixture.Gateway.CreateAsync(fixture.Attempt)).State);
+        Assert.Empty(fixture.Requests);
     }
 
     [Fact]
     public async Task Known_original_session_cannot_be_replaced_and_wrong_session_cannot_be_expired()
     {
-        using var fixture = new Fixture(); fixture.Attempt.AttachHandoff("cs_original", fixture.Time.Now.AddHours(1), fixture.Time.Now);
+        using var fixture = new Fixture();
+        fixture.Attempt.AttachHandoff("cs_original", fixture.Time.Now.AddHours(1), fixture.Time.Now);
         Assert.Equal(ProviderCollectionState.Invalid, (await fixture.Gateway.ReadAsync(fixture.Attempt, "cs_other")).State);
-        Assert.Equal(ProviderCollectionState.Invalid, (await fixture.Gateway.ExpireAsync(fixture.Attempt, "cs_other")).State); Assert.Empty(fixture.Requests);
+        Assert.Equal(ProviderCollectionState.Invalid, (await fixture.Gateway.ExpireAsync(fixture.Attempt, "cs_other")).State);
+        Assert.Empty(fixture.Requests);
     }
 
     [Theory]
@@ -227,12 +303,21 @@ public sealed class StripeCollectionGatewayTests
         var options = Fixture.Options();
         switch (invalid)
         {
-            case "key": options.ApiKey = "rk_live_synthetic"; break;
-            case "account": options.ProviderAccount = "wrong"; break;
-            case "origin": options.PublicOrigin = "https://user:private@office.example.test/path"; break;
-            case "config": options.PaymentMethodConfiguration = ""; break;
+            case "key":
+                options.ApiKey = "rk_live_synthetic";
+                break;
+            case "account":
+                options.ProviderAccount = "wrong";
+                break;
+            case "origin":
+                options.PublicOrigin = "https://user:private@office.example.test/path";
+                break;
+            case "config":
+                options.PaymentMethodConfiguration = "";
+                break;
         }
-        var error = Assert.Throws<InvalidOperationException>(options.Validate); Assert.DoesNotContain("synthetic", error.Message);
+        var error = Assert.Throws<InvalidOperationException>(options.Validate);
+        Assert.DoesNotContain("synthetic", error.Message);
     }
 
     private static Dictionary<string, string> Form(string body) => body.Split('&').Select(x => x.Split('=', 2))
@@ -288,7 +373,8 @@ public sealed class StripeCollectionGatewayTests
         private JsonObject Metadata() => new() { ["office_account_id"] = Attempt.AccountId.ToString("D"), ["office_attempt_id"] = Attempt.Id.ToString("D"), ["office_review_hash"] = Attempt.PayloadHash };
         public void Paid()
         {
-            Session["status"] = "complete"; Session["payment_status"] = "paid";
+            Session["status"] = "complete";
+            Session["payment_status"] = "paid";
             Session["payment_intent"] = new JsonObject
             {
                 ["id"] = "pi_gateway",
@@ -327,17 +413,24 @@ public sealed class StripeCollectionGatewayTests
             Requests.Add(new(request.Method.Method, path, request.Content is null ? "" : await request.Content.ReadAsStringAsync(cancellationToken), Header("Idempotency-Key"), Header("Stripe-Version"), Header("Stripe-Account")));
             if (request.Method == HttpMethod.Post && Failure is { } failure)
             {
-                if (failure == "network") throw new HttpRequestException("Synthetic lost acknowledgment");
-                if (failure == "cancel") throw new OperationCanceledException(cancellationToken);
+                if (failure == "network")
+                    throw new HttpRequestException("Synthetic lost acknowledgment");
+                if (failure == "cancel")
+                    throw new OperationCanceledException(cancellationToken);
                 return Json(new JsonObject { ["error"] = new JsonObject { ["type"] = "api_error", ["message"] = "Synthetic provider failure" } }, (HttpStatusCode)int.Parse(failure));
             }
-            if (path == "/v1/account") return Json(new JsonObject { ["id"] = AccountId, ["object"] = "account" });
-            if (path.StartsWith("/v1/customers/", StringComparison.Ordinal)) return Json(Customer);
+            if (path == "/v1/account")
+                return Json(new JsonObject { ["id"] = AccountId, ["object"] = "account" });
+            if (path.StartsWith("/v1/customers/", StringComparison.Ordinal))
+                return Json(Customer);
             if (path.StartsWith("/v1/checkout/sessions", StringComparison.Ordinal))
             {
                 if (path.EndsWith("/expire", StringComparison.Ordinal))
                 {
-                    if (PayAfterExpire) Paid(); else { Session["status"] = "expired"; Session["url"] = null; }
+                    if (PayAfterExpire)
+                        Paid();
+                    else
+                    { Session["status"] = "expired"; Session["url"] = null; }
                 }
                 return Json(Session);
             }

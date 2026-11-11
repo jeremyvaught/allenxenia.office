@@ -68,12 +68,24 @@ public sealed class OpenAiAssistantModel(HttpClient client, string key) : IAssis
     public async Task<AssistantModelReply> AnswerAsync(AssistantModelInput input, CancellationToken cancellationToken)
     {
         if (input.Question.Length is < 1 or > 4000 || input.Sources.Count > 5 || (input.History?.Count ?? 0) > 5 ||
-            input.History?.Any(x => string.IsNullOrWhiteSpace(x.Question) || x.Question.Length > 4000 || string.IsNullOrWhiteSpace(x.Answer) || x.Answer.Length > 3000) is true ||
-            input.Sources.Any(x => x.Title.Length > 180 || x.Excerpt.Length > 800)) return new(AssistantModelCode.Invalid);
+            input.History?.Any(x => string.IsNullOrWhiteSpace(x.Question) || x.Question.Length > 4000 ||
+                string.IsNullOrWhiteSpace(x.Answer) || x.Answer.Length > 3000) is true ||
+            input.Sources.Any(x => x.Title.Length > 180 || x.Excerpt.Length > 800))
+            return new(AssistantModelCode.Invalid);
         // Put the latest message last, after chronological history. Sending old requests after the
         // current answer caused the live model to repeat an already-satisfied clarification.
-        var payload = JsonSerializer.Serialize(new { input.History, input.Sources, input.Tenant, input.CanPrepare, input.CommentTarget, input.CanStageGuest, input.Question });
-        if ((input.CanPrepare && !input.Tenant) || (input.CanStageGuest && (input.Tenant || input.CanPrepare || input.CommentTarget))) return new(AssistantModelCode.Invalid);
+        var payload = JsonSerializer.Serialize(new
+        {
+            input.History,
+            input.Sources,
+            input.Tenant,
+            input.CanPrepare,
+            input.CommentTarget,
+            input.CanStageGuest,
+            input.Question
+        });
+        if ((input.CanPrepare && !input.Tenant) || (input.CanStageGuest && (input.Tenant || input.CanPrepare || input.CommentTarget)))
+            return new(AssistantModelCode.Invalid);
         var draftEnabled = input.CanPrepare || input.CanStageGuest;
         var instructions = Instructions + (draftEnabled ? "\n" + Preparation : "");
         if (Encoding.UTF8.GetByteCount(payload) + Encoding.UTF8.GetByteCount(instructions) > MaxInputBytes)
@@ -91,39 +103,64 @@ public sealed class OpenAiAssistantModel(HttpClient client, string key) : IAssis
                 reasoning = new { effort = "none" },
                 instructions,
                 input = payload,
-                text = new { format = new { type = "json_schema", name = "building_help", strict = true, schema = draftEnabled ? PreparationSchema(input.CommentTarget) : Schema } }
+                text = new
+                {
+                    format = new
+                    {
+                        type = "json_schema",
+                        name = "building_help",
+                        strict = true,
+                        schema = draftEnabled ? PreparationSchema(input.CommentTarget) : Schema
+                    }
+                }
             });
             // No automatic retries: a timeout must not multiply spend or resend private content.
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            if (!response.IsSuccessStatusCode) return new(AssistantModelCode.Unavailable);
-            if (response.Content.Headers.ContentLength > 131072) return new(AssistantModelCode.Invalid);
+            if (!response.IsSuccessStatusCode)
+                return new(AssistantModelCode.Unavailable);
+            if (response.Content.Headers.ContentLength > 131072)
+                return new(AssistantModelCode.Invalid);
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var buffer = new MemoryStream(); var chunk = new byte[4096]; int read;
+            using var buffer = new MemoryStream();
+            var chunk = new byte[4096];
+            int read;
             while ((read = await stream.ReadAsync(chunk, cancellationToken)) != 0)
             {
-                if (buffer.Length + read > 131072) return new(AssistantModelCode.Invalid);
+                if (buffer.Length + read > 131072)
+                    return new(AssistantModelCode.Invalid);
                 buffer.Write(chunk, 0, read);
             }
-            using var json = JsonDocument.Parse(buffer.ToArray()); var root = json.RootElement;
-            if (root.GetProperty("status").GetString() != "completed") return new(AssistantModelCode.Unavailable);
+            using var json = JsonDocument.Parse(buffer.ToArray());
+            var root = json.RootElement;
+            if (root.GetProperty("status").GetString() != "completed")
+                return new(AssistantModelCode.Unavailable);
             var texts = root.GetProperty("output").EnumerateArray().Where(x => x.GetProperty("type").GetString() == "message")
                 .SelectMany(x => x.GetProperty("content").EnumerateArray())
                 .Where(x => x.GetProperty("type").GetString() == "output_text").Select(x => x.GetProperty("text").GetString()).ToArray();
-            if (texts.Length != 1 || texts[0] is null) return new(AssistantModelCode.Invalid);
-            using var result = JsonDocument.Parse(texts[0]!); var value = result.RootElement;
-            if (value.EnumerateObject().Count() != (draftEnabled ? 4 : 3)) return new(AssistantModelCode.Invalid);
-            var answer = value.GetProperty("answer").GetString(); var route = value.GetProperty("route").GetString();
+            if (texts.Length != 1 || texts[0] is null)
+                return new(AssistantModelCode.Invalid);
+            using var result = JsonDocument.Parse(texts[0]!);
+            var value = result.RootElement;
+            if (value.EnumerateObject().Count() != (draftEnabled ? 4 : 3))
+                return new(AssistantModelCode.Invalid);
+            var answer = value.GetProperty("answer").GetString();
+            var route = value.GetProperty("route").GetString();
             var sources = value.GetProperty("sources").EnumerateArray().Select(x => Guid.Parse(x.GetString()!)).ToArray();
             if (string.IsNullOrWhiteSpace(answer) || answer.Length > 3000 || sources.Length > 5 ||
                 sources.Any(x => !input.Sources.Any(s => s.ArticleId == x)) ||
-                route is not ("help" or "login" or "requests" or "new_request" or "billing" or "autopay")) return new(AssistantModelCode.Invalid);
-            var usage = root.GetProperty("usage"); var inputTokens = usage.GetProperty("input_tokens").GetInt32(); var outputTokens = usage.GetProperty("output_tokens").GetInt32();
-            if (inputTokens < 0 || outputTokens is < 0 or > 2048) return new(AssistantModelCode.Invalid);
+                route is not ("help" or "login" or "requests" or "new_request" or "billing" or "autopay"))
+                return new(AssistantModelCode.Invalid);
+            var usage = root.GetProperty("usage");
+            var inputTokens = usage.GetProperty("input_tokens").GetInt32();
+            var outputTokens = usage.GetProperty("output_tokens").GetInt32();
+            if (inputTokens < 0 || outputTokens is < 0 or > 2048)
+                return new(AssistantModelCode.Invalid);
             AssistantDraft? proposed = null;
             if (draftEnabled && value.GetProperty("draft") is { ValueKind: not JsonValueKind.Null } draft)
             {
                 if (draft.EnumerateObject().Count() != 5 || draft.GetProperty("kind").GetString() != (input.CommentTarget ? "comment" : "request") ||
-                    route != (input.CommentTarget ? "requests" : "new_request")) return new(AssistantModelCode.Invalid);
+                    route != (input.CommentTarget ? "requests" : "new_request"))
+                    return new(AssistantModelCode.Invalid);
                 proposed = new(input.CommentTarget ? AssistantReviewKind.Comment : AssistantReviewKind.Request,
                     draft.GetProperty("title").GetString()!, draft.GetProperty("description").GetString()!,
                     draft.GetProperty("location").GetString()!, draft.GetProperty("comment").GetString()!);
@@ -134,7 +171,8 @@ public sealed class OpenAiAssistantModel(HttpClient client, string key) : IAssis
             return new(AssistantModelCode.Success, answer, sources.Distinct().ToArray(), route!, inputTokens, outputTokens, proposed);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return new(AssistantModelCode.Unavailable); }
-        catch (Exception exception) when (exception is HttpRequestException or IOException or JsonException or InvalidOperationException or FormatException or KeyNotFoundException or ArgumentException)
+        catch (Exception exception) when (exception is HttpRequestException or IOException or JsonException
+            or InvalidOperationException or FormatException or KeyNotFoundException or ArgumentException)
         { return new(AssistantModelCode.Unavailable); }
     }
 }

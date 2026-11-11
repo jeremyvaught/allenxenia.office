@@ -33,6 +33,53 @@ public sealed class NotificationConfigurationTests
         Assert.DoesNotContain("private-canary", error.Message);
     }
 
+    [Theory]
+    [InlineData("Testing")]
+    [InlineData("Development")]
+    public void Local_inbox_is_accepted_only_for_local_loopback_hosts(string environment)
+    {
+        var builder = Local(environment, new() { ["Notifications:Mode"] = "LocalInbox", ["Notifications:PublicOrigin"] = "http://127.0.0.1:5081/" });
+        builder.AddOfficeNotifications();
+        using var services = builder.Services.BuildServiceProvider();
+        Assert.IsType<LocalInboxTransport>(services.GetRequiredService<IEmailTransport>());
+        var remote = Local(environment, new() { ["Notifications:Mode"] = "LocalInbox", ["Notifications:PublicOrigin"] = "https://office.example.test/" });
+        Assert.Contains("loopback", Assert.Throws<InvalidOperationException>(() => remote.AddOfficeNotifications()).Message);
+    }
+
+    [Fact]
+    public void Unknown_notification_mode_is_rejected_even_locally()
+    {
+        var builder = Local("Testing", new() { ["Notifications:Mode"] = "Console" });
+        Assert.Contains("Notifications:Mode", Assert.Throws<InvalidOperationException>(() => builder.AddOfficeNotifications()).Message);
+    }
+
+    [Fact]
+    public void Default_production_notifications_are_unconfigured_and_start_no_worker()
+    {
+        var builder = Local("Production", new());
+        builder.AddOfficeNotifications();
+        using var services = builder.Services.BuildServiceProvider();
+        Assert.IsType<UnconfiguredEmailTransport>(services.GetRequiredService<IEmailTransport>());
+        Assert.DoesNotContain(builder.Services, x => x.ServiceType == typeof(IHostedService) && x.ImplementationType == typeof(NotificationWorker));
+    }
+
+    [Fact]
+    public void Smtp_without_credentials_is_rejected_and_enabled_smtp_starts_the_worker()
+    {
+        var missing = Local("Production", new() { ["Notifications:Mode"] = "Smtp", ["Notifications:PublicOrigin"] = "https://office.example.test/" });
+        Assert.Contains("SMTP requires", Assert.Throws<InvalidOperationException>(() => missing.AddOfficeNotifications()).Message);
+        var enabled = Builder("Smtp", "https://office.example.test/", true);
+        enabled.AddOfficeNotifications();
+        Assert.Contains(enabled.Services, x => x.ServiceType == typeof(IHostedService) && x.ImplementationType == typeof(NotificationWorker));
+    }
+
+    private static WebApplicationBuilder Local(string environment, Dictionary<string, string?> values)
+    {
+        var builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions { EnvironmentName = environment, ContentRootPath = Path.GetTempPath() });
+        builder.Configuration.AddInMemoryCollection(values);
+        return builder;
+    }
+
     private static WebApplicationBuilder Builder(string mode, string origin, bool enabled)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Production" });

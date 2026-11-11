@@ -8,25 +8,37 @@ namespace AllenBuilding.Application.Billing;
 public enum BillingCode { Success, ValidationFailed, Unavailable, Conflict, NoFullPeriod }
 public sealed record BillingResult(BillingCode Code, Guid? AccountId = null, Guid? EntityId = null, Guid? AccountVersion = null);
 public sealed record OpenRentAccount(Guid OperationId, Guid AccountId, Guid MembershipId);
-public sealed record SetRentTerms(Guid OperationId, Guid AccountId, Guid Version, long AmountMinorUnits, int DueDay, DateOnly StartsOn, DateOnly? EndsOn = null, Guid? ReplacesId = null);
+public sealed record SetRentTerms(
+    Guid OperationId, Guid AccountId, Guid Version, long AmountMinorUnits, int DueDay, DateOnly StartsOn,
+    DateOnly? EndsOn = null, Guid? ReplacesId = null);
 public sealed record IssueCharge(Guid OperationId, Guid AccountId, Guid Version, long AmountMinorUnits, string Description, DateOnly DueOn);
 public sealed record EndTenancy(Guid OperationId, Guid AccountId, Guid Version, Guid MembershipVersion, string Reason);
 public sealed record BillingClosureItem(Guid AccountId, string Suite, string PayerEmail, BillingClosureState State, DateTimeOffset RequestedAt, string Reason);
 public sealed record BillingClosureView(BillingClosureState State, DateTimeOffset RequestedAt, string Reason);
 public sealed record IssueRent(Guid OperationId, Guid AccountId, Guid Version, int Year, int Month);
-public sealed record BillingAccount(Guid Id, Guid Version, string Suite, IReadOnlyList<RentTermsView> Terms, IReadOnlyList<ObligationView> Obligations, bool CollectionAvailable = false, Guid MembershipId = default, string? PayerEmail = null, Guid MembershipVersion = default, DateTimeOffset? EndedAt = null, BillingClosureView? Closure = null);
-public sealed record RentTermsView(Guid Id, Guid Version, long AmountMinorUnits, string Currency, int DueDay, DateOnly StartsOn, DateOnly? EndsOn, Guid? SupersededBy);
-public sealed record ObligationView(Guid Id, Guid Version, ChargeKind Kind, string Description, long IssuedMinorUnits, string Currency, DateOnly DueOn, DateOnly? PeriodStartsOn, DateOnly? PeriodEndsOn, long CreditedMinorUnits = 0)
+public sealed record BillingAccount(
+    Guid Id, Guid Version, string Suite, IReadOnlyList<RentTermsView> Terms, IReadOnlyList<ObligationView> Obligations,
+    bool CollectionAvailable = false, Guid MembershipId = default, string? PayerEmail = null, Guid MembershipVersion = default,
+    DateTimeOffset? EndedAt = null, BillingClosureView? Closure = null);
+public sealed record RentTermsView(
+    Guid Id, Guid Version, long AmountMinorUnits, string Currency, int DueDay, DateOnly StartsOn, DateOnly? EndsOn,
+    Guid? SupersededBy);
+public sealed record ObligationView(
+    Guid Id, Guid Version, ChargeKind Kind, string Description, long IssuedMinorUnits, string Currency, DateOnly DueOn,
+    DateOnly? PeriodStartsOn, DateOnly? PeriodEndsOn, long CreditedMinorUnits = 0)
 { public long NetChargeMinorUnits => checked(IssuedMinorUnits - CreditedMinorUnits); }
 
 public sealed record RentCandidate(Guid MembershipId, string Suite, string Email);
-public sealed record RentPreview(Guid AccountId, Guid AccountVersion, long AmountMinorUnits, DateOnly DueOn, DateOnly StartsOn, DateOnly EndsOn, bool AlreadyIssued);
+public sealed record RentPreview(
+    Guid AccountId, Guid AccountVersion, long AmountMinorUnits, DateOnly DueOn, DateOnly StartsOn, DateOnly EndsOn,
+    bool AlreadyIssued);
 
 public interface IBillingStore
 {
     Task<BillingResult> EndAsync(Actor actor, EndTenancy command, string hash, CancellationToken cancellationToken);
     Task<IReadOnlyList<BillingClosureItem>> ClosuresAsync(Actor actor, CancellationToken cancellationToken);
-    Task<IReadOnlyList<BillingAccount>> ReadAsync(Actor actor, bool management, CancellationToken cancellationToken, Guid? accountId, Guid? membershipId = null);
+    Task<IReadOnlyList<BillingAccount>> ReadAsync(
+        Actor actor, bool management, CancellationToken cancellationToken, Guid? accountId, Guid? membershipId = null);
     Task<IReadOnlyList<RentCandidate>> CandidatesAsync(Actor actor, CancellationToken cancellationToken);
     Task<RentPreview?> PreviewRentAsync(Actor actor, Guid accountId, int year, int month, CancellationToken cancellationToken);
     Task<BillingResult> OpenAsync(Actor actor, OpenRentAccount command, string hash, CancellationToken cancellationToken);
@@ -41,14 +53,16 @@ public sealed class BillingActions(ICurrentActor current, IBillingStore store, T
     public async Task<IReadOnlyList<BillingAccount>> ReadAsync(bool management, CancellationToken cancellationToken = default, Guid? accountId = null)
     {
         var actor = await current.GetAsync(cancellationToken);
-        if (actor is null || (management && !actor.ChallengedMfa) || (actor.ManagedBuildings.Count > 0 && !actor.ChallengedMfa)) return [];
+        if (actor is null || (management && !actor.ChallengedMfa) || (actor.ManagedBuildings.Count > 0 && !actor.ChallengedMfa))
+            return [];
         return await store.ReadAsync(actor, management, cancellationToken, accountId);
     }
 
     public async Task<IReadOnlyList<BillingAccount>> ReadForMembershipAsync(Guid membershipId, CancellationToken cancellationToken = default)
     {
         var actor = await current.GetAsync(cancellationToken);
-        if (membershipId == Guid.Empty || actor is null || (actor.ManagedBuildings.Count > 0 && !actor.ChallengedMfa)) return [];
+        if (membershipId == Guid.Empty || actor is null || (actor.ManagedBuildings.Count > 0 && !actor.ChallengedMfa))
+            return [];
         return await store.ReadAsync(actor, false, cancellationToken, null, membershipId);
     }
 
@@ -60,8 +74,11 @@ public sealed class BillingActions(ICurrentActor current, IBillingStore store, T
     public async Task<RentPreview?> PreviewRentAsync(Guid accountId, int year, int month, CancellationToken cancellationToken = default)
     {
         var actor = await current.GetAsync(cancellationToken);
-        if (actor is not { ChallengedMfa: true } || actor.ManagedBuildings.Count == 0) return null;
-        try { RentCalendar.ForMonth(accountId, year, month, 1); } catch (ArgumentException) { return null; }
+        if (actor is not { ChallengedMfa: true } || actor.ManagedBuildings.Count == 0)
+            return null;
+        try
+        { RentCalendar.ForMonth(accountId, year, month, 1); }
+        catch (ArgumentException) { return null; }
         return await store.PreviewRentAsync(actor, accountId, year, month, cancellationToken);
     }
 
@@ -73,8 +90,10 @@ public sealed class BillingActions(ICurrentActor current, IBillingStore store, T
     public Task<BillingResult> EndAsync(EndTenancy command, CancellationToken cancellationToken = default)
         => Execute(command, command.OperationId, command.AccountId, () =>
         {
-            Version(command.Version); Version(command.MembershipVersion);
-            if (!TenancyClosure.ValidReason(command.Reason)) throw new ArgumentException();
+            Version(command.Version);
+            Version(command.MembershipVersion);
+            if (!TenancyClosure.ValidReason(command.Reason))
+                throw new ArgumentException();
         }, (actor, hash) => store.EndAsync(actor, command, hash, cancellationToken), cancellationToken);
 
     public Task<BillingResult> OpenAsync(OpenRentAccount command, CancellationToken cancellationToken = default)
@@ -84,24 +103,35 @@ public sealed class BillingActions(ICurrentActor current, IBillingStore store, T
         => Execute(command, command.OperationId, command.AccountId, () =>
         {
             Version(command.Version);
-            if (command.ReplacesId is not null && (command.ReplacesId == Guid.Empty || command.StartsOn.Day != 1)) throw new ArgumentException();
-            RentAgreement.Create(command.AccountId, new Money(command.AmountMinorUnits), command.DueDay, command.StartsOn, command.EndsOn, "validation", time.GetUtcNow());
+            if (command.ReplacesId is not null && (command.ReplacesId == Guid.Empty || command.StartsOn.Day != 1))
+                throw new ArgumentException();
+            RentAgreement.Create(command.AccountId, new Money(command.AmountMinorUnits), command.DueDay, command.StartsOn,
+                command.EndsOn, "validation", time.GetUtcNow());
         }, (actor, hash) => store.TermsAsync(actor, command, hash, cancellationToken), cancellationToken);
     public Task<BillingResult> ChargeAsync(IssueCharge command, CancellationToken cancellationToken = default)
         => Execute(command, command.OperationId, command.AccountId, () =>
         {
-            Version(command.Version); Obligation.Issue(command.AccountId, new Money(command.AmountMinorUnits), command.Description, command.DueOn, "validation", time.GetUtcNow());
+            Version(command.Version);
+            Obligation.Issue(command.AccountId, new Money(command.AmountMinorUnits), command.Description, command.DueOn,
+                "validation", time.GetUtcNow());
         }, (actor, hash) => store.ChargeAsync(actor, command, hash, cancellationToken), cancellationToken);
     public Task<BillingResult> RentAsync(IssueRent command, CancellationToken cancellationToken = default)
-        => Execute(command, command.OperationId, command.AccountId, () => { Version(command.Version); RentCalendar.ForMonth(command.AccountId, command.Year, command.Month, 1); },
+        => Execute(command, command.OperationId, command.AccountId,
+            () => { Version(command.Version); RentCalendar.ForMonth(command.AccountId, command.Year, command.Month, 1); },
             (actor, hash) => store.RentAsync(actor, command, hash, cancellationToken), cancellationToken);
 
-    private async Task<BillingResult> Execute<T>(T command, Guid operation, Guid account, Action validate, Func<Actor, string, Task<BillingResult>> action, CancellationToken cancellationToken)
+    private async Task<BillingResult> Execute<T>(
+        T command, Guid operation, Guid account, Action validate, Func<Actor, string, Task<BillingResult>> action,
+        CancellationToken cancellationToken)
     {
         var actor = await current.GetAsync(cancellationToken);
-        if (actor is not { ChallengedMfa: true, RecentMfa: true } || actor.ManagedBuildings.Count == 0) return new(BillingCode.Unavailable);
-        if (operation == Guid.Empty || account == Guid.Empty) return new(BillingCode.ValidationFailed);
-        try { validate(); } catch (ArgumentException) { return new(BillingCode.ValidationFailed); }
+        if (actor is not { ChallengedMfa: true, RecentMfa: true } || actor.ManagedBuildings.Count == 0)
+            return new(BillingCode.Unavailable);
+        if (operation == Guid.Empty || account == Guid.Empty)
+            return new(BillingCode.ValidationFailed);
+        try
+        { validate(); }
+        catch (ArgumentException) { return new(BillingCode.ValidationFailed); }
         var hash = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new { Type = typeof(T).Name, command })));
         return await action(actor, hash);
     }

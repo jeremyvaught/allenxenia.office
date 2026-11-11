@@ -10,30 +10,42 @@ public sealed partial class ManagementReportReader : ICompletionReportReader
 {
     public async Task<CompletionReport?> ReadAsync(Actor actor, CompletionQuery query, DateTimeOffset observedAt, CancellationToken token)
     {
-        if (!query.IsValid || !actor.ChallengedMfa || actor.ManagedBuildings.Count == 0) return null;
+        if (!query.IsValid || !actor.ChallengedMfa || actor.ManagedBuildings.Count == 0)
+            return null;
         await db.Database.OpenConnectionAsync(token);
         try
         {
             var connection = db.Database.GetDbConnection();
             if (db is MySqlOfficeDbContext)
             {
-                await using var mode = connection.CreateCommand(); mode.CommandText = "SET TRANSACTION READ ONLY"; mode.CommandTimeout = 5; await mode.ExecuteNonQueryAsync(token);
+                await using var mode = connection.CreateCommand();
+                mode.CommandText = "SET TRANSACTION READ ONLY";
+                mode.CommandTimeout = 5;
+                await mode.ExecuteNonQueryAsync(token);
             }
-            await using var native = connection is SqliteConnection sqlite ? sqlite.BeginTransaction(IsolationLevel.Serializable, deferred: true) : await connection.BeginTransactionAsync(IsolationLevel.RepeatableRead, token);
+            await using var native = connection is SqliteConnection sqlite
+                ? sqlite.BeginTransaction(IsolationLevel.Serializable, deferred: true)
+                : await connection.BeginTransactionAsync(IsolationLevel.RepeatableRead, token);
             CompletionReport report;
             await using (var transaction = await db.Database.UseTransactionAsync(native, token))
             {
                 var buildings = await ScopeAsync(actor, token);
-                if (buildings.Count is 0 or > 100 || query.BuildingId is { } requested && !buildings.Any(x => x.Id == requested)) return null;
+                if (buildings.Count is 0 or > 100 || query.BuildingId is { } requested && !buildings.Any(x => x.Id == requested))
+                    return null;
                 var scope = buildings.Where(x => query.BuildingId == null || x.Id == query.BuildingId).Select(x => x.Id).ToArray();
                 await using var command = Command(connection, native, CompletionSql.Summary(scope.Length, db is MySqlOfficeDbContext), scope, observedAt);
-                await using var rows = await command.ExecuteReaderAsync(token); await rows.ReadAsync(token);
+                await using var rows = await command.ExecuteReaderAsync(token);
+                await rows.ReadAsync(token);
                 double? Number(int column) => rows.IsDBNull(column) ? null : Convert.ToDouble(rows.GetValue(column));
-                report = new(query, observedAt, Convert.ToInt64(rows.GetValue(0)), Convert.ToInt64(rows.GetValue(1)), Convert.ToInt64(rows.GetValue(2)), Convert.ToInt64(rows.GetValue(3)),
+                report = new(
+                    query, observedAt, Convert.ToInt64(rows.GetValue(0)), Convert.ToInt64(rows.GetValue(1)), Convert.ToInt64(rows.GetValue(2)),
+                    Convert.ToInt64(rows.GetValue(3)),
                     new(Convert.ToInt64(rows.GetValue(4)), Number(5), Number(6)), new(Convert.ToInt64(rows.GetValue(7)), Number(8), Number(9)), buildings);
-                await rows.CloseAsync(); await native.CommitAsync(token);
+                await rows.CloseAsync();
+                await native.CommitAsync(token);
             }
-            var fresh = await ScopeAsync(actor, token); return report.Buildings.All(x => fresh.Any(y => x.Id == y.Id)) ? report : null;
+            var fresh = await ScopeAsync(actor, token);
+            return report.Buildings.All(x => fresh.Any(y => x.Id == y.Id)) ? report : null;
         }
         finally { await db.Database.CloseConnectionAsync(); }
     }
@@ -45,7 +57,8 @@ internal static class CompletionSql
     // at one timestamp are excluded and counted; GUID ordering cannot invent their actual order.
     public static string Summary(int count, bool mysql)
     {
-        string Seconds(string start, string end) => mysql ? $"TIMESTAMPDIFF(MICROSECOND,{start},{end}) / 1000000.0" : $"ROUND((julianday({end}) - julianday({start})) * 86400.0,3)";
+        string Seconds(string start, string end) =>
+            mysql ? $"TIMESTAMPDIFF(MICROSECOND,{start},{end}) / 1000000.0" : $"ROUND((julianday({end}) - julianday({start})) * 86400.0,3)";
         return $$"""
             WITH scoped AS (
               SELECT w.id, w.created_at FROM work_orders w JOIN suites s ON s.id = w.suite_id

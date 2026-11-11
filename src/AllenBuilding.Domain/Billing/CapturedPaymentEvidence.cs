@@ -15,16 +15,23 @@ public sealed class CapturedPaymentEvidence
     public DateTimeOffset CreatedAt { get; private init; }
     public static CapturedPaymentEvidence FromSettled(PaymentAttempt original)
     {
-        if (original is null || original.State != PaymentAttemptState.Settled) throw new ArgumentException("An original captured payment is required.");
-        return FromSettlement(original, new(original.ProviderAccount, original.LiveMode, original.CustomerId, original.SessionId!, original.PaymentId!, original.TotalMinorUnits, original.Currency));
+        if (original is null || original.State != PaymentAttemptState.Settled)
+            throw new ArgumentException("An original captured payment is required.");
+        return FromSettlement(original, new(original.ProviderAccount, original.LiveMode, original.CustomerId, original.SessionId!,
+            original.PaymentId!, original.TotalMinorUnits, original.Currency));
     }
     public static CapturedPaymentEvidence FromSettlement(PaymentAttempt original, CanonicalSettlement settlement)
     {
-        if (original is null || settlement is null || original.State is PaymentAttemptState.Admitted or PaymentAttemptState.Uncollected || original.Id == Guid.Empty || original.AccountId == Guid.Empty ||
-            settlement.ProviderAccount != original.ProviderAccount || settlement.LiveMode != original.LiveMode || settlement.CustomerId != original.CustomerId || settlement.Currency != "USD" || settlement.Currency != original.Currency ||
-            settlement.AmountMinorUnits != original.TotalMinorUnits || settlement.AmountMinorUnits is < 50 or > 99_999_999 || !PaymentReferences.Valid(settlement.SessionId, "cs_") ||
-            (original.SessionId is not null && original.SessionId != settlement.SessionId) || !PaymentReferences.Valid(settlement.PaymentId, "pi_") ||
-            (original.PaymentId is not null && original.PaymentId != settlement.PaymentId) || original.PayloadHash is not { Length: 64 } || !original.PayloadHash.All(Uri.IsHexDigit))
+        if (original is null || settlement is null || original.State is PaymentAttemptState.Admitted or PaymentAttemptState.Uncollected ||
+            original.Id == Guid.Empty || original.AccountId == Guid.Empty ||
+            settlement.ProviderAccount != original.ProviderAccount || settlement.LiveMode != original.LiveMode ||
+            settlement.CustomerId != original.CustomerId || settlement.Currency != "USD" || settlement.Currency != original.Currency ||
+            settlement.AmountMinorUnits != original.TotalMinorUnits || settlement.AmountMinorUnits is < 50 or > 99_999_999 ||
+            !PaymentReferences.Valid(settlement.SessionId, "cs_") ||
+            (original.SessionId is not null && original.SessionId != settlement.SessionId) ||
+            !PaymentReferences.Valid(settlement.PaymentId, "pi_") ||
+            (original.PaymentId is not null && original.PaymentId != settlement.PaymentId) || original.PayloadHash is not { Length: 64 } ||
+            !original.PayloadHash.All(Uri.IsHexDigit))
             throw new ArgumentException("Capture evidence must match the dispatched original amount, scope, references and reviewed payload.");
         return new()
         {

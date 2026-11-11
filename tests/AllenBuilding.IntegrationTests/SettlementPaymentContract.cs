@@ -40,7 +40,8 @@ public static class SettlementPaymentContract
             var original = await db.PaymentAttempts.Include(x => x.Items).SingleAsync(x => x.Id == attempt.Id);
             var payment = SettlementPayment.Record(original, fact, now);
             db.Add(payment);
-            foreach (var obligation in await db.Obligations.Where(x => x.Id == first.Id || x.Id == second.Id).ToArrayAsync()) obligation.FinancialStateChanged();
+            foreach (var obligation in await db.Obligations.Where(x => x.Id == first.Id || x.Id == second.Id).ToArrayAsync())
+                obligation.FinancialStateChanged();
             db.CollectionGuards.RemoveRange(await db.CollectionGuards.Where(x => x.AttemptId == attempt.Id).ToArrayAsync());
             return (original, payment);
         }
@@ -60,7 +61,8 @@ public static class SettlementPaymentContract
         await using (var firstWriter = create())
         await using (var duplicateWriter = create())
         {
-            await Prepare(firstWriter); await Prepare(duplicateWriter);
+            await Prepare(firstWriter);
+            await Prepare(duplicateWriter);
             await firstWriter.SaveChangesAsync();
             await Assert.ThrowsAnyAsync<DbUpdateException>(() => duplicateWriter.SaveChangesAsync());
         }
@@ -69,8 +71,10 @@ public static class SettlementPaymentContract
         {
             var recorded = await db.SettlementPayments.Include(x => x.Allocations).SingleAsync(x => x.AttemptId == attempt.Id);
             receiptId = recorded.Id;
-            Assert.Equal(1025, recorded.AmountMinorUnits); Assert.Equal(recorded.AmountMinorUnits, recorded.Allocations.Sum(x => x.AmountMinorUnits));
-            Assert.Equal(2, recorded.Allocations.Count); Assert.Equal(25, recorded.Allocations.Single(x => x.ObligationId == first.Id).AmountMinorUnits);
+            Assert.Equal(1025, recorded.AmountMinorUnits);
+            Assert.Equal(recorded.AmountMinorUnits, recorded.Allocations.Sum(x => x.AmountMinorUnits));
+            Assert.Equal(2, recorded.Allocations.Count);
+            Assert.Equal(25, recorded.Allocations.Single(x => x.ObligationId == first.Id).AmountMinorUnits);
             Assert.Equal(PaymentAttemptState.Settled, (await db.PaymentAttempts.SingleAsync(x => x.Id == attempt.Id)).State);
             Assert.False(await db.CollectionGuards.AnyAsync(x => x.AttemptId == attempt.Id));
             Assert.NotEqual(first.Version, (await db.Obligations.SingleAsync(x => x.Id == first.Id)).Version);
@@ -97,7 +101,8 @@ public static class SettlementPaymentContract
             if (inspection is MySqlOfficeDbContext)
             {
                 var collations = await inspection.Database.SqlQueryRaw<string>("SELECT COLLATION_NAME AS Value FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'settlement_payments' AND COLUMN_NAME IN ('provider_account', 'collection_reference')").ToArrayAsync();
-                Assert.Equal(2, collations.Length); Assert.All(collations, x => Assert.Equal("utf8mb4_bin", x));
+                Assert.Equal(2, collations.Length);
+                Assert.All(collations, x => Assert.Equal("utf8mb4_bin", x));
             }
         }
     }

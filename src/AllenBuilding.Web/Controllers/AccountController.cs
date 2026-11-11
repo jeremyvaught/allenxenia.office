@@ -7,14 +7,13 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace AllenBuilding.Web.Controllers;
 
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("Accounts")]
 public sealed class AccountController(UserManager<OfficeUser> users, SignInManager<OfficeUser> signIn,
-    TimeProvider time, AllenBuilding.Infrastructure.Persistence.OfficeDbContext db, AccountInvitations invitations, OperatorEnrollment operatorEnrollment, ICurrentActor current) : Controller
+    TimeProvider time, AccountSecurity security, OperatorEnrollment operatorEnrollment, ICurrentActor current) : Controller
 {
     [HttpGet]
     public IActionResult Login(string? returnUrl)
@@ -29,11 +28,13 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
     {
         form.ReturnUrl = SafeReturn(form.ReturnUrl);
         ModelState.Remove(nameof(form.ReturnUrl));
-        if (!ModelState.IsValid) return View(form);
+        if (!ModelState.IsValid)
+            return View(form);
         await signIn.SignOutAsync();
         await signIn.ForgetTwoFactorClientAsync();
         var result = await signIn.PasswordSignInAsync(form.Email, form.Password, false, lockoutOnFailure: true);
-        if (result.RequiresTwoFactor) return RedirectToAction(nameof(Factor), form.ReturnUrl is null ? null : new { returnUrl = form.ReturnUrl });
+        if (result.RequiresTwoFactor)
+            return RedirectToAction(nameof(Factor), form.ReturnUrl is null ? null : new { returnUrl = form.ReturnUrl });
         if (result.Succeeded)
         {
             var user = (await users.FindByNameAsync(form.Email))!;
@@ -41,8 +42,9 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
             // First sign-in is a welcome, not an enrollment wizard. Protected manager
             // destinations still enforce their policies when selected afterward.
             if (!user.TwoFactorEnabled && !user.MustReplaceRecoveryCodes &&
-                await db.BuildingManagers.AnyAsync(x => x.UserId == user.Id, HttpContext.RequestAborted) &&
-                form.ReturnUrl != "/Account/Enroll") return RedirectToAction("Index", "Portal");
+                await security.IsManagerAsync(user.Id, HttpContext.RequestAborted) &&
+                form.ReturnUrl != "/Account/Enroll")
+                return RedirectToAction("Index", "Portal");
             return AfterSignIn(form.ReturnUrl);
         }
         ModelState.AddModelError("", "Unable to sign in. Check your details or try again later.");
@@ -64,20 +66,19 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
         ModelState.Remove(nameof(form.ReturnUrl));
         var challenge = await HttpContext.AuthenticateAsync(IdentityConstants.TwoFactorUserIdScheme);
         var user = await signIn.GetTwoFactorAuthenticationUserAsync();
-        if (user is null || challenge.Properties?.IssuedUtc is not { } passwordAt) return LoginAgain(form.ReturnUrl);
-        if (!ModelState.IsValid) return View(form);
+        if (user is null || challenge.Properties?.IssuedUtc is not { } passwordAt)
+            return LoginAgain(form.ReturnUrl);
+        if (!ModelState.IsValid)
+            return View(form);
         var result = form.Recovery ? await signIn.TwoFactorRecoveryCodeSignInAsync(form.Code.Trim())
             : await signIn.TwoFactorAuthenticatorSignInAsync(NormalizeCode(form.Code), false, false);
         if (result.Succeeded)
         {
             if (form.Recovery)
-            {
-                invitations.Audit(user.Id, "RecoveryCodeUsed", user.Id);
-                invitations.Queue(user.Id, "SecurityNotice", "A recovery code was used to sign in. Replace your recovery codes.");
-                await db.SaveChangesAsync();
-            }
+                await security.RecordRecoveryCodeUseAsync(user.Id);
             await ChallengedSignIn(user, passwordAt, form.Recovery);
-            return form.Recovery || (form.ReturnUrl is not null && user.MustReplaceRecoveryCodes) ? RedirectToAction(nameof(RecoveryCodes)) : AfterSignIn(form.ReturnUrl);
+            return form.Recovery || (form.ReturnUrl is not null && user.MustReplaceRecoveryCodes)
+                ? RedirectToAction(nameof(RecoveryCodes)) : AfterSignIn(form.ReturnUrl);
         }
         ModelState.AddModelError("", "Unable to verify this code. Try again or sign in again.");
         return View(form);
@@ -87,14 +88,18 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
     public async Task<IActionResult> Enroll()
     {
         var user = (await users.GetUserAsync(User))!;
-        if (user.TwoFactorEnabled) return RedirectToAction(nameof(Login));
-        if (!await EnrollmentAllowed(user)) return View("OperatorEnrollment", new OperatorEnrollmentForm());
+        if (user.TwoFactorEnabled)
+            return RedirectToAction(nameof(Login));
+        if (!await EnrollmentAllowed(user))
+            return View("OperatorEnrollment", new OperatorEnrollmentForm());
         var firstSetup = !user.MustReplaceRecoveryCodes;
-        if (firstSetup && !FreshEnrollmentPassword(out _)) return LoginAgain("/Account/Enroll");
+        if (firstSetup && !FreshEnrollmentPassword(out _))
+            return LoginAgain("/Account/Enroll");
         var key = await users.GetAuthenticatorKeyAsync(user);
         if (key is null)
         {
-            if (!(await users.ResetAuthenticatorKeyAsync(user)).Succeeded) return StatusCode(409);
+            if (!(await users.ResetAuthenticatorKeyAsync(user)).Succeeded)
+                return StatusCode(409);
             // Resetting the seed changes the stamp. Carry forward the actual password
             // proof, never turn a refresh into a new password verification.
             await signIn.SignInWithClaimsAsync(user, false, User.Claims.Where(x => x.Type is OfficeSecurity.PasswordTime or OperatorEnrollment.SessionTime));
@@ -106,37 +111,28 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
     [Authorize, HttpPost]
     public async Task<IActionResult> Enroll(EnrollmentForm form)
     {
-        await using var transaction = await AllenBuilding.Infrastructure.Persistence.AuthorityLocks.BeginAsync(db, HttpContext.RequestAborted);
         var user = (await users.GetUserAsync(User))!;
-        await AllenBuilding.Infrastructure.Persistence.AuthorityLocks.InvitationUserAsync(db, user.Id, HttpContext.RequestAborted);
-        await db.Entry(user).ReloadAsync(HttpContext.RequestAborted);
-        if (user.TwoFactorEnabled) return RedirectToAction(nameof(Login));
-        if (!await EnrollmentAllowed(user)) return StatusCode(403);
+        await using var transaction = await security.LockForEnrollmentAsync(user, HttpContext.RequestAborted);
+        if (user.TwoFactorEnabled)
+            return RedirectToAction(nameof(Login));
+        if (!await EnrollmentAllowed(user))
+            return StatusCode(403);
         var firstSetup = !user.MustReplaceRecoveryCodes;
         var passwordAt = default(DateTimeOffset);
-        if (firstSetup && !FreshEnrollmentPassword(out passwordAt)) return LoginAgain("/Account/Enroll");
+        if (firstSetup && !FreshEnrollmentPassword(out passwordAt))
+            return LoginAgain("/Account/Enroll");
         if (ModelState.IsValid && !await users.IsLockedOutAsync(user) &&
             await users.VerifyTwoFactorTokenAsync(user, users.Options.Tokens.AuthenticatorTokenProvider, NormalizeCode(form.Code)))
         {
-            if (!(await users.SetTwoFactorEnabledAsync(user, true)).Succeeded) return StatusCode(409);
-            if (!(await users.RemoveAuthenticationTokenAsync(user, OperatorEnrollment.Provider, OperatorEnrollment.RequiredToken)).Succeeded) return StatusCode(409);
-            user.MustReplaceRecoveryCodes = true;
-            if (!(await users.UpdateAsync(user)).Succeeded) return StatusCode(409);
-            invitations.Audit(user.Id, "MfaEnrolled", user.Id);
-            if (firstSetup)
+            var enrolled = await security.CompleteEnrollmentAsync(user, firstSetup);
+            if (!enrolled.Succeeded)
+                return StatusCode(409);
+            await transaction.CommitAsync();
+            if (enrolled.RecoveryCodes is { } codes)
             {
-                var codes = (await users.GenerateNewTwoFactorRecoveryCodesAsync(user, 10))?.ToArray();
-                if (codes is null) return StatusCode(409);
-                user.MustReplaceRecoveryCodes = false;
-                if (!(await users.UpdateAsync(user)).Succeeded) return StatusCode(409);
-                invitations.Audit(user.Id, "RecoveryCodesReplaced", user.Id);
-                invitations.Queue(user.Id, "SecurityNotice", "Your authenticator was enabled and recovery codes were created.");
-                await db.SaveChangesAsync(); await transaction.CommitAsync();
                 await ChallengedSignIn(user, passwordAt);
                 return View("RecoveryIssued", codes);
             }
-            await db.SaveChangesAsync();
-            await transaction.CommitAsync();
             // Recovery enrollment still requires a new password + factor challenge.
             await signIn.SignOutAsync();
             return RedirectToAction(nameof(Login));
@@ -156,19 +152,23 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
         if (!ModelState.IsValid || user.SecurityStamp is null ||
             !await operatorEnrollment.AuthorizeAsync(user.Id, user.SecurityStamp, form.Code.Trim(), HttpContext.RequestAborted))
         {
-            ModelState.Remove(nameof(form.Code)); form.Code = "";
+            ModelState.Remove(nameof(form.Code));
+            form.Code = "";
             ModelState.AddModelError("", "Unable to verify this recovery code. Ask the verified operator for a new code if it expired or was already used.");
-            Response.StatusCode = 400; return View("OperatorEnrollment", form);
+            Response.StatusCode = 400;
+            return View("OperatorEnrollment", form);
         }
-        await db.Entry(user).ReloadAsync(HttpContext.RequestAborted);
+        await security.ReloadAsync(user, HttpContext.RequestAborted);
         await signIn.SignInWithClaimsAsync(user, false, [OfficeSecurity.TimeClaim(OperatorEnrollment.SessionTime, time.GetUtcNow())]);
         return RedirectToAction(nameof(Enroll));
     }
 
     private async Task<bool> EnrollmentAllowed(OfficeUser user)
     {
-        if (User.FindFirstValue(users.Options.ClaimsIdentity.SecurityStampClaimType) != user.SecurityStamp) return false;
-        if (await operatorEnrollment.RequiredAsync(user) != "true") return true;
+        if (User.FindFirstValue(users.Options.ClaimsIdentity.SecurityStampClaimType) != user.SecurityStamp)
+            return false;
+        if (await operatorEnrollment.RequiredAsync(user) != "true")
+            return true;
         return long.TryParse(User.FindFirstValue(OperatorEnrollment.SessionTime), out var at) &&
             time.GetUtcNow().ToUnixTimeSeconds() - at is >= 0 and <= 600;
     }
@@ -177,7 +177,8 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
     public async Task<IActionResult> RecoveryCodes()
     {
         var user = (await users.GetUserAsync(User))!;
-        if (!User.HasClaim("amr", "mfa") || !user.TwoFactorEnabled) return Forbid();
+        if (!User.HasClaim("amr", "mfa") || !user.TwoFactorEnabled)
+            return Forbid();
         return View("RecoveryReview");
     }
 
@@ -187,16 +188,12 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
         var user = (await users.GetUserAsync(User))!;
         if (!User.HasClaim("office.recovery_session", "true") || !user.MustReplaceRecoveryCodes ||
             !long.TryParse(User.FindFirstValue(OfficeSecurity.FactorTime), out var verified) ||
-            time.GetUtcNow().ToUnixTimeSeconds() - verified is < 0 or > 300) return Forbid();
+            time.GetUtcNow().ToUnixTimeSeconds() - verified is < 0 or > 300)
+            return Forbid();
         if (!ModelState.IsValid || !(await signIn.CheckPasswordSignInAsync(user, form.Password, true)).Succeeded)
         { ModelState.AddModelError("", "Unable to verify your password."); return View("RecoveryReview", new ReauthenticateForm()); }
-        await using var transaction = await db.Database.BeginTransactionAsync();
-        if (!(await users.SetTwoFactorEnabledAsync(user, false)).Succeeded ||
-            !(await users.ResetAuthenticatorKeyAsync(user)).Succeeded ||
-            (await users.GenerateNewTwoFactorRecoveryCodesAsync(user, 0)) is null) return StatusCode(409);
-        invitations.Audit(user.Id, "AuthenticatorRecovered", user.Id);
-        invitations.Queue(user.Id, "SecurityNotice", "Your authenticator was reset after recovery verification. Sign in and enroll a new device.");
-        await db.SaveChangesAsync(); await transaction.CommitAsync();
+        if (!await security.ResetAuthenticatorAsync(user))
+            return StatusCode(409);
         await signIn.SignOutAsync();
         return RedirectToAction(nameof(Login));
     }
@@ -205,18 +202,13 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
     public async Task<IActionResult> RecoveryCodes(ReauthenticateForm form)
     {
         var user = (await users.GetUserAsync(User))!;
-        if (!User.HasClaim("amr", "mfa") || !user.TwoFactorEnabled) return Forbid();
+        if (!User.HasClaim("amr", "mfa") || !user.TwoFactorEnabled)
+            return Forbid();
         if (!ModelState.IsValid || !await VerifyPasswordAndFactor(user, form))
         { ModelState.AddModelError("", "Unable to verify your password and code."); return View("RecoveryReview", form); }
-        await using var transaction = await db.Database.BeginTransactionAsync();
-        var codes = (await users.GenerateNewTwoFactorRecoveryCodesAsync(user, 10))?.ToArray();
-        if (codes is null) return StatusCode(409);
-        user.MustReplaceRecoveryCodes = false;
-        if (!(await users.UpdateAsync(user)).Succeeded) return StatusCode(409);
-        invitations.Audit(user.Id, "RecoveryCodesReplaced", user.Id);
-        invitations.Queue(user.Id, "SecurityNotice", "Recovery codes were replaced.");
-        await db.SaveChangesAsync();
-        await transaction.CommitAsync();
+        var codes = await security.ReplaceRecoveryCodesAsync(user);
+        if (codes is null)
+            return StatusCode(409);
         await ChallengedSignIn(user, time.GetUtcNow());
         return View("RecoveryIssued", codes);
     }
@@ -253,14 +245,17 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
     // current access; no POST is replayed after sign-in, and recovery always retains its gate.
     private string? SafeReturn(string? path) => path is { Length: > 0 and <= 2048 } && path[0] == '/' &&
         !path.Any(char.IsControl) && !path.Contains('\\') && Url.IsLocalUrl(path) ? path : null;
-    private IActionResult LoginAgain(string? path) => RedirectToAction(nameof(Login), SafeReturn(path) is { } destination ? new { returnUrl = destination } : null);
+    private IActionResult LoginAgain(string? path) =>
+        RedirectToAction(nameof(Login), SafeReturn(path) is { } destination ? new { returnUrl = destination } : null);
     private IActionResult AfterSignIn(string? path) => SafeReturn(path) is { } destination
         ? LocalRedirect(destination) : RedirectToAction("Index", "Portal");
 
     private async Task<bool> VerifyPasswordAndFactor(OfficeUser user, ReauthenticateForm form)
     {
-        if (!(await signIn.CheckPasswordSignInAsync(user, form.Password, true)).Succeeded) return false;
-        if (await users.VerifyTwoFactorTokenAsync(user, users.Options.Tokens.AuthenticatorTokenProvider, NormalizeCode(form.Code))) return true;
+        if (!(await signIn.CheckPasswordSignInAsync(user, form.Password, true)).Succeeded)
+            return false;
+        if (await users.VerifyTwoFactorTokenAsync(user, users.Options.Tokens.AuthenticatorTokenProvider, NormalizeCode(form.Code)))
+            return true;
         await users.AccessFailedAsync(user);
         return false;
     }
@@ -275,7 +270,9 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
     {
         verified = default;
         if (!long.TryParse(User.FindFirstValue(OfficeSecurity.PasswordTime), out var seconds) ||
-            time.GetUtcNow().ToUnixTimeSeconds() - seconds is < 0 or > 600) return false;
-        verified = DateTimeOffset.FromUnixTimeSeconds(seconds); return true;
+            time.GetUtcNow().ToUnixTimeSeconds() - seconds is < 0 or > 600)
+            return false;
+        verified = DateTimeOffset.FromUnixTimeSeconds(seconds);
+        return true;
     }
 }

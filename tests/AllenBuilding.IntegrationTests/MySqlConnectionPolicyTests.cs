@@ -25,7 +25,9 @@ public sealed class MySqlConnectionPolicyTests
         using var migrator = new ServiceCollection().AddOfficeStorage(configuration, environment, migrations: true).BuildServiceProvider();
         using var migrationScope = migrator.CreateScope();
         var selected = new MySqlConnectionStringBuilder(migrationScope.ServiceProvider.GetRequiredService<OfficeDbContext>().Database.GetConnectionString());
-        Assert.Equal("migrator", selected.UserID); Assert.Equal(2u, selected.MaximumPoolSize); Assert.False(selected.ConnectionReset);
+        Assert.Equal("migrator", selected.UserID);
+        Assert.Equal(2u, selected.MaximumPoolSize);
+        Assert.False(selected.ConnectionReset);
         configuration["ConnectionStrings:OfficeMigrator"] = null;
         Assert.Throws<InvalidOperationException>(() => new ServiceCollection().AddOfficeStorage(configuration, environment, migrations: true));
     }
@@ -35,9 +37,12 @@ public sealed class MySqlConnectionPolicyTests
     {
         var supplied = "Server=localhost;Database=office;User ID=migrator;Password=synthetic-secret;SslMode=Disabled;";
         var migration = new MySqlConnectionStringBuilder(MySqlConnectionPolicy.Validate(supplied, false, migrations: true));
-        Assert.Equal(2u, migration.MaximumPoolSize); Assert.False(migration.ConnectionReset);
-        Assert.False(migration.PersistSecurityInfo); Assert.False(migration.AllowLoadLocalInfile);
-        Assert.Equal(5u, migration.ConnectionTimeout); Assert.Equal(15u, migration.DefaultCommandTimeout);
+        Assert.Equal(2u, migration.MaximumPoolSize);
+        Assert.False(migration.ConnectionReset);
+        Assert.False(migration.PersistSecurityInfo);
+        Assert.False(migration.AllowLoadLocalInfile);
+        Assert.Equal(5u, migration.ConnectionTimeout);
+        Assert.Equal(15u, migration.DefaultCommandTimeout);
         Assert.Throws<InvalidOperationException>(() => MySqlConnectionPolicy.Validate(supplied + "MinimumPoolSize=3;", false, migrations: true));
         Assert.True(new MySqlConnectionStringBuilder(MySqlConnectionPolicy.Validate(supplied, false)).ConnectionReset);
     }
@@ -49,8 +54,12 @@ public sealed class MySqlConnectionPolicyTests
     public void Production_loopback_pools_and_timeouts_are_bounded(string server)
     {
         var options = new MySqlConnectionStringBuilder(MySqlConnectionPolicy.Validate($"Server={server};Database=office;User ID=runtime;Password=synthetic-secret;SslMode=Disabled", false));
-        Assert.Equal(10u, options.MaximumPoolSize); Assert.Equal(5u, options.ConnectionTimeout); Assert.Equal(15u, options.DefaultCommandTimeout);
-        Assert.True(options.ConnectionReset); Assert.False(options.PersistSecurityInfo); Assert.False(options.AllowLoadLocalInfile);
+        Assert.Equal(10u, options.MaximumPoolSize);
+        Assert.Equal(5u, options.ConnectionTimeout);
+        Assert.Equal(15u, options.DefaultCommandTimeout);
+        Assert.True(options.ConnectionReset);
+        Assert.False(options.PersistSecurityInfo);
+        Assert.False(options.AllowLoadLocalInfile);
     }
 
     [Theory]
@@ -69,14 +78,18 @@ public sealed class MySqlConnectionPolicyTests
     public void Unsafe_runtime_configuration_is_rejected_without_secret_values(string settings)
     {
         var error = Assert.Throws<InvalidOperationException>(() => MySqlConnectionPolicy.Validate($"{settings};Database=office;User ID=runtime;Password=synthetic-secret;", false));
-        Assert.DoesNotContain("synthetic-secret", error.Message); Assert.DoesNotContain("other-host", error.Message);
+        Assert.DoesNotContain("synthetic-secret", error.Message);
+        Assert.DoesNotContain("other-host", error.Message);
     }
 
     [Fact]
     public void Remote_verified_tls_and_local_sockets_preserve_a_smaller_explicit_budget()
     {
         var remote = new MySqlConnectionStringBuilder(MySqlConnectionPolicy.Validate("Server=db.example.test;Database=office;User ID=runtime;Password=synthetic-secret;SslMode=VerifyFull;MaximumPoolSize=4;ConnectionTimeout=2;DefaultCommandTimeout=3", false));
-        Assert.Equal(MySqlSslMode.VerifyFull, remote.SslMode); Assert.Equal(4u, remote.MaximumPoolSize); Assert.Equal(2u, remote.ConnectionTimeout); Assert.Equal(3u, remote.DefaultCommandTimeout);
+        Assert.Equal(MySqlSslMode.VerifyFull, remote.SslMode);
+        Assert.Equal(4u, remote.MaximumPoolSize);
+        Assert.Equal(2u, remote.ConnectionTimeout);
+        Assert.Equal(3u, remote.DefaultCommandTimeout);
         var socket = new MySqlConnectionStringBuilder(MySqlConnectionPolicy.Validate("Server=/run/mysqld/mysqld.sock;Protocol=Unix;Database=office;User ID=runtime;Password=synthetic-secret;SslMode=Disabled", false));
         Assert.Equal(MySqlConnectionProtocol.UnixSocket, socket.ConnectionProtocol);
     }

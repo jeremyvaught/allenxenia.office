@@ -17,7 +17,9 @@ public static class OfficeAssistant
         var actions = builder.Configuration.GetValue<bool?>("Assistant:ActionsEnabled") ?? builder.Environment.IsDevelopment();
         var followUps = builder.Configuration.GetValue<bool?>("Assistant:FollowUpsEnabled") ?? builder.Environment.IsDevelopment();
         var guestDrafts = builder.Configuration.GetValue<bool?>("Assistant:GuestDraftsEnabled") ?? builder.Environment.IsDevelopment();
-        builder.Services.AddSingleton(new AssistantPolicy(enabled, enabled && tenantHelp, builder.Configuration.GetValue<bool>("Billing:PlanningEnabled"), enabled && tenantHelp && actions, enabled && followUps, enabled && followUps && tenantHelp && actions && guestDrafts));
+        builder.Services.AddSingleton(new AssistantPolicy(enabled, enabled && tenantHelp,
+            builder.Configuration.GetValue<bool>("Billing:PlanningEnabled"), enabled && tenantHelp && actions, enabled && followUps,
+            enabled && followUps && tenantHelp && actions && guestDrafts));
         if (enabled)
         {
             builder.Services.AddHttpClient("OfficeAssistant", client => client.Timeout = TimeSpan.FromSeconds(55))
@@ -25,7 +27,8 @@ public static class OfficeAssistant
             builder.Services.AddScoped<IAssistantModel>(services => new OpenAiAssistantModel(
                 services.GetRequiredService<IHttpClientFactory>().CreateClient("OfficeAssistant"), key!));
         }
-        else builder.Services.AddScoped<IAssistantModel, DisabledAssistantModel>();
+        else
+            builder.Services.AddScoped<IAssistantModel, DisabledAssistantModel>();
         builder.Services.AddScoped<AssistantHelp>();
         builder.Services.AddScoped<AllenBuilding.Infrastructure.Persistence.AssistantTenantAccess>();
         builder.Services.AddScoped<IAssistantTenantAccess>(sp => sp.GetRequiredService<AllenBuilding.Infrastructure.Persistence.AssistantTenantAccess>());
@@ -57,13 +60,20 @@ public sealed class AssistantBudget(TimeProvider time)
     {
         lock (_sync)
         {
-            var now = time.GetUtcNow(); var day = DateOnly.FromDateTime(now.UtcDateTime);
-            if (_day != day) { _day = day; _total = 0; _hours.Clear(); }
-            foreach (var expired in _hours.Where(x => now - x.Value.Start >= TimeSpan.FromHours(1)).Select(x => x.Key).ToArray()) _hours.Remove(expired);
-            if (_total >= 100 || (_hours.Count >= 256 && !_hours.ContainsKey(partition))) return false;
+            var now = time.GetUtcNow();
+            var day = DateOnly.FromDateTime(now.UtcDateTime);
+            if (_day != day)
+            { _day = day; _total = 0; _hours.Clear(); }
+            foreach (var expired in _hours.Where(x => now - x.Value.Start >= TimeSpan.FromHours(1)).Select(x => x.Key).ToArray())
+                _hours.Remove(expired);
+            if (_total >= 100 || (_hours.Count >= 256 && !_hours.ContainsKey(partition)))
+                return false;
             var counter = _hours.GetValueOrDefault(partition, (Start: now, Count: 0));
-            if (counter.Count >= 20) return false;
-            _hours[partition] = (counter.Start, counter.Count + 1); _total++; return true;
+            if (counter.Count >= 20)
+                return false;
+            _hours[partition] = (counter.Start, counter.Count + 1);
+            _total++;
+            return true;
         }
     }
 }

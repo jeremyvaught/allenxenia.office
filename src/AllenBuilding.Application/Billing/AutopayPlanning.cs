@@ -24,7 +24,8 @@ public sealed class AutopayPlanning(ICurrentActor current, IAutopayStore store, 
     public async Task<AutopayConsentReview?> ReviewAsync(Guid accountId, Guid agreementId, CancellationToken cancellationToken = default)
     {
         var actor = await CurrentActorAsync(cancellationToken);
-        if (actor is null || accountId == Guid.Empty || agreementId == Guid.Empty) return null;
+        if (actor is null || accountId == Guid.Empty || agreementId == Guid.Empty)
+            return null;
         return await store.ReviewAsync(actor, accountId, agreementId, cancellationToken);
     }
     public async Task<IReadOnlyList<AutopayView>> ReadAsync(Guid? accountId = null, CancellationToken cancellationToken = default)
@@ -34,22 +35,30 @@ public sealed class AutopayPlanning(ICurrentActor current, IAutopayStore store, 
     }
     public async Task<AutopayResult> ConfirmAsync(ConfirmAutopay command, CancellationToken cancellationToken = default)
     {
-        var actor = await CurrentActorAsync(cancellationToken); if (actor is null) return new(BillingCode.Unavailable);
-        if (command.OperationId == Guid.Empty || command.AccountId == Guid.Empty || command.AccountVersion == Guid.Empty || command.Schedule is null || !command.ExplicitlyAccepted)
+        var actor = await CurrentActorAsync(cancellationToken);
+        if (actor is null)
+            return new(BillingCode.Unavailable);
+        if (command.OperationId == Guid.Empty || command.AccountId == Guid.Empty || command.AccountVersion == Guid.Empty ||
+            command.Schedule is null || !command.ExplicitlyAccepted)
             return new(BillingCode.ValidationFailed);
         return await store.ConfirmAsync(actor, command, Hash(command), cancellationToken);
     }
     public async Task<AutopayResult> StopAsync(StopAutopay command, CancellationToken cancellationToken = default)
     {
-        var actor = await CurrentActorAsync(cancellationToken); if (actor is null) return new(BillingCode.Unavailable);
-        if (command.OperationId == Guid.Empty || command.AuthorizationId == Guid.Empty || command.Version == Guid.Empty || !Enum.IsDefined(command.Timing)) return new(BillingCode.ValidationFailed);
+        var actor = await CurrentActorAsync(cancellationToken);
+        if (actor is null)
+            return new(BillingCode.Unavailable);
+        if (command.OperationId == Guid.Empty || command.AuthorizationId == Guid.Empty || command.Version == Guid.Empty || !Enum.IsDefined(command.Timing))
+            return new(BillingCode.ValidationFailed);
         return await store.StopAsync(actor, command, Hash(command), cancellationToken);
     }
     private async Task<Actor?> CurrentActorAsync(CancellationToken token)
     {
-        if (!policy.Enabled || !PaymentReferences.Valid(policy.ProviderAccount, "acct_")) return null;
+        if (!policy.Enabled || !PaymentReferences.Valid(policy.ProviderAccount, "acct_"))
+            return null;
         var actor = await current.GetAsync(token);
         return actor is null || actor.ManagedBuildings.Count > 0 && !actor.ChallengedMfa ? null : actor;
     }
-    private static string Hash<T>(T command) => Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new { Type = typeof(T).Name, command })));
+    private static string Hash<T>(T command) =>
+        Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new { Type = typeof(T).Name, command })));
 }

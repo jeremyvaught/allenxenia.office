@@ -20,7 +20,8 @@ public static class OfficeProxy
         var trusted = new List<IPAddress>();
         if (enabled)
         {
-            if (addresses.Length is < 1 or > 8) throw new InvalidOperationException("Proxy forwarding requires one to eight explicit trusted IP addresses.");
+            if (addresses.Length is < 1 or > 8)
+                throw new InvalidOperationException("Proxy forwarding requires one to eight explicit trusted IP addresses.");
             foreach (var value in addresses)
             {
                 if (value is null || value.Length > 64 || !IPAddress.TryParse(value, out var address) ||
@@ -31,20 +32,25 @@ public static class OfficeProxy
                     throw new InvalidOperationException("Trusted proxy entries must be explicit unicast IP addresses.");
                 trusted.Add(address);
             }
-            if (trusted.Distinct().Count() != trusted.Count) throw new InvalidOperationException("Trusted proxy addresses must be distinct.");
+            if (trusted.Distinct().Count() != trusted.Count)
+                throw new InvalidOperationException("Trusted proxy addresses must be distinct.");
         }
         builder.Services.AddSingleton(new OfficeProxySettings(enabled));
         builder.Services.Configure<ForwardedHeadersOptions>(options =>
         {
             options.ForwardedHeaders = enabled ? ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto : ForwardedHeaders.None;
-            options.ForwardLimit = 1; options.RequireHeaderSymmetry = true;
-            options.KnownProxies.Clear(); options.KnownIPNetworks.Clear();
-            foreach (var address in trusted) options.KnownProxies.Add(address);
+            options.ForwardLimit = 1;
+            options.RequireHeaderSymmetry = true;
+            options.KnownProxies.Clear();
+            options.KnownIPNetworks.Clear();
+            foreach (var address in trusted)
+                options.KnownProxies.Add(address);
             // Never accept a client-controlled forwarded host, path base or prefix.
         });
     }
     public static void UseOfficeProxy(this WebApplication app)
     {
-        if (app.Services.GetRequiredService<OfficeProxySettings>().Enabled) app.UseForwardedHeaders();
+        if (app.Services.GetRequiredService<OfficeProxySettings>().Enabled)
+            app.UseForwardedHeaders();
     }
 }

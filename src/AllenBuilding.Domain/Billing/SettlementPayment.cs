@@ -18,7 +18,8 @@ public sealed class SettlementPayment
 
     public static SettlementPayment Record(PaymentAttempt attempt, CanonicalSettlement verified, DateTimeOffset recordedAt)
     {
-        if (attempt is null) throw new ArgumentException("The original payment attempt is required.");
+        if (attempt is null)
+            throw new ArgumentException("The original payment attempt is required.");
         if (attempt.Items.Count == 0 || attempt.Items.Any(x => x.AccountId != attempt.AccountId || x.AttemptId != attempt.Id || x.AmountMinorUnits <= 0) ||
             attempt.Items.Aggregate(0L, (sum, item) => checked(sum + item.AmountMinorUnits)) != attempt.TotalMinorUnits)
             throw new InvalidOperationException("Load and verify the complete immutable item set before recording cash.");
@@ -35,8 +36,10 @@ public sealed class SettlementPayment
             Currency = attempt.Currency,
             RecordedAt = recordedAt.ToUniversalTime()
         };
-        foreach (var item in attempt.Items) payment._allocations.Add(PaymentAllocation.Create(payment.Id, item));
-        if (payment._allocations.Count == 0 || payment._allocations.Aggregate(0L, (sum, item) => checked(sum + item.AmountMinorUnits)) != payment.AmountMinorUnits)
+        foreach (var item in attempt.Items)
+            payment._allocations.Add(PaymentAllocation.Create(payment.Id, item));
+        if (payment._allocations.Count == 0 ||
+            payment._allocations.Aggregate(0L, (sum, item) => checked(sum + item.AmountMinorUnits)) != payment.AmountMinorUnits)
             throw new InvalidOperationException("The recorded collection must exactly reconcile to its reviewed allocations.");
         return payment;
     }
@@ -51,5 +54,11 @@ public sealed class PaymentAllocation
     public Guid ObligationId { get; private set; }
     public long AmountMinorUnits { get; private set; }
     internal static PaymentAllocation Create(Guid paymentId, PaymentAttemptItem item) => new()
-    { PaymentId = paymentId, AccountId = item.AccountId, AttemptId = item.AttemptId, ObligationId = item.ObligationId, AmountMinorUnits = item.AmountMinorUnits };
+    {
+        PaymentId = paymentId,
+        AccountId = item.AccountId,
+        AttemptId = item.AttemptId,
+        ObligationId = item.ObligationId,
+        AmountMinorUnits = item.AmountMinorUnits
+    };
 }

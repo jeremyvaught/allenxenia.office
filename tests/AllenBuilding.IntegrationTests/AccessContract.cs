@@ -18,17 +18,27 @@ public static class AccessContract
 {
     public static async Task VerifyAsync(Func<OfficeDbContext> create)
     {
-        var services = new ServiceCollection(); services.AddLogging(); services.AddSingleton(TimeProvider.System);
-        services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider()); services.AddScoped<OfficeDbContext>(_ => create());
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
+        services.AddScoped<OfficeDbContext>(_ => create());
         services.AddIdentityCore<OfficeUser>().AddRoles<IdentityRole>().AddEntityFrameworkStores<OfficeDbContext>().AddDefaultTokenProviders().AddTokenProvider<InvitationTokenProvider>("Invitation");
         services.Replace(ServiceDescriptor.Scoped<IUserStore<OfficeUser>, ProtectedUserStore>());
-        services.AddScoped<TestActor>(); services.AddScoped<ICurrentActor>(sp => sp.GetRequiredService<TestActor>());
-        services.AddScoped<AccountInvitations>(); services.AddScoped<AccountAccess>(); services.AddScoped<AccessRevocation>();
-        services.AddScoped<IMaintenanceStore, MaintenanceStore>(); services.AddScoped<MaintenanceActions>();
+        services.AddScoped<TestActor>();
+        services.AddScoped<ICurrentActor>(sp => sp.GetRequiredService<TestActor>());
+        services.AddScoped<AccountInvitations>();
+        services.AddScoped<AccountAccess>();
+        services.AddScoped<AccessRevocation>();
+        services.AddScoped<IMaintenanceStore, MaintenanceStore>();
+        services.AddScoped<MaintenanceActions>();
         await using var provider = services.BuildServiceProvider();
-        var building = new Building { Name = "Access contract building" }; var other = new Building { Name = "Access other building" };
-        var suite = new Suite { BuildingId = building.Id, Name = "Grant suite" }; var foreign = new Suite { BuildingId = other.Id, Name = "Foreign suite" };
-        string managerId, secondId, tenantId; string passwordHash, stamp;
+        var building = new Building { Name = "Access contract building" };
+        var other = new Building { Name = "Access other building" };
+        var suite = new Suite { BuildingId = building.Id, Name = "Grant suite" };
+        var foreign = new Suite { BuildingId = other.Id, Name = "Foreign suite" };
+        string managerId, secondId, tenantId;
+        string passwordHash, stamp;
         var email = $"access-existing-{Guid.NewGuid():N}@example.test";
         using (var scope = provider.CreateScope())
         {
@@ -36,11 +46,15 @@ public static class AccessContract
             async Task<OfficeUser> User(string address)
             {
                 var user = new OfficeUser { Email = address, UserName = address, EmailConfirmed = true };
-                Assert.True((await users.CreateAsync(user, AccountTestHost.Password)).Succeeded); return user;
+                Assert.True((await users.CreateAsync(user, AccountTestHost.Password)).Succeeded);
+                return user;
             }
             managerId = (await User($"access-manager-{Guid.NewGuid():N}@example.test")).Id;
             secondId = (await User($"access-second-{Guid.NewGuid():N}@example.test")).Id;
-            var tenant = await User(email); tenantId = tenant.Id; passwordHash = tenant.PasswordHash!; stamp = tenant.SecurityStamp!;
+            var tenant = await User(email);
+            tenantId = tenant.Id;
+            passwordHash = tenant.PasswordHash!;
+            stamp = tenant.SecurityStamp!;
             var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
             db.AddRange(building, other, suite, foreign, new BuildingManager { BuildingId = building.Id, UserId = managerId }, new BuildingManager { BuildingId = building.Id, UserId = secondId });
             await db.SaveChangesAsync();
@@ -50,14 +64,16 @@ public static class AccessContract
         var tenantActor = new Actor(tenantId, new HashSet<Guid>(), false, false);
         async Task<T> As<T>(Actor? actor, Func<IServiceProvider, Task<T>> call)
         {
-            using var scope = provider.CreateScope(); scope.ServiceProvider.GetRequiredService<TestActor>().Actor = actor;
+            using var scope = provider.CreateScope();
+            scope.ServiceProvider.GetRequiredService<TestActor>().Actor = actor;
             return await call(scope.ServiceProvider);
         }
         var grant = new GrantExistingAccount(Guid.NewGuid(), suite.Id, email, "Approved suite access");
         Assert.Equal(AccessCode.Unavailable, (await As(tenantActor, sp => sp.GetRequiredService<AccountAccess>().GrantAsync(grant))).Code);
         Assert.Equal(AccessCode.Unavailable, (await As(manager with { RecentMfa = false }, sp => sp.GetRequiredService<AccountAccess>().GrantAsync(grant))).Code);
         Assert.Equal(AccessCode.Unavailable, (await As(manager, sp => sp.GetRequiredService<AccountAccess>().GrantAsync(grant with { SuiteId = foreign.Id }))).Code);
-        var granted = await As(manager, sp => sp.GetRequiredService<AccountAccess>().GrantAsync(grant)); Assert.Equal(AccessCode.Success, granted.Code);
+        var granted = await As(manager, sp => sp.GetRequiredService<AccountAccess>().GrantAsync(grant));
+        Assert.Equal(AccessCode.Success, granted.Code);
         Assert.Equal(granted, await As(manager, sp => sp.GetRequiredService<AccountAccess>().GrantAsync(grant with { Email = email.ToUpperInvariant() })));
         Assert.Equal(AccessCode.Conflict, (await As(manager, sp => sp.GetRequiredService<AccountAccess>().GrantAsync(grant with { Reason = "Changed payload" }))).Code);
         Assert.Equal(AccessCode.Conflict, (await As(second, sp => sp.GetRequiredService<AccountAccess>().GrantAsync(grant with { OperationId = Guid.NewGuid() }))).Code);
@@ -66,27 +82,33 @@ public static class AccessContract
         {
             var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
             membershipVersion = (await db.Memberships.SingleAsync(x => x.Id == granted.MembershipId)).Version;
-            var order = WorkOrder.Submit(suite.Id, granted.MembershipId!.Value, tenantId, "Old tenancy request", "Private description", "Kitchen", DateTimeOffset.UtcNow); orderId = order.Id;
-            db.WorkOrders.Add(order); await db.SaveChangesAsync();
+            var order = WorkOrder.Submit(suite.Id, granted.MembershipId!.Value, tenantId, "Old tenancy request", "Private description", "Kitchen", DateTimeOffset.UtcNow);
+            orderId = order.Id;
+            db.WorkOrders.Add(order);
+            await db.SaveChangesAsync();
         }
-        Assert.Equal(MaintenanceCode.Success, await As(manager, sp => sp.GetRequiredService<AccessRevocation>().RevokeAsync(granted.MembershipId!.Value, membershipVersion, "Access ended")));
+        Assert.Equal(AllenBuilding.Application.Access.AccessCode.Success, await As(manager, sp => sp.GetRequiredService<AccessRevocation>().RevokeAsync(granted.MembershipId!.Value, membershipVersion, "Access ended")));
         Assert.Equal(granted, await As(manager, sp => sp.GetRequiredService<AccountAccess>().GrantAsync(grant)));
         var returning = await As(manager, sp => sp.GetRequiredService<AccountAccess>().GrantAsync(grant with { OperationId = Guid.NewGuid(), Reason = "New tenancy approved" }));
-        Assert.Equal(AccessCode.Success, returning.Code); Assert.NotEqual(granted.MembershipId, returning.MembershipId);
+        Assert.Equal(AccessCode.Success, returning.Code);
+        Assert.NotEqual(granted.MembershipId, returning.MembershipId);
         Assert.Null(await As(tenantActor, sp => sp.GetRequiredService<MaintenanceActions>().ReadAsync(orderId, false)));
         using (var scope = provider.CreateScope())
         {
             var user = await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().Users.SingleAsync(x => x.Id == tenantId);
-            Assert.Equal(passwordHash, user.PasswordHash); Assert.Equal(stamp, user.SecurityStamp);
+            Assert.Equal(passwordHash, user.PasswordHash);
+            Assert.Equal(stamp, user.SecurityStamp);
         }
         async Task<(Guid Id, Guid Version, string Token, Guid MessageId)> Invitation(string address)
         {
-            var id = await As(manager, sp => sp.GetRequiredService<AccountInvitations>().IssueAsync(suite.Id, address)); Assert.NotNull(id);
+            var id = await As(manager, sp => sp.GetRequiredService<AccountInvitations>().IssueAsync(suite.Id, address));
+            Assert.NotNull(id);
             return await ReadInvitation(id.Value);
         }
         async Task<(Guid Id, Guid Version, string Token, Guid MessageId)> ReadInvitation(Guid id)
         {
-            using var scope = provider.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+            using var scope = provider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
             var invitation = await db.Invitations.AsNoTracking().SingleAsync(x => x.Id == id);
             var message = (await db.AccountMessages.Where(x => x.UserId == invitation.UserId && x.Kind == "Invitation").ToListAsync()).Single(x =>
             {
@@ -98,14 +120,18 @@ public static class AccessContract
         }
         var first = await Invitation($"access-invited-{Guid.NewGuid():N}@example.test");
         Assert.Equal(AccessCode.Success, await As(manager, sp => sp.GetRequiredService<AccountInvitations>().ChangeAsync(first.Id, first.Version, false, "New link approved")));
-        var reissued = await ReadInvitation(first.Id); Assert.NotEqual(first.Token, reissued.Token);
+        var reissued = await ReadInvitation(first.Id);
+        Assert.NotEqual(first.Token, reissued.Token);
         Assert.False(await As(null, sp => sp.GetRequiredService<AccountInvitations>().AcceptAsync(first.Id, first.Token, AccountTestHost.Password)));
         Assert.Equal(AccessCode.Conflict, await As(manager, sp => sp.GetRequiredService<AccountInvitations>().ChangeAsync(first.Id, first.Version, true, "Stale manager form")));
         // A queued superseded token is suppressed even if a dispatcher has already claimed it.
         using (var scope = provider.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); var message = await db.AccountMessages.SingleAsync(x => x.Id == first.MessageId);
-            message.State = MessageState.Sending; message.LeaseUntil = DateTimeOffset.UtcNow.AddMinutes(2); await db.SaveChangesAsync();
+            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+            var message = await db.AccountMessages.SingleAsync(x => x.Id == first.MessageId);
+            message.State = MessageState.Sending;
+            message.LeaseUntil = DateTimeOffset.UtcNow.AddMinutes(2);
+            await db.SaveChangesAsync();
             var queue = new NotificationQueue(db, scope.ServiceProvider.GetRequiredService<IDataProtectionProvider>(), TimeProvider.System, new Uri("http://localhost:5081"));
             Assert.Null(await queue.ComposeAsync(new(message.Id, message.LeaseToken), default));
         }
