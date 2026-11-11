@@ -92,7 +92,7 @@ public sealed class ManagementController(
         var id = await invitations.IssueAsync(form.SuiteId, form.Email, HttpContext.RequestAborted);
         if (id is null)
             return Conflict("Unable to create this invitation. Check the suite and account, then try again.");
-        TempData["Notice"] = "Invitation recorded and queued for delivery. Check Notification delivery for its status.";
+        TempData["Notice"] = "Invitation created and queued to send. Check Notifications if it does not arrive.";
         return RedirectToAction(nameof(Index));
     }
 }

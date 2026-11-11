@@ -3,7 +3,6 @@
 @model IReadOnlyList<AutopayView>
 @{ var account = (BillingAccount)ViewData["Account"]!; ViewData["Title"] = "Monthly autopay"; }
 <div class="page"><p class="mb-2 text-sm text-muted">YOUR RENT ACCOUNT</p><h1 class="mb-3 text-4xl font-semibold">Monthly autopay</h1><p class="mb-6 break-words text-muted">@account.Suite</p>
-    @if (TempData["Notice"] is string notice) { <p role="status" class="mb-6 rounded-xl border border-line bg-panel p-4">@notice</p> }
     <p class="mb-6 max-w-3xl text-muted">Autopay uses your manager-set monthly rent and due day. Consent does not make a payment. Already-issued charges, past rent and one-time charges remain separate.</p>
     <ul class="mb-8 grid gap-4 md:grid-cols-2">@foreach (var authorization in Model) {
         <li class="min-w-0 rounded-2xl border border-line bg-panel p-5"><h2 class="mb-3 text-xl font-semibold">@BillingDisplay.Usd(authorization.MonthlyMinorUnits) USD per month</h2>

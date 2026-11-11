@@ -50,7 +50,7 @@ public sealed class KnowledgeController(KnowledgeActions actions, BuildingAccess
         }
         var result = await actions.SaveAsync(form.Command(), HttpContext.RequestAborted);
         if (result is ContentCode.Success or ContentCode.Unavailable)
-            return Outcome(result, form.Id);
+            return Outcome(result, form.Id, "Draft saved. Tenants see it only after you publish.");
         var saved = (await actions.ManageAsync(form.Id, HttpContext.RequestAborted)).SingleOrDefault();
         if (result == ContentCode.Conflict && saved is null)
             return NotFound();
@@ -71,7 +71,8 @@ public sealed class KnowledgeController(KnowledgeActions actions, BuildingAccess
         return View("Edit", form);
     }
     [Authorize(Policy = OfficeSecurity.ManagerPolicy), HttpPost]
-    public async Task<IActionResult> Publish(PublishArticle command) => Outcome(await actions.PublishAsync(command, HttpContext.RequestAborted), command.Id);
+    public async Task<IActionResult> Publish(PublishArticle command) => Outcome(await actions.PublishAsync(command, HttpContext.RequestAborted), command.Id,
+        command.Withdraw ? "Article withdrawn. It is no longer visible to readers." : "Article published.");
 
     private async Task<IActionResult> List(KnowledgeScope scope, string? search)
     {
@@ -89,10 +90,13 @@ public sealed class KnowledgeController(KnowledgeActions actions, BuildingAccess
         ViewData["Tenant"] = scope == KnowledgeScope.Tenant;
         return View("Article", source);
     }
-    private IActionResult Outcome(ContentCode code, Guid id)
+    private IActionResult Outcome(ContentCode code, Guid id, string notice)
     {
         if (code == ContentCode.Success)
+        {
+            TempData["Notice"] = notice;
             return RedirectToAction(nameof(Edit), new { id });
+        }
         if (code == ContentCode.Unavailable)
             return NotFound();
         Response.StatusCode = code == ContentCode.Conflict ? 409 : 400;

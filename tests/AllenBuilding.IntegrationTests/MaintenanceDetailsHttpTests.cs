@@ -192,7 +192,7 @@ public sealed class MaintenanceDetailsHttpTests
         }
 
         page = await Step("Triage", ("Priority", "Urgent"), ("Trade", "HeatingCooling"));
-        Assert.Contains("Priority and trade set · Triaged", page);
+        Assert.Contains("Priority and trade set", page);
         Assert.Contains("Trade: Heating and cooling", page);
         Assert.Contains("Assign to me", page);
         Assert.Contains("Save assignment", page);
@@ -200,7 +200,7 @@ public sealed class MaintenanceDetailsHttpTests
         Assert.DoesNotContain(">Start</button>", page);
 
         page = await Step("Assign", ("Assignee", "manager:" + managerId));
-        Assert.Contains("Assignment updated · Assigned", page);
+        Assert.Contains("Assignment updated", page);
         Assert.Contains("Assigned to:", page);
         Assert.Contains(">Start</button>", page);
 
@@ -211,13 +211,13 @@ public sealed class MaintenanceDetailsHttpTests
         Assert.Contains("&#xB7; Internal note", page);
 
         page = await Step("Start");
-        Assert.Contains("Work started · In progress", page);
+        Assert.Contains("Work started", page);
         Assert.Contains(">Complete</button>", page);
         Assert.DoesNotContain(">Start</button>", page);
 
         page = await Step("Complete", ("Note", "Replaced the thermostat"));
-        Assert.Contains("Work completed · Completed", page);
-        Assert.Contains("Verify the work before closing this request", page);
+        Assert.Contains("Work completed", page);
+        Assert.Contains("Check it, then close the request.", page);
         Assert.Contains("Verify work and close", page);
         Assert.Contains("Reason for reopening the request", page);
         Assert.Contains("Replaced the thermostat", page);
@@ -231,7 +231,7 @@ public sealed class MaintenanceDetailsHttpTests
         Assert.DoesNotContain("ManageChange", tenantPage);
 
         page = await Step("Close");
-        Assert.Contains("Work verified · Closed", page);
+        Assert.Contains("Work verified", page);
         Assert.Contains("Reason for reopening the request", page);
         Assert.DoesNotContain("Cancel request", page);
         Assert.DoesNotContain("Verify work and close", page);
@@ -241,7 +241,7 @@ public sealed class MaintenanceDetailsHttpTests
         Assert.Contains("Cancel request", page);
 
         page = await Step("Cancel", ("Note", "Duplicate of another request"));
-        Assert.Contains("Request cancelled · Cancelled", page);
+        Assert.Contains("Request cancelled", page);
         Assert.Contains("Reason for reopening the request", page);
         Assert.DoesNotContain("Cancel request", page);
         Assert.DoesNotContain("Assign to me", page);
@@ -286,7 +286,7 @@ public sealed class MaintenanceDetailsHttpTests
         }
         html = await tenant.GetStringAsync(path);
         Assert.Contains("Showing the 100 most recent history entries", html);
-        Assert.Contains("Request updated · Submitted", html);
+        Assert.Contains("Request updated", html);
         Assert.Contains("Imported entry 104", html);
         Assert.DoesNotContain("Imported entry 004", html);
         Assert.DoesNotContain("Request submitted", html);

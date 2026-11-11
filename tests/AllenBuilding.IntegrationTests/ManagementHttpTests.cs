@@ -187,7 +187,7 @@ public sealed class ManagementHttpTests
         using var issued = await Invite(suite, "invited@example.test");
         Assert.Equal(HttpStatusCode.Redirect, issued.StatusCode);
         var page = await browser.GetStringAsync("/Management");
-        Assert.Contains("Invitation recorded and queued for delivery.", page);
+        Assert.Contains("Invitation created and queued to send.", page);
         Assert.Contains("invited@example.test · Ground floor", page);
         Assert.Contains("Pending · Expires", page);
 

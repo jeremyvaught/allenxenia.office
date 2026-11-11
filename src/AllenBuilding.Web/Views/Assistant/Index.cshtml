@@ -1,7 +1,6 @@
 @model AllenBuilding.Application.Assistant.AssistantAnswer
 @{ ViewData["Title"] = "Ask the office assistant"; var enabled = ViewData["Enabled"] is true; }
 <div class="page max-w-3xl">
-    <p class="mb-2 text-sm font-semibold tracking-widest text-brand">A LITTLE HELP, RIGHT HERE</p>
     <h1 class="mb-4 text-3xl font-semibold sm:text-4xl">Ask the office assistant</h1>
     <p class="mb-6 leading-relaxed text-muted">Find published building guidance and the right page for your next step. For immediate danger, contact emergency services. This assistant cannot dispatch help.</p>
     <div data-assistant-result data-assistant-membership="@Model?.Scope?.MembershipId" data-assistant-conversation="@ViewData["ActiveConversation"]" aria-live="polite" aria-atomic="true" class="mb-6 rounded-2xl border border-line bg-panel p-5 sm:p-6">
@@ -122,6 +121,6 @@
         </form>
     }
     else if (enabled) { <p class="text-sm text-muted">@(Model?.Review is not null || Model?.GuestDraft is not null ? "Open the review above to edit, cancel or confirm your draft." : "This conversation reached its limit.") Start fresh for another question.</p> }
-    <div class="mt-6 flex flex-wrap gap-3"><a href="/Knowledge" class="quiet-button">Browse building help</a><a href="/Assistant" class="quiet-button">Start fresh or change scope</a><a href="/Portal" class="quiet-button">Your office</a></div>
+    <div class="mt-6 flex flex-wrap gap-3"><a href="/Knowledge" class="quiet-button">Browse building help</a>@if (enabled) { <a href="/Assistant" class="quiet-button">Start a new question</a> }<a href="/Portal" class="quiet-button">Your office</a></div>
 </div>
 @section Scripts { <script src="~/js/assistant.js" asp-append-version="true" defer></script> }

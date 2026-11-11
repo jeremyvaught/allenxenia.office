@@ -1,26 +1,26 @@
 @model AllenBuilding.Application.Notifications.NotificationInboxPage
-@{ ViewData["Title"] = "Notification delivery"; }
+@{ ViewData["Title"] = "Notifications"; }
 <div class="page">
-    <h1 class="mb-3 text-4xl font-semibold">Notification delivery</h1>
-    <p class="mb-6 text-muted">Review delivery exceptions separately from recent activity. No reset credentials or private request text appears here.</p>
+    <h1 class="mb-3 text-4xl font-semibold">Email notifications</h1>
+    <p class="mb-6 text-muted">Emails the portal has sent or tried to send. Message text and reset links are never shown here.</p>
     <section class="mb-8" aria-labelledby="attention-heading">
         <h2 id="attention-heading" class="mb-4 text-2xl font-semibold">Needs attention</h2>
         <ul class="space-y-4">
         @foreach (var message in Model.NeedsAttention) { <partial name="_Notification" model="message" /> }
         </ul>
-        @if (Model.NeedsAttention.Count == 0) { <p>No unresolved notifications on this page.</p> }
+        @if (Model.NeedsAttention.Count == 0) { <p>Nothing needs attention.</p> }
         <nav aria-label="Delivery exceptions pages" class="mt-4 flex flex-wrap gap-4">
-            @if (Model.ReviewPage > 1) { <a asp-action="Index" asp-route-reviewPage="@(Model.ReviewPage - 1)" class="quiet-button">Previous exceptions</a> }
-            @if (Model.HasNextPage) { <a asp-action="Index" asp-route-reviewPage="@(Model.ReviewPage + 1)" class="quiet-button">More exceptions</a> }
+            @if (Model.ReviewPage > 1) { <a asp-action="Index" asp-route-reviewPage="@(Model.ReviewPage - 1)" class="quiet-button">Previous page</a> }
+            @if (Model.HasNextPage) { <a asp-action="Index" asp-route-reviewPage="@(Model.ReviewPage + 1)" class="quiet-button">Next page</a> }
         </nav>
     </section>
     <section aria-labelledby="recent-heading">
-        <h2 id="recent-heading" class="mb-4 text-2xl font-semibold">Recent delivery activity</h2>
+        <h2 id="recent-heading" class="mb-4 text-2xl font-semibold">Recently sent</h2>
         <ul class="space-y-4">
         @foreach (var message in Model.Recent) { <partial name="_Notification" model="message" /> }
         </ul>
-        @if (Model.Recent.Count == 0) { <p>No recent notifications to show.</p> }
-        @if (Model.Recent.Count == 100) { <p class="mt-4 text-muted">Showing the 100 most recent activity records. Unresolved failures remain in Needs attention.</p> }
+        @if (Model.Recent.Count == 0) { <p>No emails yet.</p> }
+        @if (Model.Recent.Count == 100) { <p class="mt-4 text-muted">Showing the 100 most recent emails.</p> }
     </section>
-    <a asp-controller="Account" asp-action="Reauthenticate" class="mt-6 flex min-h-11 items-center underline">Verify your sign-in for retry approval</a>
+    <a asp-controller="Account" asp-action="Reauthenticate" class="mt-6 flex min-h-11 items-center underline">Verify your sign-in to retry a failed email</a>
 </div>

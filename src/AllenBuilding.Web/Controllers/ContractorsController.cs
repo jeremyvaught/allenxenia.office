@@ -39,7 +39,10 @@ public sealed class ContractorsController(ContractorActions actions, BuildingAcc
         { await Buildings(); Response.StatusCode = 400; return View("Edit", form); }
         var result = await actions.SaveAsync(form.Command(), HttpContext.RequestAborted);
         if (result == MaintenanceCode.Success)
+        {
+            TempData["Notice"] = "Contractor saved.";
             return RedirectToAction(nameof(Index));
+        }
         if (result == MaintenanceCode.Unavailable)
             return NotFound();
         Response.StatusCode = result == MaintenanceCode.Conflict ? 409 : 400;

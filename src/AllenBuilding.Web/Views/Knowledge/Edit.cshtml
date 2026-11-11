@@ -4,7 +4,7 @@
 @{ ViewData["Title"] = Model.Version is null ? "Write an article" : "Edit building help"; var article = ViewData["Article"] as ArticleEditor; }
 <div class="page"><a asp-action="Manage" class="mb-6 flex min-h-11 items-center underline">Back to articles</a><h1 class="mb-8 text-3xl font-semibold">@ViewData["Title"]</h1>
     <div class="grid items-start gap-6 lg:grid-cols-2">
-        <section class="min-w-0 rounded-2xl border border-line bg-panel p-6"><h2 class="mb-4 text-xl font-semibold">Edit a draft</h2><p class="mb-6 text-muted">Saving creates a revision. Publication requires a separate review and action.</p>
+        <section class="min-w-0 rounded-2xl border border-line bg-panel p-6"><h2 class="mb-4 text-xl font-semibold">Edit a draft</h2><p class="mb-6 text-muted">Saving keeps a draft. Readers see it only after you publish.</p>
             <form asp-action="Save" method="post" class="space-y-4"><div asp-validation-summary="All" class="text-danger" role="alert"></div><input asp-for="Id" type="hidden" /><input asp-for="Version" type="hidden" />
                 @if (Model.Version is null) { <label asp-for="BuildingId" class="block">Building</label><select asp-for="BuildingId" asp-items="@((IEnumerable<Microsoft.AspNetCore.Mvc.Rendering.SelectListItem>)ViewData["Buildings"]!)" class="field"></select> }
                 else { <input asp-for="BuildingId" type="hidden" /> }

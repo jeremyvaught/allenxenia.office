@@ -11,7 +11,7 @@
             <details class="mb-5 rounded-lg border border-line bg-panel p-4"><summary class="min-h-11 cursor-pointer">Your unsaved text</summary><p class="whitespace-pre-wrap break-words">@draft.Note</p></details>
         }
     }
-    <a asp-action="@(manager ? "Manage" : "Index")" class="mb-6 flex min-h-11 items-center underline">Back to requests</a>
+    <a asp-action="@(manager ? "Manage" : "Index")" class="mb-6 flex min-h-11 items-center underline">@(manager ? "Back to the maintenance queue" : "Back to your requests")</a>
     <div class="mb-8"><p class="mb-2 text-sm text-muted">@Model.Suite · @MaintenanceText.Status(Model.Status)</p><h1 class="break-words text-3xl font-semibold sm:text-4xl">@Model.Title</h1></div>
     <div class="grid items-start gap-6 lg:grid-cols-3">
         <div class="min-w-0 space-y-6 lg:col-span-2">
@@ -34,7 +34,7 @@
                 <h2 class="mb-5 text-xl font-semibold">Request history</h2><ol class="space-y-5">
                 @foreach (var entry in Model.History)
                 {
-                    <li class="border-l-2 border-line pl-4"><p class="font-semibold">@MaintenanceText.History(entry.Action) · @MaintenanceText.Status(entry.Status) @(entry.Internal ? "· Internal note" : "")</p><time datetime="@entry.At.ToString("O")" class="text-sm text-muted">@OfficeTime.Timestamp(entry.At)</time>
+                    <li class="border-l-2 border-line pl-4"><p class="font-semibold">@MaintenanceText.History(entry.Action)@(entry.Internal ? " · Internal note" : "")</p><time datetime="@entry.At.ToString("O")" class="text-sm text-muted">@OfficeTime.Timestamp(entry.At)</time>
                         @if (entry.Note is not null) { <p class="mt-2 whitespace-pre-wrap break-words">@entry.Note</p> }
                     </li>
                 }
@@ -46,7 +46,7 @@
         {
             <section class="rounded-2xl border border-line bg-panel p-6">
                 <h2 class="mb-4 text-xl font-semibold">Next step</h2>
-                @if (Model.Status == WorkOrderStatus.Completed) { <p class="mb-4 text-muted">Completion is recorded. Verify the work before closing this request.</p> }
+                @if (Model.Status == WorkOrderStatus.Completed) { <p class="mb-4 text-muted">The work is marked complete. Check it, then close the request.</p> }
                 @{
                     var choices = new List<MaintenanceAction>();
                     if (Model.Status == WorkOrderStatus.Submitted) choices.Add(MaintenanceAction.Triage);

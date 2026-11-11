@@ -1,4 +1,7 @@
 using System.Net;
+using AllenBuilding.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AllenBuilding.IntegrationTests;
 
@@ -27,6 +30,15 @@ public sealed class PortalHttpTests
             ("OperationId", Guid.NewGuid().ToString()), ("MembershipId", member.ToString()),
             ("Title", "Flickering hallway light"), ("Description", "Synthetic"), ("Location", "Hallway"));
         Assert.Equal(HttpStatusCode.Redirect, submitted.StatusCode);
+        // The confirmation shows once on the page the tenant lands on, then is gone.
+        var details = submitted.Headers.Location!.OriginalString;
+        Assert.Contains("Request sent. Building management has been notified and will reply here.", await tenant.GetStringAsync(details));
+        Assert.DoesNotContain("Request sent.", await tenant.GetStringAsync(details));
+        using var commented = await AccountTestHost.PostAsync(tenant, details, "/Maintenance/Change",
+            ("OperationId", Guid.NewGuid().ToString()), ("WorkOrderId", details.Split('/').Last()),
+            ("Version", await VersionAsync(host)), ("Action", "Comment"), ("Note", "It flickers most in the morning."));
+        Assert.Equal(HttpStatusCode.Redirect, commented.StatusCode);
+        Assert.Contains("Comment added.", await tenant.GetStringAsync(details));
         var withRequest = await tenant.GetStringAsync("/Portal");
         Assert.Contains("Flickering hallway light", withRequest);
         Assert.Contains("href=\"/Maintenance/Details/", withRequest);
@@ -54,6 +66,13 @@ public sealed class PortalHttpTests
             using var hidden = await manager.GetAsync(path);
             Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
         }
+    }
+
+    private static async Task<string> VersionAsync(AccountTestHost host)
+    {
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+        return (await db.WorkOrders.AsNoTracking().SingleAsync()).Version.ToString();
     }
 
     [Fact]

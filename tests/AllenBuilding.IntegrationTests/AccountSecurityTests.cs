@@ -385,7 +385,7 @@ public sealed class AccountSecurityTests
         Assert.Equal(known.StatusCode, unknown.StatusCode);
         var a = await known.Content.ReadAsStringAsync();
         var b = await unknown.Content.ReadAsStringAsync();
-        Assert.Contains("If a confirmed account matches", a);
-        Assert.Contains("If a confirmed account matches", b);
+        Assert.Contains("If that email belongs to an account", a);
+        Assert.Contains("If that email belongs to an account", b);
     }
 }

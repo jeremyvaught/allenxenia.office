@@ -27,7 +27,10 @@
     {
         <div class="border-b border-line bg-brand-soft px-5 py-3 text-sm"><div class="mx-auto max-w-7xl"><a href="/Assistant/Guest/@guestHint" class="inline-flex min-h-11 items-center font-semibold text-brand underline">Continue your maintenance draft</a><p class="text-muted">Nothing has been submitted.</p></div></div>
     }
-    <main id="main" tabindex="-1" class="flex-1">@RenderBody()</main>
+    <main id="main" tabindex="-1" class="flex-1">
+        @if (TempData["Notice"] is string notice) { <div class="mx-auto w-full max-w-5xl px-5 pt-6 sm:px-8"><p role="status" class="rounded-xl border border-line bg-panel p-4">@notice</p></div> }
+        @RenderBody()
+    </main>
     <footer class="border-t border-line">
         <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-7 text-sm text-muted sm:px-8">
             <p>Allen Building · Xenia, Ohio</p>
