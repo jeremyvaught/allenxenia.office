@@ -225,9 +225,11 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
 
     await manager.goto('/Management');
     const addedSuite = `Additional suite ${testInfo.project.name}`;
+    await manager.getByText('Add a suite', { exact: true }).click();
     await manager.getByLabel('Suite name', { exact: true }).fill(addedSuite);
     await manager.getByRole('button', { name: 'Add suite', exact: true }).click();
     await expect(manager.getByRole('status')).toContainText(`Suite ${addedSuite} added`);
+    await manager.getByText('Give an existing account another suite', { exact: true }).click();
     await manager.getByLabel('Suite for existing account').selectOption({ label: addedSuite });
     await manager.getByLabel('Existing account email').fill(account.tenantEmail);
     await manager.getByLabel('Reason for granting access').fill('Additional suite approved.');
@@ -240,10 +242,12 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await manager.getByLabel('Email', { exact: true }).fill(invitedEmail);
     await manager.getByRole('button', { name: 'Send invitation', exact: true }).click();
     let invitation = manager.locator('article').filter({ hasText: invitedEmail });
+    await invitation.getByText('Reissue or revoke', { exact: true }).click();
     await invitation.getByLabel('Reason for invitation change').fill('Replace the activation link.');
     await invitation.getByRole('button', { name: 'Reissue invitation', exact: true }).click();
     await expect(manager.getByRole('status')).toContainText('Previous links are invalid');
     invitation = manager.locator('article').filter({ hasText: invitedEmail });
+    await invitation.getByText('Reissue or revoke', { exact: true }).click();
     await invitation.getByLabel('Reason for invitation change').fill('Invitation no longer needed.');
     await invitation.getByRole('button', { name: 'Revoke invitation', exact: true }).click();
     await expect(manager.locator('article').filter({ hasText: invitedEmail })).toContainText('Revoked');

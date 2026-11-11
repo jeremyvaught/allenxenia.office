@@ -70,7 +70,7 @@ public sealed class ManagementHttpTests
         var version = await MembershipVersionAsync(host, membership);
         using var browser = host.Browser();
         await host.LoginManagerAsync(browser, managerId);
-        Assert.Contains("tenant@example.test · Shared office", await browser.GetStringAsync("/Management"));
+        Assert.Matches(@"tenant@example\.test</p>\s*<p[^>]*>Shared office<", await browser.GetStringAsync("/Management"));
 
         using var missingReason = await Revoke(membership, version, "");
         Assert.Equal(HttpStatusCode.BadRequest, missingReason.StatusCode);
@@ -90,7 +90,7 @@ public sealed class ManagementHttpTests
         Assert.Equal("/Management", revoked.Headers.Location?.OriginalString);
         var page = await browser.GetStringAsync("/Management");
         Assert.Contains("Tenant access revoked. Existing records are retained. Billing arrangements are unchanged.", page);
-        Assert.DoesNotContain("tenant@example.test · Shared office", page);
+        Assert.DoesNotContain("tenant@example.test", page);
         using var repeated = await Revoke(membership, version, "Lease ended");
         Assert.Equal(HttpStatusCode.Redirect, repeated.StatusCode);
 
@@ -145,7 +145,7 @@ public sealed class ManagementHttpTests
         Assert.Equal("/Management", granted.Headers.Location?.OriginalString);
         var page = await browser.GetStringAsync("/Management");
         Assert.Contains("Suite access granted to the existing account. Previous memberships and passwords are unchanged.", page);
-        Assert.Contains("returning@example.test · Second floor", page);
+        Assert.Matches(@"returning@example\.test</p>\s*<p[^>]*>Second floor<", page);
         using var replay = await Grant(operation, suite, "returning@example.test", "Second lease");
         Assert.Equal(HttpStatusCode.Redirect, replay.StatusCode);
         using var changedReplay = await Grant(operation, suite, "returning@example.test", "Different reason");
@@ -188,8 +188,9 @@ public sealed class ManagementHttpTests
         Assert.Equal(HttpStatusCode.Redirect, issued.StatusCode);
         var page = await browser.GetStringAsync("/Management");
         Assert.Contains("Invitation created and queued to send.", page);
-        Assert.Contains("invited@example.test · Ground floor", page);
-        Assert.Contains("Pending · Expires", page);
+        Assert.Contains("invited@example.test", page);
+        Assert.Contains("Ground floor · Expires", page);
+        Assert.Contains(">Pending</span>", page);
 
         var (id, version) = await InvitationAsync(host);
         using var missingReason = await Change(id, version, true, "");
@@ -206,7 +207,7 @@ public sealed class ManagementHttpTests
         Assert.Equal(HttpStatusCode.Redirect, revoked.StatusCode);
         page = await browser.GetStringAsync("/Management");
         Assert.Contains("Invitation revoked. Its link cannot activate access.", page);
-        Assert.Contains("Revoked · Expires", page);
+        Assert.Contains(">Revoked</span>", page);
         Assert.DoesNotContain("Revoke invitation</button>", page);
         var (_, revokedVersion) = await InvitationAsync(host);
         using var revokedAgain = await Change(id, revokedVersion, true, "Sent to the wrong person");
@@ -218,7 +219,7 @@ public sealed class ManagementHttpTests
         Assert.Equal(HttpStatusCode.Redirect, reissued.StatusCode);
         page = await browser.GetStringAsync("/Management");
         Assert.Contains("Invitation reissued for seven days. Previous links are invalid; the new link is queued for delivery.", page);
-        Assert.Contains("Pending · Expires", page);
+        Assert.Contains(">Pending</span>", page);
 
         using (var scope = host.Services.CreateScope())
         {
@@ -234,7 +235,7 @@ public sealed class ManagementHttpTests
             invitation.ExpiresAt = host.Clock.GetUtcNow().AddMinutes(-1);
             await db.SaveChangesAsync();
         }
-        Assert.Contains("Expired · Expires", await browser.GetStringAsync("/Management"));
+        Assert.Contains(">Expired</span>", await browser.GetStringAsync("/Management"));
 
         Task<HttpResponseMessage> Invite(Guid suiteId, string email) => AccountTestHost.PostAsync(browser, "/Management", "/Management/Invite",
             ("SuiteId", suiteId.ToString()), ("Email", email));
