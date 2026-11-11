@@ -9,8 +9,9 @@
         <a asp-controller="Contractors" asp-action="Index" class="@link">Contractors</a>
         <a asp-controller="Reports" asp-action="Maintenance" class="@link">Reports</a>
         <a asp-controller="Notifications" asp-action="Index" class="@link">Notifications</a>
+        @if (Model.Tenant) { <a asp-controller="Maintenance" asp-action="Index" class="@link">My requests</a> }
     }
-    else if (Model.SignedIn)
+    else if (Model.Tenant)
     {
         <a asp-controller="Maintenance" asp-action="Index" class="@link">Requests</a>
         <a asp-controller="Knowledge" asp-action="Tenant" class="@link">Help</a>

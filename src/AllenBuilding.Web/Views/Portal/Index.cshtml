@@ -16,8 +16,8 @@
         <h2 id="attention-heading" class="mb-4 text-xl font-semibold">Needs attention</h2>
         <ul class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <li><a asp-controller="Maintenance" asp-action="Manage" asp-route-Status="Submitted" class="@tile"><span class="block text-3xl font-semibold">@summary.AwaitingTriage</span><span class="mt-1 block text-sm text-muted">New requests to triage</span></a></li>
-            <li><a asp-controller="Maintenance" asp-action="Manage" class="@tile"><span class="block text-3xl font-semibold">@summary.InProgress</span><span class="mt-1 block text-sm text-muted">Requests in progress</span></a></li>
             <li><a asp-controller="Maintenance" asp-action="Manage" asp-route-Status="Completed" class="@tile"><span class="block text-3xl font-semibold">@summary.AwaitingVerification</span><span class="mt-1 block text-sm text-muted">Finished, waiting for you to verify</span></a></li>
+            <li><a asp-controller="Maintenance" asp-action="Manage" class="@tile"><span class="block text-3xl font-semibold">@(summary.AwaitingTriage + summary.InProgress + summary.AwaitingVerification)</span><span class="mt-1 block text-sm text-muted">Open requests in total</span></a></li>
             <li><a asp-controller="Notifications" asp-action="Index" class="@tile"><span class="block text-3xl font-semibold">@managing.DeliveryProblems@(managing.MoreDeliveryProblems ? "+" : "")</span><span class="mt-1 block text-sm text-muted">Emails that failed to send</span></a></li>
             <li><a asp-controller="Management" asp-action="Index" class="@tile"><span class="block text-3xl font-semibold">@summary.PendingInvitations</span><span class="mt-1 block text-sm text-muted">Invitations not yet accepted</span></a></li>
         </ul>

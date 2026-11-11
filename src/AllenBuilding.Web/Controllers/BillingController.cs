@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace AllenBuilding.Web.Controllers;
 
-[Authorize, ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+[Authorize, RequiresBilling, ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class BillingController(
     BillingActions actions, ICurrentActor current, BillingReviewTickets tickets, IConfiguration configuration, TimeProvider time,
     CollectionPolicy collection, AutopayPolicy autopay) : Controller

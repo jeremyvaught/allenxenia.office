@@ -11,7 +11,7 @@ namespace AllenBuilding.Web.Controllers;
 
 public sealed record PaymentSelection(BillingAccount Account, IReadOnlyList<ReviewedCollectionBalance> Balances, IReadOnlyList<PayerPaymentSummary> Recent);
 public sealed record PaymentReviewProblem(string Heading, string Message);
-[Authorize, ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+[Authorize, RequiresBilling, ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class PaymentsController(BillingActions billing, CollectionActions actions, PayerCollections payments, CollectionPolicy policy,
     ICurrentActor current, PaymentReviewTickets tickets, TimeProvider time) : Controller
 {
