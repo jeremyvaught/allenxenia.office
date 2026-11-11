@@ -230,7 +230,7 @@ public static class MaintenanceContract
         Guid version;
         using (var scope = provider.CreateScope())
             version = (await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().Memberships.SingleAsync(x => x.Id == membershipId)).Version;
-        Assert.Equal(MaintenanceCode.Success, await As(manager, sp => sp.GetRequiredService<AccessRevocation>().RevokeAsync(membershipId, version, "Access ended")));
+        Assert.Equal(AllenBuilding.Application.Access.AccessCode.Success, await As(manager, sp => sp.GetRequiredService<AccessRevocation>().RevokeAsync(membershipId, version, "Access ended")));
         Assert.Equal(behalfResults[0], await As(manager, sp => sp.GetRequiredService<MaintenanceActions>().SubmitOnBehalfAsync(onBehalf)));
         Assert.Equal(MaintenanceCode.Unavailable, (await As(manager, sp => sp.GetRequiredService<MaintenanceActions>().SubmitOnBehalfAsync(onBehalf with { OperationId = Guid.NewGuid() }))).Code);
         Assert.Null(await As(tenant, sp => sp.GetRequiredService<MaintenanceActions>().ReadAsync(behalfResults[0].WorkOrderId!.Value, false)));

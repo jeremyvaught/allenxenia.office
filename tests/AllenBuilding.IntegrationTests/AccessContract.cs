@@ -87,7 +87,7 @@ public static class AccessContract
             db.WorkOrders.Add(order);
             await db.SaveChangesAsync();
         }
-        Assert.Equal(MaintenanceCode.Success, await As(manager, sp => sp.GetRequiredService<AccessRevocation>().RevokeAsync(granted.MembershipId!.Value, membershipVersion, "Access ended")));
+        Assert.Equal(AllenBuilding.Application.Access.AccessCode.Success, await As(manager, sp => sp.GetRequiredService<AccessRevocation>().RevokeAsync(granted.MembershipId!.Value, membershipVersion, "Access ended")));
         Assert.Equal(granted, await As(manager, sp => sp.GetRequiredService<AccountAccess>().GrantAsync(grant)));
         var returning = await As(manager, sp => sp.GetRequiredService<AccountAccess>().GrantAsync(grant with { OperationId = Guid.NewGuid(), Reason = "New tenancy approved" }));
         Assert.Equal(AccessCode.Success, returning.Code);

@@ -125,7 +125,7 @@ public static class TenancyClosureContract
             Assert.DoesNotContain(visible, x => x.Id == account.Id);
             Assert.Empty(await actions.ClosuresAsync());
             current.Actor = actor;
-            Assert.Equal(MaintenanceCode.Success, await scope.ServiceProvider.GetRequiredService<AccessRevocation>().RevokeAsync(accessOnly.Id, accessOnly.Version, "Access only", default));
+            Assert.Equal(AllenBuilding.Application.Access.AccessCode.Success, await scope.ServiceProvider.GetRequiredService<AccessRevocation>().RevokeAsync(accessOnly.Id, accessOnly.Version, "Access only", default));
             Assert.Null((await db.RentAccounts.SingleAsync(x => x.Id == accessAccount.Id)).EndedAt);
             Assert.False(await db.TenancyClosures.AnyAsync(x => x.AccountId == accessAccount.Id));
         }

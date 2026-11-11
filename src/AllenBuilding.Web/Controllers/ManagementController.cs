@@ -40,11 +40,11 @@ public sealed class ManagementController(
         if (!ModelState.IsValid)
             return BadRequest();
         var result = await revocation.RevokeAsync(form.MembershipId, form.Version, form.Reason, HttpContext.RequestAborted);
-        if (result == AllenBuilding.Application.Maintenance.MaintenanceCode.Unavailable)
+        if (result == AccessCode.Unavailable)
             return NotFound();
-        if (result == AllenBuilding.Application.Maintenance.MaintenanceCode.Conflict)
+        if (result == AccessCode.Conflict)
             return Conflict();
-        if (result != AllenBuilding.Application.Maintenance.MaintenanceCode.Success)
+        if (result != AccessCode.Success)
             return BadRequest();
         TempData["Notice"] = "Tenant access revoked. Existing records are retained. Billing arrangements are unchanged.";
         return RedirectToAction(nameof(Index));

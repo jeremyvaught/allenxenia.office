@@ -144,7 +144,7 @@ public static class AssistantReviewContract
         { Assert.Equal(AssistantReviewState.Ready, (await db.AssistantMaintenanceReviews.SingleAsync(x => x.Id == rollback.Review.Id)).State); Assert.False(await db.MaintenanceReceipts.AnyAsync(x => x.OperationId == rollback.Review.OperationId)); Assert.Equal(1, await db.WorkOrders.CountAsync(x => x.RequesterMembershipId == member.Id)); }
         Assert.Equal(MaintenanceCode.Success, (await Confirm(rollback)).Code);
         var revoked = await Prepare();
-        Assert.Equal(MaintenanceCode.Success, await As(managerActor, sp => sp.GetRequiredService<AccessRevocation>().RevokeAsync(member.Id, member.Version, "Synthetic tenancy ended")));
+        Assert.Equal(AllenBuilding.Application.Access.AccessCode.Success, await As(managerActor, sp => sp.GetRequiredService<AccessRevocation>().RevokeAsync(member.Id, member.Version, "Synthetic tenancy ended")));
         Assert.Equal(MaintenanceCode.Unavailable, (await Confirm(revoked)).Code);
         Assert.Equal(MaintenanceCode.Unavailable, (await Confirm(pending)).Code);
         await using (var db = create())
