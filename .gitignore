@@ -30,3 +30,6 @@ test-results/
 *.pyc
 
 !scripts/verify-release.py
+
+.agents/
+skills-lock.json
