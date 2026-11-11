@@ -13,7 +13,8 @@ public sealed class NotificationsController(ICurrentActor current, NotificationI
     [HttpGet]
     public async Task<IActionResult> Index(int reviewPage = 1)
     {
-        if (reviewPage is < 1 or > 1000000) return BadRequest();
+        if (reviewPage is < 1 or > 1000000)
+            return BadRequest();
         var actor = (await current.GetAsync())!;
         return View(await inbox.ReadAsync(actor, reviewPage, HttpContext.RequestAborted));
     }
@@ -21,8 +22,10 @@ public sealed class NotificationsController(ICurrentActor current, NotificationI
     [Authorize(Policy = OfficeSecurity.RecentManagerPolicy), HttpPost]
     public async Task<IActionResult> Retry(RetryNotificationForm form)
     {
-        if (!ModelState.IsValid) return BadRequest();
-        if (!await queue.RetryAsync(current, form.Id, form.Version, form.Reason)) return Conflict();
+        if (!ModelState.IsValid)
+            return BadRequest();
+        if (!await queue.RetryAsync(current, form.Id, form.Version, form.Reason))
+            return Conflict();
         return RedirectToAction(nameof(Index));
     }
 }

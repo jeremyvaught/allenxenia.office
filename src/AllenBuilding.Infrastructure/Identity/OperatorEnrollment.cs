@@ -23,20 +23,28 @@ public sealed class OperatorEnrollment(OfficeDbContext db, UserManager<OfficeUse
 
     public async Task<bool> AuthorizeAsync(string userId, string stamp, string code, CancellationToken token)
     {
-        if (!ValidCode(code)) return false;
+        if (!ValidCode(code))
+            return false;
         await using var transaction = await AuthorityLocks.BeginAsync(db, token);
         await AuthorityLocks.InvitationUserAsync(db, userId, token);
-        var user = await users.FindByIdAsync(userId); if (user is null) return false;
+        var user = await users.FindByIdAsync(userId);
+        if (user is null)
+            return false;
         await db.Entry(user).ReloadAsync(token);
         if (user.SecurityStamp != stamp || user.TwoFactorEnabled || !user.EmailConfirmed || await users.IsLockedOutAsync(user) ||
-            await RequiredAsync(user) != "true" || !await db.BuildingManagers.AnyAsync(x => x.UserId == userId, token)) return false;
+            await RequiredAsync(user) != "true" || !await db.BuildingManagers.AnyAsync(x => x.UserId == userId, token))
+            return false;
         var value = await users.GetAuthenticationTokenAsync(user, Provider, CodeToken);
         var parts = value?.Split(':');
         if (parts is not { Length: 2 } || !long.TryParse(parts[0], CultureInfo.InvariantCulture, out var expires) ||
             expires <= time.GetUtcNow().ToUnixTimeSeconds() || parts[1].Length != 64 || !parts[1].All(Uri.IsHexDigit) ||
-            !CryptographicOperations.FixedTimeEquals(Convert.FromHexString(parts[1]), Convert.FromHexString(Digest(code)))) return false;
+            !CryptographicOperations.FixedTimeEquals(Convert.FromHexString(parts[1]), Convert.FromHexString(Digest(code))))
+            return false;
         if (!(await users.RemoveAuthenticationTokenAsync(user, Provider, CodeToken)).Succeeded ||
-            !(await users.ResetAuthenticatorKeyAsync(user)).Succeeded) return false;
-        await db.SaveChangesAsync(token); await transaction.CommitAsync(token); return true;
+            !(await users.ResetAuthenticatorKeyAsync(user)).Succeeded)
+            return false;
+        await db.SaveChangesAsync(token);
+        await transaction.CommitAsync(token);
+        return true;
     }
 }

@@ -16,13 +16,18 @@ public sealed class CashSourceWorker(ICashSourceQueue queue, ICashMovementReader
 {
     public async Task<bool> ProcessOneAsync(CancellationToken cancellationToken = default)
     {
-        var lease = await queue.ClaimAsync(cancellationToken); if (lease is null) return false;
-        using var operation = OfficeTelemetry.Begin(OfficeOperationKind.CashSource, lease.OperationId, OfficeTelemetry.Origin(lease.OriginTraceId, lease.OriginSpanId));
+        var lease = await queue.ClaimAsync(cancellationToken);
+        if (lease is null)
+            return false;
+        using var operation = OfficeTelemetry.Begin(OfficeOperationKind.CashSource, lease.OperationId,
+            OfficeTelemetry.Origin(lease.OriginTraceId, lease.OriginSpanId));
         CashObservation observation;
         try
         {
-            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); deadline.CancelAfter(TimeSpan.FromSeconds(30));
-            observation = lease.Id == Guid.Empty || lease.Token == Guid.Empty || lease.ApiVersion != CheckoutProfile.ApiContract || lease.Original.State != PaymentAttemptState.Settled ||
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deadline.CancelAfter(TimeSpan.FromSeconds(30));
+            observation = lease.Id == Guid.Empty || lease.Token == Guid.Empty || lease.ApiVersion != CheckoutProfile.ApiContract ||
+                lease.Original.State != PaymentAttemptState.Settled ||
                 (!PaymentReferences.Valid(lease.SourceId, "re_") && !CashMovement.DisputeReference(lease.SourceId))
                 ? new(CashObservationState.Invalid) : await reader.ReadAsync(lease.Original, lease.SourceId, deadline.Token).WaitAsync(deadline.Token);
         }
@@ -35,7 +40,12 @@ public sealed class CashSourceWorker(ICashSourceQueue queue, ICashMovementReader
         using var completion = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var completed = await queue.CompleteAsync(lease, observation, completion.Token);
         operation.Result = !completed ? OfficeOutcome.LeaseLost : observation.State switch
-        { CashObservationState.Unknown => OfficeOutcome.Uncertain, CashObservationState.Invalid => OfficeOutcome.Failure, CashObservationState.Pending => OfficeOutcome.Retry, _ => OfficeOutcome.Success };
+        {
+            CashObservationState.Unknown => OfficeOutcome.Uncertain,
+            CashObservationState.Invalid => OfficeOutcome.Failure,
+            CashObservationState.Pending => OfficeOutcome.Retry,
+            _ => OfficeOutcome.Success
+        };
         return true;
     }
 }

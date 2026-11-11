@@ -28,7 +28,9 @@ public sealed class DatabaseReadiness(OfficeDbContext db) : IHealthCheck
         finally
         {
             db.Database.SetCommandTimeout(previousTimeout);
-            try { await db.Database.CloseConnectionAsync(); } catch (Exception) { }
+            try
+            { await db.Database.CloseConnectionAsync(); }
+            catch (Exception) { }
         }
     }
 }

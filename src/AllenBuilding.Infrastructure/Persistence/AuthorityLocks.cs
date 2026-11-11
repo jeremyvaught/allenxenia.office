@@ -34,7 +34,9 @@ public static class AuthorityLocks
         // Shared locks prevent grant removal; fixed ordering avoids cross-assignment cycles.
         foreach (var id in new[] { actorId, targetId }.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().Order(StringComparer.Ordinal))
             if (db is MySqlOfficeDbContext)
-                await db.Database.ExecuteSqlInterpolatedAsync($"SELECT user_id FROM building_managers WHERE user_id = {id} AND building_id = {buildingId.ToString("D")} FOR SHARE", cancellationToken);
+                await db.Database.ExecuteSqlInterpolatedAsync(
+                    $"SELECT user_id FROM building_managers WHERE user_id = {id} AND building_id = {buildingId.ToString("D")} FOR SHARE",
+                    cancellationToken);
     }
 
     public static async Task WorkOrderAsync(OfficeDbContext db, Guid orderId, CancellationToken cancellationToken = default)
@@ -53,7 +55,8 @@ public static class AuthorityLocks
     public static async Task ManagerAsync(OfficeDbContext db, string userId, Guid buildingId, CancellationToken cancellationToken = default)
     {
         if (db is MySqlOfficeDbContext)
-            await db.BuildingManagers.FromSqlInterpolated($"SELECT * FROM building_managers WHERE user_id = {userId} AND building_id = {buildingId.ToString("D")} FOR UPDATE")
+            await db.BuildingManagers.FromSqlInterpolated(
+                    $"SELECT * FROM building_managers WHERE user_id = {userId} AND building_id = {buildingId.ToString("D")} FOR UPDATE")
                 .AsNoTracking().ToListAsync(cancellationToken);
     }
 

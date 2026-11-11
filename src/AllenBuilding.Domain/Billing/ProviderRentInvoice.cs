@@ -48,7 +48,8 @@ public sealed class ProviderRentInvoice
             throw new InvalidOperationException("The invoice must prove one unchanged monthly line for the original customer, subscription and consent.");
         // Stripe renewal intervals follow the due-day anchor; local debt remains a whole calendar month.
         var start = new DateOnly(fact.LineStartsAt.Year, fact.LineStartsAt.Month, 1);
-        if (start < authorization.FirstPeriodStartsOn || start >= authorization.EndsBefore) throw new InvalidOperationException("The period is outside the original authorization.");
+        if (start < authorization.FirstPeriodStartsOn || start >= authorization.EndsBefore)
+            throw new InvalidOperationException("The period is outside the original authorization.");
         var period = RentCalendar.ForMonth(authorization.AccountId, start.Year, start.Month, authorization.DueDay);
         DateTimeOffset Anchor(DateOnly month)
         {
@@ -62,8 +63,10 @@ public sealed class ProviderRentInvoice
     public static ProviderRentInvoice Map(AutopayAuthorization authorization, CanonicalRentInvoice fact, BillingPeriod period, Obligation debt)
     {
         var calendar = Calendar(authorization, fact);
-        if (period.AccountId != calendar.AccountId || period.StartsOn != calendar.StartsOn || period.EndsOn != calendar.EndsOn || period.Kind != ChargeKind.BaseRent ||
-            debt.AccountId != calendar.AccountId || debt.PeriodId != period.Id || debt.Kind != ChargeKind.BaseRent || debt.AgreementId != authorization.AgreementId ||
+        if (period.AccountId != calendar.AccountId || period.StartsOn != calendar.StartsOn || period.EndsOn != calendar.EndsOn ||
+            period.Kind != ChargeKind.BaseRent ||
+            debt.AccountId != calendar.AccountId || debt.PeriodId != period.Id || debt.Kind != ChargeKind.BaseRent ||
+            debt.AgreementId != authorization.AgreementId ||
             debt.AmountMinorUnits != fact.LineMinorUnits || debt.Currency != fact.Currency || debt.DueOn != calendar.DueOn)
             throw new InvalidOperationException("The original invoice must reuse its exact calendar obligation.");
         return new()
@@ -99,8 +102,14 @@ public sealed class ProviderRentInvoice
             LineStartsAt != fact.LineStartsAt || LineEndsAt != fact.LineEndsAt || OriginalMinorUnits != fact.LineMinorUnits || CreatedAt != fact.CreatedAt ||
             fact.CheckedAt < CheckedAt || State is RentInvoiceState.Paid or RentInvoiceState.Void && State != fact.State)
             throw new InvalidOperationException("An invoice observation cannot replace original lineage or regress terminal evidence.");
-        if (State == fact.State && RemainingMinorUnits == fact.RemainingMinorUnits && AutoAdvance == fact.AutoAdvance && CheckedAt == fact.CheckedAt) return;
-        if (fact.CheckedAt == CheckedAt) throw new InvalidOperationException("Conflicting observations require a fresh canonical read.");
-        State = fact.State; RemainingMinorUnits = fact.RemainingMinorUnits; AutoAdvance = fact.AutoAdvance; CheckedAt = fact.CheckedAt; Version = Guid.NewGuid();
+        if (State == fact.State && RemainingMinorUnits == fact.RemainingMinorUnits && AutoAdvance == fact.AutoAdvance && CheckedAt == fact.CheckedAt)
+            return;
+        if (fact.CheckedAt == CheckedAt)
+            throw new InvalidOperationException("Conflicting observations require a fresh canonical read.");
+        State = fact.State;
+        RemainingMinorUnits = fact.RemainingMinorUnits;
+        AutoAdvance = fact.AutoAdvance;
+        CheckedAt = fact.CheckedAt;
+        Version = Guid.NewGuid();
     }
 }

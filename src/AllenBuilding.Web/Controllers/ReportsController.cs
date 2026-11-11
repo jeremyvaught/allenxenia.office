@@ -12,30 +12,39 @@ public sealed class ReportsController(ManagementReportQueries queries, Completio
     [HttpGet]
     public async Task<IActionResult> Completion(CompletionQuery query, CancellationToken token)
     {
-        if (!ModelState.IsValid || !query.IsValid) return BadRequest();
-        try { var report = await completion.ReadAsync(query, token); return report is null ? NotFound() : View(report); }
+        if (!ModelState.IsValid || !query.IsValid)
+            return BadRequest();
+        try
+        { var report = await completion.ReadAsync(query, token); return report is null ? NotFound() : View(report); }
         catch (Exception exception) when (exception is TimeoutException or DbException)
         {
             logger.LogWarning("Maintenance completion report unavailable ({FailureType})", exception.GetType().Name);
-            ViewData["RetryAction"] = "Completion"; Response.StatusCode = 503; return View("Unavailable");
+            ViewData["RetryAction"] = "Completion";
+            Response.StatusCode = 503;
+            return View("Unavailable");
         }
     }
     [HttpGet]
     public async Task<IActionResult> Rent(RentBalanceQuery query, CancellationToken cancellationToken)
     {
-        if (!ModelState.IsValid || !query.IsValid) return BadRequest();
-        try { var report = await queries.RentBalancesAsync(query, cancellationToken); return report is null ? NotFound() : View(report); }
+        if (!ModelState.IsValid || !query.IsValid)
+            return BadRequest();
+        try
+        { var report = await queries.RentBalancesAsync(query, cancellationToken); return report is null ? NotFound() : View(report); }
         catch (Exception exception) when (exception is TimeoutException or DbException)
         {
             logger.LogWarning("Rent balance report unavailable ({FailureType})", exception.GetType().Name);
-            ViewData["RetryAction"] = "Rent"; Response.StatusCode = 503; return View("Unavailable");
+            ViewData["RetryAction"] = "Rent";
+            Response.StatusCode = 503;
+            return View("Unavailable");
         }
     }
 
     [HttpGet]
     public async Task<IActionResult> Maintenance(MaintenanceAgingQuery query, CancellationToken cancellationToken)
     {
-        if (!ModelState.IsValid || !query.IsValid) return BadRequest();
+        if (!ModelState.IsValid || !query.IsValid)
+            return BadRequest();
         try
         {
             var report = await queries.MaintenanceAgingAsync(query, cancellationToken);
@@ -44,7 +53,8 @@ public sealed class ReportsController(ManagementReportQueries queries, Completio
         catch (Exception exception) when (exception is TimeoutException or DbException)
         {
             logger.LogWarning("Maintenance aging report unavailable ({FailureType})", exception.GetType().Name);
-            Response.StatusCode = 503; return View("Unavailable");
+            Response.StatusCode = 503;
+            return View("Unavailable");
         }
     }
 }

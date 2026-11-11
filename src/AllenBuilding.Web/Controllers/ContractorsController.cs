@@ -19,7 +19,8 @@ public sealed class ContractorsController(ContractorActions actions, ICurrentAct
     public async Task<IActionResult> Edit(Guid id)
     {
         var contact = (await actions.ListAsync()).SingleOrDefault(x => x.Id == id);
-        if (contact is null) return NotFound();
+        if (contact is null)
+            return NotFound();
         await Buildings();
         return View(new ContractorForm
         {
@@ -36,10 +37,13 @@ public sealed class ContractorsController(ContractorActions actions, ICurrentAct
     [HttpPost]
     public async Task<IActionResult> Save(ContractorForm form)
     {
-        if (!ModelState.IsValid) { await Buildings(); Response.StatusCode = 400; return View("Edit", form); }
+        if (!ModelState.IsValid)
+        { await Buildings(); Response.StatusCode = 400; return View("Edit", form); }
         var result = await actions.SaveAsync(form.Command());
-        if (result == MaintenanceCode.Success) return RedirectToAction(nameof(Index));
-        if (result == MaintenanceCode.Unavailable) return NotFound();
+        if (result == MaintenanceCode.Success)
+            return RedirectToAction(nameof(Index));
+        if (result == MaintenanceCode.Unavailable)
+            return NotFound();
         Response.StatusCode = result == MaintenanceCode.Conflict ? 409 : 400;
         return View("~/Views/Maintenance/ActionError.cshtml", result);
     }

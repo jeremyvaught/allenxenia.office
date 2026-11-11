@@ -28,7 +28,8 @@ public sealed class ProtectedUserStore(OfficeDbContext context, IDataProtectionP
     {
         var hashes = await ReadHashes(user, cancellationToken);
         var index = hashes.FindIndex(hash => hasher.VerifyHashedPassword(user, hash, code) != PasswordVerificationResult.Failed);
-        if (index < 0) return false;
+        if (index < 0)
+            return false;
         hashes.RemoveAt(index);
         user.MustReplaceRecoveryCodes = true;
         // UserManager subsequently updates the user's concurrency stamp and saves both rows atomically.

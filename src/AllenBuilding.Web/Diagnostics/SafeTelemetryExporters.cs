@@ -30,7 +30,9 @@ public sealed class SafeTraceExporter(ILogger<SafeTraceExporter> logger, Telemet
     {
         try
         {
-            foreach (var activity in batch) logger.LogInformation("Trace {Service} {Environment} {Release} {Telemetry}", identity.Service, identity.Environment, identity.Release, JsonSerializer.Serialize(SafeTrace.From(activity)));
+            foreach (var activity in batch)
+                logger.LogInformation("Trace {Service} {Environment} {Release} {Telemetry}",
+                    identity.Service, identity.Environment, identity.Release, JsonSerializer.Serialize(SafeTrace.From(activity)));
             return ExportResult.Success;
         }
         catch (Exception) { OfficeTelemetry.ExportFailed("traces"); return ExportResult.Failure; }
@@ -44,15 +46,25 @@ public sealed class SafeMetricExporter(ILogger<SafeMetricExporter> logger, Telem
         {
             foreach (var metric in batch)
             {
-                if (metric.Name is not ("office.operation.count" or "office.operation.duration" or "office.telemetry.export_failures" or "office.telemetry.dropped_traces")) continue;
+                if (metric.Name is not ("office.operation.count" or "office.operation.duration"
+                    or "office.telemetry.export_failures" or "office.telemetry.dropped_traces"))
+                    continue;
                 foreach (ref readonly var point in metric.GetMetricPoints())
                 {
                     var tags = new Dictionary<string, string>();
                     foreach (var tag in point.Tags)
-                        if (tag.Key == "kind" && OfficeTelemetry.IsKind(tag.Value as string) || tag.Key == "outcome" && OfficeTelemetry.IsOutcome(tag.Value as string)) tags[tag.Key] = (string)tag.Value!;
+                        if (tag.Key == "kind" && OfficeTelemetry.IsKind(tag.Value as string) ||
+                            tag.Key == "outcome" && OfficeTelemetry.IsOutcome(tag.Value as string))
+                            tags[tag.Key] = (string)tag.Value!;
                     var histogram = metric.MetricType == MetricType.Histogram;
-                    logger.LogInformation("Metric {Service} {Environment} {Release} {Telemetry}", identity.Service, identity.Environment, identity.Release, JsonSerializer.Serialize(new
-                    { Name = metric.Name, Tags = tags, Count = histogram ? point.GetHistogramCount() : point.GetSumLong(), SumSeconds = histogram ? point.GetHistogramSum() : (double?)null }));
+                    logger.LogInformation("Metric {Service} {Environment} {Release} {Telemetry}",
+                        identity.Service, identity.Environment, identity.Release, JsonSerializer.Serialize(new
+                        {
+                            Name = metric.Name,
+                            Tags = tags,
+                            Count = histogram ? point.GetHistogramCount() : point.GetSumLong(),
+                            SumSeconds = histogram ? point.GetHistogramSum() : (double?)null
+                        }));
                 }
             }
             return ExportResult.Success;

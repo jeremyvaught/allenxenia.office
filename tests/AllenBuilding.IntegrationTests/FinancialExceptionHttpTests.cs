@@ -16,8 +16,10 @@ public sealed class FinancialExceptionHttpTests
     [Fact]
     public async Task Recovery_queue_is_private_escaped_csrf_protected_and_requires_recent_mfa_for_changes()
     {
-        await using var host = new AccountTestHost(); await host.InitializeAsync();
-        var (managerId, buildingId) = await host.SeedManagerAsync(); FinancialException issue;
+        await using var host = new AccountTestHost();
+        await host.InitializeAsync();
+        var (managerId, buildingId) = await host.SeedManagerAsync();
+        FinancialException issue;
         using (var scope = host.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
@@ -29,64 +31,88 @@ public sealed class FinancialExceptionHttpTests
             var debt = Obligation.Issue(account.Id, new Money(1000), "Debt", new DateOnly(2026, 10, 1), managerId, host.Clock.GetUtcNow());
             var attempt = PaymentAttempt.Admit(Guid.NewGuid(), managerId, binding, [new(debt.Id, account.Id, debt.Version, 1000)], host.Clock.GetUtcNow());
             var work = CollectionWork.Enqueue(attempt, new("https://http.example.test", "pmc_http"));
-            attempt.BeginDispatch(host.Clock.GetUtcNow()); attempt.AttachHandoff("cs_http", host.Clock.GetUtcNow().AddHours(1), host.Clock.GetUtcNow());
+            attempt.BeginDispatch(host.Clock.GetUtcNow());
+            attempt.AttachHandoff("cs_http", host.Clock.GetUtcNow().AddHours(1), host.Clock.GetUtcNow());
             issue = FinancialException.Open(attempt, FinancialFailure.ProviderUnknown, null, host.Clock.GetUtcNow());
-            db.AddRange(suite, membership, account, binding, debt, attempt, issue, work); await db.SaveChangesAsync();
+            db.AddRange(suite, membership, account, binding, debt, attempt, issue, work);
+            await db.SaveChangesAsync();
         }
-        using var guest = host.Browser(); using var manager = host.Browser();
-        using var guestDenied = await guest.GetAsync("/FinancialExceptions"); Assert.Contains("/Account/Login", guestDenied.Headers.Location?.OriginalString);
+        using var guest = host.Browser();
+        using var manager = host.Browser();
+        using var guestDenied = await guest.GetAsync("/FinancialExceptions");
+        Assert.Contains("/Account/Login", guestDenied.Headers.Location?.OriginalString);
         await host.LoginManagerAsync(manager, managerId);
-        using var read = await manager.GetAsync("/FinancialExceptions"); var html = await read.Content.ReadAsStringAsync();
-        Assert.Equal(HttpStatusCode.OK, read.StatusCode); Assert.Contains("no-store", read.Headers.CacheControl?.ToString());
-        Assert.Contains("&lt;script&gt;suite()&lt;/script&gt;", html); Assert.DoesNotContain("<script>suite", html);
+        using var read = await manager.GetAsync("/FinancialExceptions");
+        var html = await read.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.OK, read.StatusCode);
+        Assert.Contains("no-store", read.Headers.CacheControl?.ToString());
+        Assert.Contains("&lt;script&gt;suite()&lt;/script&gt;", html);
+        Assert.DoesNotContain("<script>suite", html);
         var values = new[] { ("Id", issue.Id.ToString()), ("Version", issue.Version.ToString()), ("OperationId", Guid.NewGuid().ToString()), ("Reason", "<script>review()</script>"), ("OwnerUserId", managerId) };
         using var noToken = await manager.PostAsync("/FinancialExceptions/Assign", new FormUrlEncodedContent(values.Select(x => new KeyValuePair<string, string>(x.Item1, x.Item2))));
         Assert.Equal(HttpStatusCode.BadRequest, noToken.StatusCode);
         host.Clock.Offset = TimeSpan.FromMinutes(6);
-        using var oldRead = await manager.GetAsync("/FinancialExceptions"); Assert.Equal(HttpStatusCode.OK, oldRead.StatusCode);
+        using var oldRead = await manager.GetAsync("/FinancialExceptions");
+        Assert.Equal(HttpStatusCode.OK, oldRead.StatusCode);
         using var expired = await AccountTestHost.PostAsync(manager, "/FinancialExceptions", "/FinancialExceptions/Assign", values);
         Assert.Contains("/Account/Denied", expired.Headers.Location?.OriginalString);
         host.Clock.Offset = TimeSpan.Zero;
         using var assigned = await AccountTestHost.PostAsync(manager, "/FinancialExceptions", "/FinancialExceptions/Assign", values);
         Assert.Equal("/FinancialExceptions", assigned.Headers.Location?.OriginalString);
-        html = await manager.GetStringAsync("/FinancialExceptions"); Assert.Contains("&lt;script&gt;review()&lt;/script&gt;", html); Assert.DoesNotContain("<script>review", html);
+        html = await manager.GetStringAsync("/FinancialExceptions");
+        Assert.Contains("&lt;script&gt;review()&lt;/script&gt;", html);
+        Assert.DoesNotContain("<script>review", html);
         Assert.DoesNotContain("Request provider reconciliation", html);
         Guid currentVersion;
-        using (var scope = host.Services.CreateScope()) currentVersion = (await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().FinancialExceptions.SingleAsync(x => x.Id == issue.Id)).Version;
+        using (var scope = host.Services.CreateScope())
+            currentVersion = (await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().FinancialExceptions.SingleAsync(x => x.Id == issue.Id)).Version;
         var reconcile = new[] { ("Id", issue.Id.ToString()), ("Version", currentVersion.ToString()), ("OperationId", Guid.NewGuid().ToString()), ("Reason", "Verify known session"), ("SessionId", "cs_attacker") };
-        using var disabled = await AccountTestHost.PostAsync(manager, "/FinancialExceptions", "/FinancialExceptions/Reconcile", reconcile); Assert.Equal(HttpStatusCode.NotFound, disabled.StatusCode);
+        using var disabled = await AccountTestHost.PostAsync(manager, "/FinancialExceptions", "/FinancialExceptions/Reconcile", reconcile);
+        Assert.Equal(HttpStatusCode.NotFound, disabled.StatusCode);
         await using (var enabled = host.WithWebHostBuilder(builder => builder.ConfigureServices(services => services.Replace(ServiceDescriptor.Singleton(new FinancialRecoveryPolicy(true))))))
         {
-            using var recovering = enabled.CreateClient(new() { AllowAutoRedirect = false }); await host.LoginManagerAsync(recovering, managerId);
+            using var recovering = enabled.CreateClient(new() { AllowAutoRedirect = false });
+            await host.LoginManagerAsync(recovering, managerId);
             Assert.Contains("Request provider reconciliation", await recovering.GetStringAsync("/FinancialExceptions"));
             using var requested = await AccountTestHost.PostAsync(recovering, "/FinancialExceptions", "/FinancialExceptions/Reconcile", reconcile);
             Assert.Equal("/FinancialExceptions", requested.Headers.Location?.OriginalString);
         }
         using (var scope = host.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>(); var original = await db.PaymentAttempts.SingleAsync();
-            Assert.Equal("cs_http", original.SessionId); Assert.True((await db.CollectionWork.SingleAsync()).ReadOnlyReconciliation);
-            Assert.False(await db.SettlementPayments.AnyAsync()); Assert.Equal("ReconcileRequested", (await db.FinancialExceptionHistory.OrderByDescending(x => x.OccurredAt).FirstAsync()).Action);
+            var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+            var original = await db.PaymentAttempts.SingleAsync();
+            Assert.Equal("cs_http", original.SessionId);
+            Assert.True((await db.CollectionWork.SingleAsync()).ReadOnlyReconciliation);
+            Assert.False(await db.SettlementPayments.AnyAsync());
+            Assert.Equal("ReconcileRequested", (await db.FinancialExceptionHistory.OrderByDescending(x => x.OccurredAt).FirstAsync()).Action);
         }
         using var nonexistentMoneySetter = await manager.PostAsync("/FinancialExceptions/Resolve", new FormUrlEncodedContent([]));
         Assert.Contains(nonexistentMoneySetter.StatusCode, new[] { HttpStatusCode.NotFound, HttpStatusCode.MethodNotAllowed });
         using (var scope = host.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
-            db.BuildingManagers.Remove(await db.BuildingManagers.SingleAsync(x => x.UserId == managerId)); await db.SaveChangesAsync();
+            db.BuildingManagers.Remove(await db.BuildingManagers.SingleAsync(x => x.UserId == managerId));
+            await db.SaveChangesAsync();
         }
-        using var ended = await manager.GetAsync("/FinancialExceptions"); Assert.Contains("/Account/Denied", ended.Headers.Location?.OriginalString);
+        using var ended = await manager.GetAsync("/FinancialExceptions");
+        Assert.Contains("/Account/Denied", ended.Headers.Location?.OriginalString);
     }
 
     [Fact]
     public async Task Failed_queue_read_does_not_present_an_empty_queue_or_provider_diagnostics()
     {
-        await using var host = new AccountTestHost(); await host.InitializeAsync(); var (managerId, _) = await host.SeedManagerAsync();
+        await using var host = new AccountTestHost();
+        await host.InitializeAsync();
+        var (managerId, _) = await host.SeedManagerAsync();
         await using var failing = host.WithWebHostBuilder(builder => builder.ConfigureServices(services => services.Replace(ServiceDescriptor.Scoped<IFinancialExceptionStore, FailingStore>())));
-        using var manager = failing.CreateClient(new() { AllowAutoRedirect = false }); await host.LoginManagerAsync(manager, managerId);
-        using var read = await manager.GetAsync("/FinancialExceptions"); var html = await read.Content.ReadAsStringAsync();
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, read.StatusCode); Assert.Contains("Retry the queue", html);
-        Assert.DoesNotContain("synthetic-private-diagnostic", html); Assert.DoesNotContain("No financial exceptions", html);
+        using var manager = failing.CreateClient(new() { AllowAutoRedirect = false });
+        await host.LoginManagerAsync(manager, managerId);
+        using var read = await manager.GetAsync("/FinancialExceptions");
+        var html = await read.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, read.StatusCode);
+        Assert.Contains("Retry the queue", html);
+        Assert.DoesNotContain("synthetic-private-diagnostic", html);
+        Assert.DoesNotContain("No financial exceptions", html);
     }
     private sealed class FailingStore : IFinancialExceptionStore
     {

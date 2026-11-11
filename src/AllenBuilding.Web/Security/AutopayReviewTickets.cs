@@ -14,13 +14,16 @@ public sealed class AutopayReviewTickets(IDataProtectionProvider protection, Tim
     public AutopayReviewPage Create(AutopayReview review) => new(review, _protector.Protect(JsonSerializer.Serialize(review)));
     public AutopayReview? Read(string? ticket, string actor)
     {
-        if (string.IsNullOrWhiteSpace(ticket) || ticket.Length > 65536) return null;
+        if (string.IsNullOrWhiteSpace(ticket) || ticket.Length > 65536)
+            return null;
         try
         {
-            var review = JsonSerializer.Deserialize<AutopayReview>(_protector.Unprotect(ticket)); var now = time.GetUtcNow();
+            var review = JsonSerializer.Deserialize<AutopayReview>(_protector.Unprotect(ticket));
+            var now = time.GetUtcNow();
             if (review is null || review.ActorId != actor || review.PreparedAt > now || now - review.PreparedAt > TimeSpan.FromMinutes(5) ||
                 (review.Enrollment is null) == (review.Stop is null) || review.Enrollment?.ExplicitlyAccepted == true ||
-                review.Stop is not null && (review.Stopping is null || review.StopEffectiveAt is null)) return null;
+                review.Stop is not null && (review.Stopping is null || review.StopEffectiveAt is null))
+                return null;
             return review;
         }
         catch (CryptographicException) { return null; }

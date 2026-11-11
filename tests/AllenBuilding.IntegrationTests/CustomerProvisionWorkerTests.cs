@@ -9,14 +9,18 @@ public sealed class CustomerProvisionWorkerTests
     [Fact]
     public async Task Shutdown_retains_unknown_creation_and_completes_with_an_independent_budget()
     {
-        using var shutdown = new CancellationTokenSource(); var fake = new Interrupted(shutdown);
+        using var shutdown = new CancellationTokenSource();
+        var fake = new Interrupted(shutdown);
         Assert.True(await new CustomerProvisionWorker(fake, fake).ProcessOneAsync(shutdown.Token));
-        Assert.Equal(CustomerProvisionOutcome.Unknown, fake.Result?.Outcome); Assert.False(fake.CompletionCancelled); Assert.True(fake.Disposed);
+        Assert.Equal(CustomerProvisionOutcome.Unknown, fake.Result?.Outcome);
+        Assert.False(fake.CompletionCancelled);
+        Assert.True(fake.Disposed);
     }
     [Fact]
     public async Task Disabled_or_unchallenged_admission_never_touches_the_customer_store()
     {
-        var current = new TestActor { Actor = new("payer", new HashSet<Guid> { Guid.NewGuid() }, false, false) }; var store = new UntouchedStore();
+        var current = new TestActor { Actor = new("payer", new HashSet<Guid> { Guid.NewGuid() }, false, false) };
+        var store = new UntouchedStore();
         Assert.Equal(CollectionCode.Unavailable, (await new CustomerProvisionActions(current, store, new(false, "acct_customers", false)).EnsureAsync(Guid.NewGuid())).Code);
         Assert.Equal(CollectionCode.Unavailable, (await new CustomerProvisionActions(current, store, new(true, "acct_customers", false)).EnsureAsync(Guid.NewGuid())).Code);
         current.Actor = current.Actor with { ChallengedMfa = true };
@@ -33,8 +37,11 @@ public sealed class CustomerProvisionWorkerTests
         public bool Disposed { get; private set; }
         public Interrupted(CancellationTokenSource shutdown)
         {
-            _shutdown = shutdown; var now = DateTimeOffset.UtcNow;
-            var original = CustomerProvision.Enqueue(Guid.NewGuid(), "payer", "acct_customers", false, now); original.Claim(now); original.BeginDispatch(now);
+            _shutdown = shutdown;
+            var now = DateTimeOffset.UtcNow;
+            var original = CustomerProvision.Enqueue(Guid.NewGuid(), "payer", "acct_customers", false, now);
+            original.Claim(now);
+            original.BeginDispatch(now);
             _lease = new(original, original.LeaseToken);
         }
         public Task<CustomerProvisionLease?> ClaimAsync(CancellationToken cancellationToken) => Task.FromResult<CustomerProvisionLease?>(_lease);

@@ -14,14 +14,19 @@ public sealed class PaymentWebhookController(IPaymentWebhookReceiver receiver) :
     [HttpPost("payments/stripe/webhook"), RequestSizeLimit(StripeWebhookReceiver.MaximumBodyBytes)]
     public async Task<IActionResult> Receive()
     {
-        if (receiver is DisabledPaymentWebhookReceiver) return StatusCode(StatusCodes.Status503ServiceUnavailable);
-        if (Request.ContentLength > StripeWebhookReceiver.MaximumBodyBytes) return StatusCode(StatusCodes.Status413PayloadTooLarge);
+        if (receiver is DisabledPaymentWebhookReceiver)
+            return StatusCode(StatusCodes.Status503ServiceUnavailable);
+        if (Request.ContentLength > StripeWebhookReceiver.MaximumBodyBytes)
+            return StatusCode(StatusCodes.Status413PayloadTooLarge);
         if (!Microsoft.Net.Http.Headers.MediaTypeHeaderValue.TryParse(Request.ContentType, out var media) ||
             !media.MediaType.Equals("application/json", StringComparison.OrdinalIgnoreCase) ||
-            (media.Charset.HasValue && !media.Charset.Equals("utf-8", StringComparison.OrdinalIgnoreCase))) return BadRequest();
+            (media.Charset.HasValue && !media.Charset.Equals("utf-8", StringComparison.OrdinalIgnoreCase)))
+            return BadRequest();
         var signatures = Request.Headers["Stripe-Signature"];
-        if (signatures.Count != 1 || signatures[0] is not { Length: > 0 and <= 4096 } signature) return BadRequest();
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(HttpContext.RequestAborted); deadline.CancelAfter(TimeSpan.FromSeconds(5));
+        if (signatures.Count != 1 || signatures[0] is not { Length: > 0 and <= 4096 } signature)
+            return BadRequest();
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(HttpContext.RequestAborted);
+        deadline.CancelAfter(TimeSpan.FromSeconds(5));
         var body = new byte[StripeWebhookReceiver.MaximumBodyBytes + 1];
         var length = 0;
         try
@@ -29,10 +34,12 @@ public sealed class PaymentWebhookController(IPaymentWebhookReceiver receiver) :
             while (length < body.Length)
             {
                 var read = await Request.Body.ReadAsync(body.AsMemory(length), deadline.Token);
-                if (read == 0) break;
+                if (read == 0)
+                    break;
                 length += read;
             }
-            if (length > StripeWebhookReceiver.MaximumBodyBytes) return StatusCode(StatusCodes.Status413PayloadTooLarge);
+            if (length > StripeWebhookReceiver.MaximumBodyBytes)
+                return StatusCode(StatusCodes.Status413PayloadTooLarge);
             var result = await receiver.ReceiveAsync(body.AsMemory(0, length), signature, HttpContext.RequestAborted);
             return result switch
             {

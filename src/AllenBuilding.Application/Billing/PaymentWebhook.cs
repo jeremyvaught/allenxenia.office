@@ -7,5 +7,6 @@ public interface IPaymentWebhookReceiver
 }
 public sealed class DisabledPaymentWebhookReceiver : IPaymentWebhookReceiver
 {
-    public Task<WebhookCode> ReceiveAsync(ReadOnlyMemory<byte> body, string signature, CancellationToken cancellationToken = default) => Task.FromResult(WebhookCode.Unavailable);
+    public Task<WebhookCode> ReceiveAsync(ReadOnlyMemory<byte> body, string signature, CancellationToken cancellationToken = default) =>
+        Task.FromResult(WebhookCode.Unavailable);
 }

@@ -16,7 +16,8 @@ public sealed class TenancyClosure
     public DateTimeOffset RequestedAt { get; private set; }
     public BillingClosureState State { get; private set; }
     public Guid Version { get; private set; }
-    public static bool ValidReason(string? reason) => reason?.Trim() is { Length: >= 1 and <= 2000 } value && !value.Any(x => char.IsControl(x) && x is not ('\n' or '\r' or '\t'));
+    public static bool ValidReason(string? reason) =>
+        reason?.Trim() is { Length: >= 1 and <= 2000 } value && !value.Any(x => char.IsControl(x) && x is not ('\n' or '\r' or '\t'));
     public static TenancyClosure Request(Guid operationId, RentAccount account, Guid membershipVersion, string actorId, string reason, DateTimeOffset now)
     {
         reason = reason?.Trim() ?? "";

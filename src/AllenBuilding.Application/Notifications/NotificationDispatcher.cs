@@ -24,13 +24,16 @@ public sealed class NotificationDispatcher(INotificationQueue queue, IEmailTrans
     public async Task<bool> ProcessOneAsync(CancellationToken cancellationToken = default)
     {
         var lease = await queue.ClaimAsync(cancellationToken);
-        if (lease is null) return false;
-        using var operation = OfficeTelemetry.Begin(OfficeOperationKind.NotificationDispatch, lease.OperationId, OfficeTelemetry.Origin(lease.OriginTraceId, lease.OriginSpanId), lease.Id);
+        if (lease is null)
+            return false;
+        using var operation = OfficeTelemetry.Begin(OfficeOperationKind.NotificationDispatch, lease.OperationId,
+            OfficeTelemetry.Origin(lease.OriginTraceId, lease.OriginSpanId), lease.Id);
         DeliveryResult result;
         try
         {
             var envelope = await queue.ComposeAsync(lease, cancellationToken);
-            if (envelope is null) result = new(DeliveryOutcome.Suppressed, "NoLongerEligible");
+            if (envelope is null)
+                result = new(DeliveryOutcome.Suppressed, "NoLongerEligible");
             else
             {
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

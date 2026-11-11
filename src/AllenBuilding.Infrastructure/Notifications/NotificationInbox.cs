@@ -10,7 +10,8 @@ public sealed class NotificationInbox(OfficeDbContext db, TimeProvider time)
 {
     public async Task<NotificationInboxPage> ReadAsync(Actor actor, int reviewPage, CancellationToken cancellationToken = default)
     {
-        if (reviewPage is < 1 or > 1000000) throw new ArgumentOutOfRangeException(nameof(reviewPage));
+        if (reviewPage is < 1 or > 1000000)
+            throw new ArgumentOutOfRangeException(nameof(reviewPage));
         var now = time.GetUtcNow();
         // Reset delivery is account-wide. Only failed-delivery metadata for current tenants is visible to their managers.
         var currentTenants = from grant in db.ActiveGrants

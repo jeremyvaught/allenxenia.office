@@ -18,32 +18,45 @@ public static class NotificationContract
         var clock = new ManualClock(DateTimeOffset.UtcNow.AddYears(-1));
         var user = new OfficeUser { UserName = $"outbox-{Guid.NewGuid():N}@example.test", Email = $"outbox-{Guid.NewGuid():N}@example.test", EmailConfirmed = true };
         var building = new Building { Name = "Outbox test" };
-        await using (var db = create()) { db.AddRange(user, building, new BuildingManager { UserId = user.Id, BuildingId = building.Id }); await db.SaveChangesAsync(); }
+        await using (var db = create())
+        { db.AddRange(user, building, new BuildingManager { UserId = user.Id, BuildingId = building.Id }); await db.SaveChangesAsync(); }
         NotificationQueue Queue(OfficeDbContext db) => new(db, protection, clock, new Uri("http://localhost:5081/"));
         async Task<Guid> Add()
         {
             await using var db = create();
             var message = new AccountMessage { UserId = user.Id, BuildingId = building.Id, Kind = "SecurityNotice", ProtectedPayload = protector.Protect("Synthetic security notice"), CreatedAt = clock.GetUtcNow(), NextAttemptAt = clock.GetUtcNow() };
-            db.AccountMessages.Add(message); await db.SaveChangesAsync(); return message.Id;
+            db.AccountMessages.Add(message);
+            await db.SaveChangesAsync();
+            return message.Id;
         }
-        async Task<MessageLease?> Claim() { await using var db = create(); return await Queue(db).ClaimAsync(default); }
-        async Task<bool> Complete(MessageLease lease, DeliveryResult result) { await using var db = create(); return await Queue(db).CompleteAsync(lease, result, default); }
-        var id = await Add(); var first = (await Claim())!; Assert.Equal(id, first.Id); Assert.Null(await Claim());
-        clock.Advance(TimeSpan.FromMinutes(3)); var replacement = (await Claim())!;
+        async Task<MessageLease?> Claim()
+        { await using var db = create(); return await Queue(db).ClaimAsync(default); }
+        async Task<bool> Complete(MessageLease lease, DeliveryResult result)
+        { await using var db = create(); return await Queue(db).CompleteAsync(lease, result, default); }
+        var id = await Add();
+        var first = (await Claim())!;
+        Assert.Equal(id, first.Id);
+        Assert.Null(await Claim());
+        clock.Advance(TimeSpan.FromMinutes(3));
+        var replacement = (await Claim())!;
         Assert.NotEqual(first.Token, replacement.Token);
         Assert.False(await Complete(first, new(DeliveryOutcome.Delivered)));
         Assert.True(await Complete(replacement, new(DeliveryOutcome.Delivered)));
-        var retryId = await Add(); MessageLease last = null!;
+        var retryId = await Add();
+        MessageLease last = null!;
         for (var attempt = 1; attempt <= 5; attempt++)
         {
-            last = (await Claim())!; Assert.Equal(retryId, last.Id);
+            last = (await Claim())!;
+            Assert.Equal(retryId, last.Id);
             Assert.True(await Complete(last, new(DeliveryOutcome.Retryable, "private-provider-key")));
-            Assert.Null(await Claim()); clock.Advance(TimeSpan.FromMinutes(9));
+            Assert.Null(await Claim());
+            clock.Advance(TimeSpan.FromMinutes(9));
         }
         await using (var db = create())
         {
             var saved = await db.AccountMessages.SingleAsync(x => x.Id == retryId);
-            Assert.Equal(MessageState.NeedsReview, saved.State); Assert.Equal(5, saved.Attempts);
+            Assert.Equal(MessageState.NeedsReview, saved.State);
+            Assert.Equal(5, saved.Attempts);
             Assert.Equal("DeliveryRetryable", saved.LastError);
             var denied = new TestActor { Actor = new Actor(user.Id, new HashSet<Guid> { building.Id }, true, false) };
             Assert.False(await Queue(db).RetryAsync(denied, retryId, last.Token, "Configuration checked"));
@@ -54,21 +67,27 @@ public static class NotificationContract
             Assert.True(await Queue(db).RetryAsync(manager, retryId, last.Token, "Configuration checked"));
             Assert.False(await Queue(db).RetryAsync(manager, retryId, last.Token, "Duplicate retry"));
         }
-        var retried = (await Claim())!; Assert.Equal(retryId, retried.Id);
+        var retried = (await Claim())!;
+        Assert.Equal(retryId, retried.Id);
         Assert.True(await Complete(retried, new(DeliveryOutcome.Delivered)));
         var unknownId = await Add();
-        await using (var db = create()) Assert.True(await new NotificationDispatcher(Queue(db), new ThrowingTransport()).ProcessOneAsync());
+        await using (var db = create())
+            Assert.True(await new NotificationDispatcher(Queue(db), new ThrowingTransport()).ProcessOneAsync());
         await using (var db = create())
         {
             var saved = await db.AccountMessages.SingleAsync(x => x.Id == unknownId);
-            Assert.Equal(MessageState.NeedsReview, saved.State); Assert.Equal("DeliveryUnknown", saved.LastError);
+            Assert.Equal(MessageState.NeedsReview, saved.State);
+            Assert.Equal("DeliveryUnknown", saved.LastError);
         }
-        var deliveredId = await Add(); var directory = Path.Combine(Path.GetTempPath(), $"office-mail-check-{Guid.NewGuid():N}");
+        var deliveredId = await Add();
+        var directory = Path.Combine(Path.GetTempPath(), $"office-mail-check-{Guid.NewGuid():N}");
         try
         {
             var transport = new LocalInboxTransport(directory);
-            await using (var db = create()) Assert.True(await new NotificationDispatcher(Queue(db), transport).ProcessOneAsync());
-            var path = Path.Combine(directory, $"{deliveredId:D}.json"); Assert.True(File.Exists(path));
+            await using (var db = create())
+                Assert.True(await new NotificationDispatcher(Queue(db), transport).ProcessOneAsync());
+            var path = Path.Combine(directory, $"{deliveredId:D}.json");
+            Assert.True(File.Exists(path));
             var envelope = System.Text.Json.JsonSerializer.Deserialize<EmailEnvelope>(await File.ReadAllTextAsync(path))!;
             Assert.Equal(DeliveryOutcome.Delivered, (await transport.SendAsync(envelope, default)).Outcome);
             Assert.Single(Directory.GetFiles(directory));
@@ -99,7 +118,8 @@ public static class NotificationContract
             await db.SaveChangesAsync();
             Assert.True(await new NotificationDispatcher(Queue(db), new ThrowingTransport()).ProcessOneAsync());
         }
-        await using (var db = create()) Assert.Equal(MessageState.Suppressed, (await db.AccountMessages.SingleAsync(x => x.Id == suppressed.Id)).State);
+        await using (var db = create())
+            Assert.Equal(MessageState.Suppressed, (await db.AccountMessages.SingleAsync(x => x.Id == suppressed.Id)).State);
     }
 }
 

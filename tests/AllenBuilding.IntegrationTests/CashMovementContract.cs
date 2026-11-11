@@ -15,32 +15,48 @@ public static class CashMovementContract
 {
     public static async Task VerifyAsync(Func<OfficeDbContext> create)
     {
-        var clock = new Clock(); var services = new ServiceCollection(); services.AddLogging(); services.AddSingleton<TimeProvider>(clock);
-        services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider()); services.AddScoped<OfficeDbContext>(_ => create());
-        services.AddIdentityCore<OfficeUser>().AddEntityFrameworkStores<OfficeDbContext>().AddDefaultTokenProviders(); services.AddScoped<AccountInvitations>();
-        services.AddScoped<TestActor>(); services.AddScoped<ICurrentActor>(sp => sp.GetRequiredService<TestActor>());
+        var clock = new Clock();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<TimeProvider>(clock);
+        services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
+        services.AddScoped<OfficeDbContext>(_ => create());
+        services.AddIdentityCore<OfficeUser>().AddEntityFrameworkStores<OfficeDbContext>().AddDefaultTokenProviders();
+        services.AddScoped<AccountInvitations>();
+        services.AddScoped<TestActor>();
+        services.AddScoped<ICurrentActor>(sp => sp.GetRequiredService<TestActor>());
         services.AddSingleton(new CollectionPolicy(true, "acct_cash", false, new("https://cash.example.test", "pmc_cash")));
-        services.AddScoped<ICollectionStore, CollectionStore>(); services.AddScoped<CollectionActions>(); await using var provider = services.BuildServiceProvider();
+        services.AddScoped<ICollectionStore, CollectionStore>();
+        services.AddScoped<CollectionActions>();
+        await using var provider = services.BuildServiceProvider();
         async Task<(PaymentAttempt Original, SettlementPayment Capture, Obligation Debt, Membership Membership)> Seed()
         {
             var user = new OfficeUser { UserName = "cash-" + Guid.NewGuid().ToString("N"), EmailConfirmed = true };
-            var building = new Building { Name = "Cash contract" }; var suite = new Suite { BuildingId = building.Id, Name = "Cash office" };
-            var membership = Membership.Grant(suite.Id, user.Id, clock.Now.AddDays(-1)); var account = RentAccount.Open(Guid.NewGuid(), membership.Id);
+            var building = new Building { Name = "Cash contract" };
+            var suite = new Suite { BuildingId = building.Id, Name = "Cash office" };
+            var membership = Membership.Grant(suite.Id, user.Id, clock.Now.AddDays(-1));
+            var account = RentAccount.Open(Guid.NewGuid(), membership.Id);
             var binding = BillingCustomerBinding.Create(account.Id, "acct_cash", false, "cus_" + account.Id.ToString("N"), clock.Now);
             var debt = Obligation.Issue(account.Id, new Money(1000), "Original captured debt", new DateOnly(2003, 1, 1), user.Id, clock.Now);
-            var original = PaymentAttempt.Admit(Guid.NewGuid(), user.Id, binding, [new(debt.Id, account.Id, debt.Version, 1000)], clock.Now); original.BeginDispatch(clock.Now);
+            var original = PaymentAttempt.Admit(Guid.NewGuid(), user.Id, binding, [new(debt.Id, account.Id, debt.Version, 1000)], clock.Now);
+            original.BeginDispatch(clock.Now);
             var capture = SettlementPayment.Record(original, new("acct_cash", false, binding.CustomerId, "cs_" + original.Id.ToString("N"), "pi_" + original.Id.ToString("N"), 1000, "USD"), clock.Now);
-            await using var db = create(); db.AddRange(user, building, suite, membership, account, binding, debt, original, capture,
-                new ActiveGrant { UserId = user.Id, SuiteId = suite.Id, MembershipId = membership.Id }); await db.SaveChangesAsync(); return (original, capture, debt, membership);
+            await using var db = create();
+            db.AddRange(user, building, suite, membership, account, binding, debt, original, capture,
+                new ActiveGrant { UserId = user.Id, SuiteId = suite.Id, MembershipId = membership.Id });
+            await db.SaveChangesAsync();
+            return (original, capture, debt, membership);
         }
         CanonicalCashMovement Fact(PaymentAttempt original) => new(original.ProviderAccount, original.LiveMode, original.AccountId, original.Id, original.CustomerId, original.PaymentId!,
             "re_" + original.Id.ToString("N"), "txn_" + original.Id.ToString("N"), CashMovementKind.Refund, -200, "USD", clock.Now);
         async Task<ReconciliationResult> Apply(PaymentAttempt original, params CanonicalCashMovement[] facts)
         { await using var db = create(); return await new CashMovementStore(db, clock).ApplyAsync(original.Id, original.Version, new(CashObservationState.Verified, facts), CancellationToken.None); }
 
-        var fixture = await Seed(); var fact = Fact(fixture.Original);
+        var fixture = await Seed();
+        var fact = Fact(fixture.Original);
         var competing = await Task.WhenAll(Task.Run(() => Apply(fixture.Original, fact)), Task.Run(() => Apply(fixture.Original, fact)));
-        Assert.Single(competing, x => x.Code == ReconciliationCode.Applied); Assert.Single(competing, x => x.Code == ReconciliationCode.AlreadyApplied);
+        Assert.Single(competing, x => x.Code == ReconciliationCode.Applied);
+        Assert.Single(competing, x => x.Code == ReconciliationCode.AlreadyApplied);
         await using (var db = create())
         {
             Assert.Equal(1, await db.CashMovements.CountAsync(x => x.AttemptId == fixture.Original.Id));
@@ -54,13 +70,18 @@ public static class CashMovementContract
         var newDebt = Obligation.Issue(fixture.Original.AccountId, new Money(1000), "New debt under cash review", new DateOnly(2003, 2, 1), fixture.Original.ActorId, clock.Now);
         await using (var db = create())
         {
-            db.Obligations.Add(newDebt); var issue = await db.FinancialExceptions.SingleAsync(x => x.AttemptId == fixture.Original.Id); issue.ResolveVerified(clock.Now);
-            db.CashMovementReviews.Remove(await db.CashMovementReviews.SingleAsync(x => x.AccountId == fixture.Original.AccountId)); await db.SaveChangesAsync();
+            db.Obligations.Add(newDebt);
+            var issue = await db.FinancialExceptions.SingleAsync(x => x.AttemptId == fixture.Original.Id);
+            issue.ResolveVerified(clock.Now);
+            db.CashMovementReviews.Remove(await db.CashMovementReviews.SingleAsync(x => x.AccountId == fixture.Original.AccountId));
+            await db.SaveChangesAsync();
         }
         using (var scope = provider.CreateScope())
         {
             scope.ServiceProvider.GetRequiredService<TestActor>().Actor = new(fixture.Original.ActorId, new HashSet<Guid>(), false, false);
-            var actions = scope.ServiceProvider.GetRequiredService<CollectionActions>(); var review = await actions.ReviewAsync(fixture.Original.AccountId, [newDebt.Id]); Assert.True(review.Single().Held);
+            var actions = scope.ServiceProvider.GetRequiredService<CollectionActions>();
+            var review = await actions.ReviewAsync(fixture.Original.AccountId, [newDebt.Id]);
+            Assert.True(review.Single().Held);
             Assert.Equal(CollectionCode.Conflict, (await actions.AdmitAsync(new(Guid.NewGuid(), fixture.Original.AccountId, [review.Single() with { Held = false }]))).Code);
         }
         await using (var db = create())
@@ -76,7 +97,9 @@ public static class CashMovementContract
             Assert.Equal(1, await db.CashMovements.CountAsync(x => x.AttemptId == fixture.Original.Id));
             Assert.Equal(FinancialExceptionState.Open, (await db.FinancialExceptions.SingleAsync(x => x.AttemptId == fixture.Original.Id)).State);
             var bad = CashMovement.Record(fixture.Capture, fixture.Original, fact with { TransactionId = "txn_constraint" }, clock.Now);
-            db.CashMovements.Add(bad); db.Entry(bad).Property(x => x.SignedMinorUnits).CurrentValue = 0; await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+            db.CashMovements.Add(bad);
+            db.Entry(bad).Property(x => x.SignedMinorUnits).CurrentValue = 0;
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
         }
         var ended = await Seed();
         await using (var db = create())
@@ -84,13 +107,16 @@ public static class CashMovementContract
             var reader = new Reader(async original =>
             {
                 Assert.Null(db.Database.CurrentTransaction);
-                await using var revoker = create(); (await revoker.Memberships.SingleAsync(x => x.Id == ended.Membership.Id)).Revoke(original.ActorId, "Ended during cash retrieval", clock.Now);
-                revoker.ActiveGrants.Remove(await revoker.ActiveGrants.SingleAsync(x => x.MembershipId == ended.Membership.Id)); await revoker.SaveChangesAsync();
+                await using var revoker = create();
+                (await revoker.Memberships.SingleAsync(x => x.Id == ended.Membership.Id)).Revoke(original.ActorId, "Ended during cash retrieval", clock.Now);
+                revoker.ActiveGrants.Remove(await revoker.ActiveGrants.SingleAsync(x => x.MembershipId == ended.Membership.Id));
+                await revoker.SaveChangesAsync();
                 return new(CashObservationState.Verified, [Fact(original)]);
             });
             Assert.Equal(ReconciliationCode.Applied, (await new CashMovementReconciliation(new CashMovementStore(db, clock), reader).ReconcileAsync(ended.Original.Id, Fact(ended.Original).SourceId)).Code);
         }
-        var restored = await Seed(); var withdrawn = Fact(restored.Original) with { SourceId = "du_restored", Kind = CashMovementKind.DisputeWithdrawal, SignedMinorUnits = -1000 };
+        var restored = await Seed();
+        var withdrawn = Fact(restored.Original) with { SourceId = "du_restored", Kind = CashMovementKind.DisputeWithdrawal, SignedMinorUnits = -1000 };
         Assert.Equal(ReconciliationCode.Applied, (await Apply(restored.Original, withdrawn, withdrawn with { TransactionId = "txn_restored", Kind = CashMovementKind.DisputeReinstatement, SignedMinorUnits = 1000 })).Code);
         await using (var db = create())
         {
@@ -98,17 +124,22 @@ public static class CashMovementContract
             Assert.Equal(2, await db.CashMovementReviews.CountAsync(x => x.AccountId == restored.Original.AccountId && x.State == CashMovementReviewState.Pending));
             Assert.Equal(1000, (await db.SettlementPayments.SingleAsync(x => x.Id == restored.Capture.Id)).AmountMinorUnits);
         }
-        var manager = new OfficeUser { UserName = "cash-reader-" + Guid.NewGuid().ToString("N"), TwoFactorEnabled = true }; Guid buildingId;
+        var manager = new OfficeUser { UserName = "cash-reader-" + Guid.NewGuid().ToString("N"), TwoFactorEnabled = true };
+        Guid buildingId;
         await using (var db = create())
         {
             buildingId = await db.Suites.Where(x => x.Id == fixture.Membership.SuiteId).Select(x => x.BuildingId).SingleAsync();
-            db.AddRange(manager, new BuildingManager { UserId = manager.Id, BuildingId = buildingId }); await db.SaveChangesAsync();
+            db.AddRange(manager, new BuildingManager { UserId = manager.Id, BuildingId = buildingId });
+            await db.SaveChangesAsync();
         }
         var readerActor = new Actor(manager.Id, new HashSet<Guid> { buildingId }, true, true);
         await using (var db = create())
         {
             var rows = await new FinancialExceptionStore(db, new TestActor { Actor = readerActor }, clock, new(false)).ReadAsync(readerActor, false, CancellationToken.None);
-            var visible = rows.Single().CashFacts!.Single(); Assert.Equal(-200, visible.SignedMinorUnits); Assert.Equal(fact.TransactionId, visible.TransactionId); Assert.Null(visible.ReviewState);
+            var visible = rows.Single().CashFacts!.Single();
+            Assert.Equal(-200, visible.SignedMinorUnits);
+            Assert.Equal(fact.TransactionId, visible.TransactionId);
+            Assert.Null(visible.ReviewState);
             for (var index = 0; index < 55; index++)
             {
                 var movement = CashMovement.Record(fixture.Capture, fixture.Original, fact with { SourceId = "re_bound_" + index, TransactionId = "txn_bound_" + fixture.Original.Id.ToString("N") + "_" + index, SignedMinorUnits = -1 }, clock.Now);
@@ -119,13 +150,17 @@ public static class CashMovementContract
         await using (var db = create())
         {
             var rows = await new FinancialExceptionStore(db, new TestActor { Actor = readerActor }, clock, new(false)).ReadAsync(readerActor, false, CancellationToken.None);
-            Assert.Equal(50, rows.Single().CashFacts!.Count); Assert.DoesNotContain(rows.Single().CashFacts!, x => x.SourceId == "du_restored");
+            Assert.Equal(50, rows.Single().CashFacts!.Count);
+            Assert.DoesNotContain(rows.Single().CashFacts!, x => x.SourceId == "du_restored");
         }
         await using (var db = create())
         {
             var revokedDuringRead = new CallbackActor(async () =>
             {
-                await using var revoker = create(); revoker.BuildingManagers.Remove(await revoker.BuildingManagers.SingleAsync(x => x.UserId == manager.Id && x.BuildingId == buildingId)); await revoker.SaveChangesAsync(); return readerActor;
+                await using var revoker = create();
+                revoker.BuildingManagers.Remove(await revoker.BuildingManagers.SingleAsync(x => x.UserId == manager.Id && x.BuildingId == buildingId));
+                await revoker.SaveChangesAsync();
+                return readerActor;
             });
             Assert.Empty(await new FinancialExceptionStore(db, revokedDuringRead, clock, new(false)).ReadAsync(readerActor, false, CancellationToken.None));
         }

@@ -26,7 +26,8 @@ public sealed class KnowledgeController(KnowledgeActions actions, ICurrentActor 
     public async Task<IActionResult> Edit(Guid id)
     {
         var article = (await actions.ManageAsync(id)).SingleOrDefault();
-        if (article is null) return NotFound();
+        if (article is null)
+            return NotFound();
         ViewData["Article"] = article;
         return View(new ArticleForm
         {
@@ -44,18 +45,23 @@ public sealed class KnowledgeController(KnowledgeActions actions, ICurrentActor 
     {
         if (!ModelState.IsValid)
         {
-            await Buildings(); Response.StatusCode = 400;
+            await Buildings();
+            Response.StatusCode = 400;
             // Do not attach publish controls to invalid/unsaved form values.
             return View("Edit", form);
         }
         var result = await actions.SaveAsync(form.Command());
-        if (result is ContentCode.Success or ContentCode.Unavailable) return Outcome(result, form.Id);
+        if (result is ContentCode.Success or ContentCode.Unavailable)
+            return Outcome(result, form.Id);
         var saved = (await actions.ManageAsync(form.Id)).SingleOrDefault();
-        if (result == ContentCode.Conflict && saved is null) return NotFound();
+        if (result == ContentCode.Conflict && saved is null)
+            return NotFound();
         if (saved is not null)
         {
-            form.Version = saved.Version; form.BuildingId = saved.BuildingId;
-            ModelState.Remove(nameof(form.Version)); ModelState.Remove(nameof(form.BuildingId));
+            form.Version = saved.Version;
+            form.BuildingId = saved.BuildingId;
+            ModelState.Remove(nameof(form.Version));
+            ModelState.Remove(nameof(form.BuildingId));
             ViewData["Article"] = saved;
         }
         await Buildings();
@@ -71,21 +77,26 @@ public sealed class KnowledgeController(KnowledgeActions actions, ICurrentActor 
 
     private async Task<IActionResult> List(KnowledgeScope scope, string? search)
     {
-        if (search?.Length > 120) return BadRequest();
-        ViewData["Tenant"] = scope == KnowledgeScope.Tenant; ViewData["Search"] = search;
+        if (search?.Length > 120)
+            return BadRequest();
+        ViewData["Tenant"] = scope == KnowledgeScope.Tenant;
+        ViewData["Search"] = search;
         return View("Index", await actions.FindAsync(scope, search));
     }
     private async Task<IActionResult> Read(Guid id, KnowledgeScope scope)
     {
         var source = (await actions.FindAsync(scope, id: id)).SingleOrDefault();
-        if (source is null) return NotFound();
+        if (source is null)
+            return NotFound();
         ViewData["Tenant"] = scope == KnowledgeScope.Tenant;
         return View("Article", source);
     }
     private IActionResult Outcome(ContentCode code, Guid id)
     {
-        if (code == ContentCode.Success) return RedirectToAction(nameof(Edit), new { id });
-        if (code == ContentCode.Unavailable) return NotFound();
+        if (code == ContentCode.Success)
+            return RedirectToAction(nameof(Edit), new { id });
+        if (code == ContentCode.Unavailable)
+            return NotFound();
         Response.StatusCode = code == ContentCode.Conflict ? 409 : 400;
         return View("ContentError", code);
     }

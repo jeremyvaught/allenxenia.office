@@ -12,7 +12,9 @@ var bootstrap = args.Contains("--bootstrap-manager", StringComparer.Ordinal);
 var dispatch = args.Contains("--dispatch-mail-once", StringComparer.Ordinal);
 var recover = args.Contains("--recover-manager-mfa", StringComparer.Ordinal);
 if (new[] { migrate, bootstrap, dispatch, recover }.Count(x => x) > 1) throw new InvalidOperationException("Choose one operator command at a time.");
-var builder = WebApplication.CreateBuilder(args.Where(x => x != "--migrate" && x != "--bootstrap-manager" && x != "--dispatch-mail-once" && x != "--recover-manager-mfa").ToArray());
+var builder = WebApplication.CreateBuilder(args
+    .Where(x => x != "--migrate" && x != "--bootstrap-manager" && x != "--dispatch-mail-once" && x != "--recover-manager-mfa")
+    .ToArray());
 builder.AddOfficeRuntimeConfiguration(migrate);
 builder.AddOfficeProxy();
 builder.AddOfficeObservability();
@@ -40,7 +42,8 @@ builder.Services.AddScoped<AllenBuilding.Application.Billing.BillingActions>();
 var isolatedPayments = builder.Environment.IsEnvironment("Testing") && builder.Configuration.GetValue<bool>("Billing:CollectionReviewEnabled");
 builder.Services.AddSingleton(isolatedPayments ? new AllenBuilding.Application.Billing.CollectionPolicy(true,
     builder.Configuration["Stripe:ProviderAccount"] ?? "", false,
-    new AllenBuilding.Domain.Billing.CheckoutProfile(builder.Configuration["Stripe:PublicOrigin"] ?? "", builder.Configuration["Stripe:PaymentMethodConfiguration"] ?? ""))
+    new AllenBuilding.Domain.Billing.CheckoutProfile(builder.Configuration["Stripe:PublicOrigin"] ?? "",
+        builder.Configuration["Stripe:PaymentMethodConfiguration"] ?? ""))
     : new AllenBuilding.Application.Billing.CollectionPolicy(false, "", false));
 builder.Services.AddScoped<AllenBuilding.Application.Billing.ICollectionStore, CollectionStore>();
 builder.Services.AddScoped<AllenBuilding.Application.Billing.CollectionActions>();
@@ -49,10 +52,15 @@ builder.Services.AddScoped<AllenBuilding.Application.Billing.PayerCollections>()
 builder.Services.AddScoped<PaymentReviewTickets>();
 // Protected consent pages may be exercised by isolated fixtures; no provider dispatcher is registered yet.
 var isolatedAutopay = builder.Environment.IsEnvironment("Testing") && builder.Configuration.GetValue<bool>("Billing:AutopayReviewEnabled");
-builder.Services.AddSingleton(new AllenBuilding.Application.Billing.AutopayPolicy(isolatedAutopay, builder.Configuration["Stripe:ProviderAccount"] ?? "", false,
-    isolatedAutopay ? new AllenBuilding.Domain.Billing.CheckoutProfile(builder.Configuration["Stripe:PublicOrigin"] ?? "", builder.Configuration["Stripe:PaymentMethodConfiguration"] ?? "") : null));
+builder.Services.AddSingleton(new AllenBuilding.Application.Billing.AutopayPolicy(
+    isolatedAutopay, builder.Configuration["Stripe:ProviderAccount"] ?? "", false,
+    isolatedAutopay
+        ? new AllenBuilding.Domain.Billing.CheckoutProfile(builder.Configuration["Stripe:PublicOrigin"] ?? "",
+            builder.Configuration["Stripe:PaymentMethodConfiguration"] ?? "")
+        : null));
 builder.Services.AddScoped<AllenBuilding.Application.Billing.IAutopayStore, AutopayStore>();
-builder.Services.AddScoped<AllenBuilding.Application.Billing.IAutopayMethodStore>(s => (AutopayStore)s.GetRequiredService<AllenBuilding.Application.Billing.IAutopayStore>());
+builder.Services.AddScoped<AllenBuilding.Application.Billing.IAutopayMethodStore>(s =>
+    (AutopayStore)s.GetRequiredService<AllenBuilding.Application.Billing.IAutopayStore>());
 builder.Services.AddScoped<AllenBuilding.Application.Billing.AutopayMethodHandoffs>();
 builder.Services.AddScoped<AllenBuilding.Application.Billing.AutopayPlanning>();
 builder.Services.AddScoped<AutopayReviewTickets>();
@@ -60,10 +68,12 @@ builder.Services.AddSingleton(new AllenBuilding.Application.Billing.FinancialRec
 builder.Services.AddScoped<AllenBuilding.Application.Billing.IFinancialExceptionStore, FinancialExceptionStore>();
 builder.Services.AddScoped<AllenBuilding.Application.Billing.FinancialExceptionActions>();
 // Only isolated browser fixtures can opt in before whole-payment recovery is finished; ordinary runtime stays disabled.
-builder.Services.AddSingleton(new AllenBuilding.Application.Billing.RefundDispositionPolicy(builder.Environment.IsEnvironment("Testing") && builder.Configuration.GetValue<bool>("Billing:RefundReviewEnabled")));
+builder.Services.AddSingleton(new AllenBuilding.Application.Billing.RefundDispositionPolicy(
+    builder.Environment.IsEnvironment("Testing") && builder.Configuration.GetValue<bool>("Billing:RefundReviewEnabled")));
 builder.Services.AddScoped<AllenBuilding.Application.Billing.IRefundDispositionStore, RefundDispositionStore>();
 builder.Services.AddScoped<AllenBuilding.Application.Billing.RefundDispositionActions>();
-builder.Services.AddSingleton(new AllenBuilding.Application.Billing.CashSourceRecoveryPolicy(builder.Environment.IsEnvironment("Testing") && builder.Configuration.GetValue<bool>("Billing:CashSourceReviewEnabled")));
+builder.Services.AddSingleton(new AllenBuilding.Application.Billing.CashSourceRecoveryPolicy(
+    builder.Environment.IsEnvironment("Testing") && builder.Configuration.GetValue<bool>("Billing:CashSourceReviewEnabled")));
 builder.Services.AddScoped<AllenBuilding.Application.Billing.ICashSourceRecoveryStore, CashSourceRecoveryStore>();
 builder.Services.AddScoped<AllenBuilding.Application.Billing.CashSourceRecoveryActions>();
 // No hosted reader or Stripe credential is registered while full payment agreement is unfinished.
@@ -99,7 +109,8 @@ if (migrate)
     }
     catch (Exception exception)
     {
-        Console.Error.WriteLine("Migration failed. Keep writers stopped and inspect the applied schema through the authorized operator; do not continue activation.");
+        Console.Error.WriteLine(
+            "Migration failed. Keep writers stopped and inspect the applied schema through the authorized operator; do not continue activation.");
         Console.Error.WriteLine(SafeFailure.Describe(exception));
         try
         {
@@ -116,10 +127,12 @@ if (migrate)
 
 if (recover)
 {
-    try { await ManagerRecoveryCommand.RunAsync(app, builder.Configuration); }
+    try
+    { await ManagerRecoveryCommand.RunAsync(app, builder.Configuration); }
     catch (Exception)
     {
-        Console.Error.WriteLine("Manager recovery failed or was not authorized. No successful recovery is claimed; check the audited account state through the authorized operator.");
+        Console.Error.WriteLine(
+            "Manager recovery failed or was not authorized. No successful recovery is claimed; check the audited account state through the authorized operator.");
         Environment.ExitCode = 1;
     }
     finally { await app.DisposeAsync(); }
@@ -128,7 +141,8 @@ if (recover)
 
 if (bootstrap)
 {
-    if (Console.IsInputRedirected) throw new InvalidOperationException("Bootstrap requires an interactive terminal; never pass a password as an argument.");
+    if (Console.IsInputRedirected)
+        throw new InvalidOperationException("Bootstrap requires an interactive terminal; never pass a password as an argument.");
     Console.Write("Manager email: ");
     var email = Console.ReadLine() ?? "";
     Console.Write("Password (hidden, at least 12 characters): ");
@@ -136,8 +150,10 @@ if (bootstrap)
     ConsoleKeyInfo key;
     while ((key = Console.ReadKey(intercept: true)).Key != ConsoleKey.Enter)
     {
-        if (key.Key == ConsoleKey.Backspace && password.Length > 0) password.Length--;
-        else if (!char.IsControl(key.KeyChar)) password.Append(key.KeyChar);
+        if (key.Key == ConsoleKey.Backspace && password.Length > 0)
+            password.Length--;
+        else if (!char.IsControl(key.KeyChar))
+            password.Append(key.KeyChar);
     }
     Console.WriteLine();
     using var scope = app.Services.CreateScope();
@@ -153,7 +169,8 @@ if (dispatch)
     using var scope = app.Services.CreateScope();
     var dispatcher = scope.ServiceProvider.GetRequiredService<AllenBuilding.Application.Notifications.NotificationDispatcher>();
     var count = 0;
-    while (count < 20 && await dispatcher.ProcessOneAsync()) count++;
+    while (count < 20 && await dispatcher.ProcessOneAsync())
+        count++;
     Console.WriteLine($"Processed {count} local notifications. Local inbox: src/AllenBuilding.Web/.data/mail (never committed).");
     return;
 }
@@ -184,7 +201,9 @@ app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.Health
     ResponseWriter = async (context, report) =>
     {
         context.Response.Headers.CacheControl = "no-store";
-        await context.Response.WriteAsJsonAsync(new { status = report.Status == Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Healthy ? "Ready" : "Unavailable" }, context.RequestAborted);
+        await context.Response.WriteAsJsonAsync(
+            new { status = report.Status == Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Healthy ? "Ready" : "Unavailable" },
+            context.RequestAborted);
     }
 }).RequireRateLimiting("Readiness");
 app.MapStaticAssets();

@@ -8,7 +8,8 @@ public sealed class StripeCollectionGatewayFactory(StripeCollectionOptions crede
 {
     public ICollectionGateway Open(PaymentAttempt original, CheckoutProfile profile)
     {
-        if (original.ProviderAccount != credentials.ProviderAccount || original.LiveMode != credentials.LiveMode || profile.ApiVersion != Stripe.StripeConfiguration.ApiVersion)
+        if (original.ProviderAccount != credentials.ProviderAccount || original.LiveMode != credentials.LiveMode ||
+            profile.ApiVersion != Stripe.StripeConfiguration.ApiVersion)
             throw new InvalidOperationException("The original provider scope or API contract is unavailable.");
         return new StripeCollectionGateway(new StripeCollectionOptions
         {

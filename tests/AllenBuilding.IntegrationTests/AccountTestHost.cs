@@ -105,14 +105,19 @@ public sealed class AccountTestHost : WebApplicationFactory<Program>
     public static string Totp(string key)
     {
         const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-        var bytes = new List<byte>(); var buffer = 0; var bits = 0;
+        var bytes = new List<byte>();
+        var buffer = 0;
+        var bits = 0;
         foreach (var character in key)
         {
-            buffer = (buffer << 5) | alphabet.IndexOf(character); bits += 5;
-            if (bits >= 8) { bits -= 8; bytes.Add((byte)(buffer >> bits)); }
+            buffer = (buffer << 5) | alphabet.IndexOf(character);
+            bits += 5;
+            if (bits >= 8)
+            { bits -= 8; bytes.Add((byte)(buffer >> bits)); }
         }
         var counter = BitConverter.GetBytes(DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30);
-        if (BitConverter.IsLittleEndian) Array.Reverse(counter);
+        if (BitConverter.IsLittleEndian)
+            Array.Reverse(counter);
         var hash = System.Security.Cryptography.HMACSHA1.HashData(bytes.ToArray(), counter);
         var offset = hash[^1] & 15;
         var number = ((hash[offset] & 127) << 24) | (hash[offset + 1] << 16) | (hash[offset + 2] << 8) | hash[offset + 3];
@@ -123,7 +128,8 @@ public sealed class AccountTestHost : WebApplicationFactory<Program>
     {
         await base.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        foreach (var suffix in new[] { "", "-wal", "-shm" }) File.Delete(_path + suffix);
+        foreach (var suffix in new[] { "", "-wal", "-shm" })
+            File.Delete(_path + suffix);
     }
 
     private sealed class BeforeReleaseAccess(AllenBuilding.Application.Assistant.IAssistantTenantAccess inner, Func<Task> before)

@@ -20,7 +20,8 @@ public sealed class StripeWebhookOptions
     {
         static bool Secret(string value) => value.Length > 6 && value.StartsWith("whsec_", StringComparison.Ordinal) && !value.Any(char.IsWhiteSpace);
         if (!PaymentReferences.Valid(ProviderAccount, "acct_") || !Secret(SigningSecret) ||
-            (PreviousSigningSecret is { } previous && !Secret(previous))) throw new InvalidOperationException("A scoped payment webhook signing configuration is required.");
+            (PreviousSigningSecret is { } previous && !Secret(previous)))
+            throw new InvalidOperationException("A scoped payment webhook signing configuration is required.");
     }
 }
 
@@ -67,49 +68,69 @@ public sealed class StripeWebhookReceiver : IPaymentWebhookReceiver
     };
     public StripeWebhookReceiver(OfficeDbContext db, StripeWebhookOptions options, TimeProvider time)
     {
-        options.Validate(); _db = db; _time = time; _account = options.ProviderAccount; _liveMode = options.LiveMode;
+        options.Validate();
+        _db = db;
+        _time = time;
+        _account = options.ProviderAccount;
+        _liveMode = options.LiveMode;
         _secrets = options.PreviousSigningSecret is null ? [options.SigningSecret] : [options.SigningSecret, options.PreviousSigningSecret];
     }
     public async Task<WebhookCode> ReceiveAsync(ReadOnlyMemory<byte> body, string signature, CancellationToken cancellationToken = default)
     {
-        if (body.Length is < 1 or > MaximumBodyBytes || string.IsNullOrWhiteSpace(signature) || signature.Length > 4096) return WebhookCode.Rejected;
+        if (body.Length is < 1 or > MaximumBodyBytes || string.IsNullOrWhiteSpace(signature) || signature.Length > 4096)
+            return WebhookCode.Rejected;
         var now = _time.GetUtcNow();
-        if (!FreshTimestamp(signature, now.ToUnixTimeSeconds())) return WebhookCode.Rejected;
+        if (!FreshTimestamp(signature, now.ToUnixTimeSeconds()))
+            return WebhookCode.Rejected;
         PaymentEventInbox? receipt;
         try
         {
             var json = StrictUtf8.GetString(body.Span);
-            if (!_secrets.Any(secret => Signed(json, signature, secret, now.ToUnixTimeSeconds()))) return WebhookCode.Rejected;
+            if (!_secrets.Any(secret => Signed(json, signature, secret, now.ToUnixTimeSeconds())))
+                return WebhookCode.Rejected;
             using var document = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = 32 });
             var root = document.RootElement;
             // Reject duplicate JSON property names, which parsers otherwise interpret differently.
-            if (!UniqueProperties(root) || Text(root, "object") != "event" || Flag(root, "livemode") != _liveMode) return WebhookCode.Rejected;
+            if (!UniqueProperties(root) || Text(root, "object") != "event" || Flag(root, "livemode") != _liveMode)
+                return WebhookCode.Rejected;
             var eventAccount = Text(root, "account");
-            if (eventAccount is not null && eventAccount != _account) return WebhookCode.Rejected;
-            var eventId = Text(root, "id"); var type = Text(root, "type"); var version = Text(root, "api_version");
-            if (eventId is null || !PaymentReferences.Valid(eventId, "evt_") || type is null || version is null) return WebhookCode.Rejected;
-            if (!Types.TryGetValue(type, out var shape)) return WebhookCode.Ignored;
-            if (!root.TryGetProperty("data", out var data) || !data.TryGetProperty("object", out var resource)) return WebhookCode.Rejected;
+            if (eventAccount is not null && eventAccount != _account)
+                return WebhookCode.Rejected;
+            var eventId = Text(root, "id");
+            var type = Text(root, "type");
+            var version = Text(root, "api_version");
+            if (eventId is null || !PaymentReferences.Valid(eventId, "evt_") || type is null || version is null)
+                return WebhookCode.Rejected;
+            if (!Types.TryGetValue(type, out var shape))
+                return WebhookCode.Ignored;
+            if (!root.TryGetProperty("data", out var data) || !data.TryGetProperty("object", out var resource))
+                return WebhookCode.Rejected;
             var id = Text(resource, "id");
             // Stripe publishes du_ dispute examples as well as the existing dp_ resource shape.
             var validId = id is not null && (PaymentReferences.Valid(id, shape.Prefix) || (shape.Object == "dispute" && PaymentReferences.Valid(id, "du_")));
             if (!validId || Text(resource, "object") != shape.Object ||
-                (resource.TryGetProperty("livemode", out _) && Flag(resource, "livemode") != _liveMode)) return WebhookCode.Rejected;
-            receipt = PaymentEventInbox.Receive(_account, _liveMode, eventId, type, id!, version, Convert.ToHexString(SHA256.HashData(body.Span)), version == StripeConfiguration.ApiVersion, now);
+                (resource.TryGetProperty("livemode", out _) && Flag(resource, "livemode") != _liveMode))
+                return WebhookCode.Rejected;
+            receipt = PaymentEventInbox.Receive(_account, _liveMode, eventId, type, id!, version,
+                Convert.ToHexString(SHA256.HashData(body.Span)), version == StripeConfiguration.ApiVersion, now);
         }
         catch (DecoderFallbackException) { return WebhookCode.Rejected; }
         catch (JsonException) { return WebhookCode.Rejected; }
         catch (ArgumentException) { return WebhookCode.Rejected; }
         catch (InvalidOperationException) { return WebhookCode.Rejected; }
 
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); deadline.CancelAfter(TimeSpan.FromSeconds(5));
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(5));
         try
         {
             var existing = await Existing(receipt, deadline.Token);
-            if (existing is not null) return existing.SameEnvelope(receipt) ? WebhookCode.Duplicate : WebhookCode.Rejected;
+            if (existing is not null)
+                return existing.SameEnvelope(receipt) ? WebhookCode.Duplicate : WebhookCode.Rejected;
             _db.PaymentEvents.Add(receipt);
-            try { await _db.SaveChangesAsync(deadline.Token); }
-            catch (DbUpdateException e) when (e.InnerException is MySql.Data.MySqlClient.MySqlException { Number: 1062 } or Microsoft.Data.Sqlite.SqliteException { SqliteErrorCode: 19 })
+            try
+            { await _db.SaveChangesAsync(deadline.Token); }
+            catch (DbUpdateException e) when (e.InnerException is MySql.Data.MySqlClient.MySqlException { Number: 1062 }
+                or Microsoft.Data.Sqlite.SqliteException { SqliteErrorCode: 19 })
             {
                 _db.Entry(receipt).State = EntityState.Detached;
                 var winner = await Existing(receipt, deadline.Token);
@@ -125,7 +146,8 @@ public sealed class StripeWebhookReceiver : IPaymentWebhookReceiver
         .SingleOrDefaultAsync(x => x.ProviderAccount == _account && x.LiveMode == _liveMode && x.EventId == receipt.EventId, token);
     private static bool Signed(string body, string signature, string secret, long now)
     {
-        try { EventUtility.ValidateSignature(body, signature, secret, tolerance: 300, utcNow: now); return true; }
+        try
+        { EventUtility.ValidateSignature(body, signature, secret, tolerance: 300, utcNow: now); return true; }
         catch (StripeException) { return false; }
         catch (ArgumentException) { return false; }
         catch (FormatException) { return false; }
@@ -133,18 +155,31 @@ public sealed class StripeWebhookReceiver : IPaymentWebhookReceiver
     private static bool FreshTimestamp(string header, long now)
     {
         var timestamps = header.Split(',').Select(x => x.Trim().Split('=', 2)).Where(x => x.Length == 2 && x[0] == "t").Select(x => x[1]).ToArray();
-        return timestamps.Length == 1 && long.TryParse(timestamps[0], NumberStyles.None, CultureInfo.InvariantCulture, out var timestamp) && timestamp >= now - 300 && timestamp <= now + 300;
+        return timestamps.Length == 1 && long.TryParse(timestamps[0], NumberStyles.None, CultureInfo.InvariantCulture, out var timestamp) &&
+            timestamp >= now - 300 && timestamp <= now + 300;
     }
-    private static string? Text(JsonElement value, string name) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out var property) && property.ValueKind == JsonValueKind.String ? property.GetString() : null;
-    private static bool? Flag(JsonElement value, string name) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out var property) && property.ValueKind is JsonValueKind.True or JsonValueKind.False ? property.GetBoolean() : null;
+    private static string? Text(JsonElement value, string name) =>
+        value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out var property) && property.ValueKind == JsonValueKind.String
+            ? property.GetString()
+            : null;
+    private static bool? Flag(JsonElement value, string name) =>
+        value.ValueKind == JsonValueKind.Object && value.TryGetProperty(name, out var property) &&
+            property.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? property.GetBoolean()
+            : null;
     private static bool UniqueProperties(JsonElement value)
     {
         if (value.ValueKind == JsonValueKind.Object)
         {
             var seen = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var property in value.EnumerateObject()) if (!seen.Add(property.Name) || !UniqueProperties(property.Value)) return false;
+            foreach (var property in value.EnumerateObject())
+                if (!seen.Add(property.Name) || !UniqueProperties(property.Value))
+                    return false;
         }
-        else if (value.ValueKind == JsonValueKind.Array) foreach (var item in value.EnumerateArray()) if (!UniqueProperties(item)) return false;
+        else if (value.ValueKind == JsonValueKind.Array)
+            foreach (var item in value.EnumerateArray())
+                if (!UniqueProperties(item))
+                    return false;
         return true;
     }
 }

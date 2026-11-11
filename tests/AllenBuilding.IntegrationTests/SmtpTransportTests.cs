@@ -40,14 +40,19 @@ public sealed class SmtpTransportTests
         Assert.DoesNotContain("private-provider-diagnostic", result.Code ?? "");
         if (scenario is "Accepted" or "LostAcknowledgement" or "TemporaryData" or "RejectedData")
         {
-            Assert.True(server.TlsEstablished); Assert.True(server.Authenticated);
+            Assert.True(server.TlsEstablished);
+            Assert.True(server.Authenticated);
             using var bytes = new MemoryStream(Encoding.UTF8.GetBytes(server.Message!));
             var parsed = await MimeMessage.LoadAsync(bytes);
             Assert.Equal($"{envelope.MessageId:N}@example.test", parsed.MessageId);
-            Assert.Equal(envelope.Subject, parsed.Subject); Assert.Contains(envelope.Text, parsed.TextBody);
-            Assert.Single(parsed.To); Assert.Empty(parsed.Cc); Assert.Empty(parsed.Bcc);
+            Assert.Equal(envelope.Subject, parsed.Subject);
+            Assert.Contains(envelope.Text, parsed.TextBody);
+            Assert.Single(parsed.To);
+            Assert.Empty(parsed.Cc);
+            Assert.Empty(parsed.Bcc);
         }
-        if (scenario is "NoStartTls" or "AuthenticationRejected" or "DisconnectBeforeAuth") Assert.Null(server.Message);
+        if (scenario is "NoStartTls" or "AuthenticationRejected" or "DisconnectBeforeAuth")
+            Assert.Null(server.Message);
     }
 
     [Fact]
@@ -55,8 +60,11 @@ public sealed class SmtpTransportTests
     {
         await using var server = new SyntheticSmtpServer("Accepted", "SslOnConnect");
         var result = await new SmtpEmailTransport(Options(server.Port, "SslOnConnect")).SendAsync(Envelope(), default);
-        Assert.Equal(DeliveryOutcome.PermanentFailure, result.Outcome); Assert.Equal("SmtpTlsRejected", result.Code);
-        await server.WaitAsync(); Assert.False(server.Authenticated); Assert.Null(server.Message);
+        Assert.Equal(DeliveryOutcome.PermanentFailure, result.Outcome);
+        Assert.Equal("SmtpTlsRejected", result.Code);
+        await server.WaitAsync();
+        Assert.False(server.Authenticated);
+        Assert.Null(server.Message);
     }
 
     [Fact]
@@ -66,9 +74,11 @@ public sealed class SmtpTransportTests
         var transport = new SmtpEmailTransport(Options(server.Port, "StartTls"));
         Assert.Equal(DeliveryOutcome.PermanentFailure, (await transport.SendAsync(Envelope() with { Subject = "Header\r\nBcc: other@example.test" }, default)).Outcome);
         Assert.Equal(DeliveryOutcome.PermanentFailure, (await transport.SendAsync(Envelope() with { Recipient = "one@example.test, two@example.test" }, default)).Outcome);
-        using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
         Assert.Equal(DeliveryOutcome.Retryable, (await transport.SendAsync(Envelope(), cancelled.Token)).Outcome);
-        Assert.False(server.Authenticated); Assert.Null(server.Message);
+        Assert.False(server.Authenticated);
+        Assert.Null(server.Message);
     }
 
     [Fact]
@@ -88,8 +98,10 @@ public sealed class SmtpTransportTests
     [Fact]
     public async Task Connection_refusal_is_retryable_before_any_message_is_dispatched()
     {
-        var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start();
-        var port = ((IPEndPoint)listener.LocalEndpoint).Port; listener.Stop();
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        listener.Stop();
         Assert.Equal(DeliveryOutcome.Retryable, (await new SmtpEmailTransport(Options(port, "StartTls")).SendAsync(Envelope(), default)).Outcome);
     }
 
@@ -104,7 +116,8 @@ public sealed class SmtpTransportTests
     {
         var options = new SmtpEmailOptions { Host = "smtp.example.test", Port = port, Security = security, FromAddress = sender, UserName = name, Password = password };
         var error = Assert.Throws<InvalidOperationException>(() => new SmtpEmailTransport(options));
-        Assert.DoesNotContain("smtp.example.test", error.Message); Assert.DoesNotContain("sender@example.test", error.Message);
+        Assert.DoesNotContain("smtp.example.test", error.Message);
+        Assert.DoesNotContain("sender@example.test", error.Message);
         Assert.DoesNotContain(password == "" ? "private-canary" : password, options.ToString()!);
     }
 
@@ -130,9 +143,12 @@ internal sealed class SyntheticSmtpServer : IAsyncDisposable
     {
         using var rsa = RSA.Create(2048);
         var request = new CertificateRequest("CN=localhost", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-        var names = new SubjectAlternativeNameBuilder(); names.AddDnsName("localhost"); request.CertificateExtensions.Add(names.Build());
+        var names = new SubjectAlternativeNameBuilder();
+        names.AddDnsName("localhost");
+        request.CertificateExtensions.Add(names.Build());
         Certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddHours(1));
-        _listener.Start(); _run = RunAsync(scenario, security);
+        _listener.Start();
+        _run = RunAsync(scenario, security);
     }
 
     public Task WaitAsync() => _run.WaitAsync(TimeSpan.FromSeconds(10));
@@ -143,52 +159,72 @@ internal sealed class SyntheticSmtpServer : IAsyncDisposable
         {
             using var socket = await _listener.AcceptTcpClientAsync(_stop.Token);
             Stream stream = socket.GetStream();
-            if (security == "SslOnConnect") stream = await UpgradeAsync(stream);
+            if (security == "SslOnConnect")
+                stream = await UpgradeAsync(stream);
             var reader = new StreamReader(stream, Encoding.ASCII, leaveOpen: true);
             var writer = new StreamWriter(stream, Encoding.ASCII, leaveOpen: true) { NewLine = "\r\n", AutoFlush = true };
             await writer.WriteLineAsync("220 localhost Synthetic SMTP");
             while (!_stop.IsCancellationRequested)
             {
-                var line = await reader.ReadLineAsync(_stop.Token); if (line is null) break;
+                var line = await reader.ReadLineAsync(_stop.Token);
+                if (line is null)
+                    break;
                 if (line.StartsWith("EHLO ", StringComparison.Ordinal))
                 {
                     await writer.WriteLineAsync("250-localhost");
-                    if (!TlsEstablished && scenario != "NoStartTls") await writer.WriteLineAsync("250-STARTTLS");
+                    if (!TlsEstablished && scenario != "NoStartTls")
+                        await writer.WriteLineAsync("250-STARTTLS");
                     await writer.WriteLineAsync("250 AUTH PLAIN");
-                    if (scenario == "DisconnectBeforeAuth") break;
+                    if (scenario == "DisconnectBeforeAuth")
+                        break;
                 }
                 else if (line == "STARTTLS")
                 {
                     await writer.WriteLineAsync("220 Ready for TLS");
-                    reader.Dispose(); writer.Dispose(); stream = await UpgradeAsync(stream);
+                    reader.Dispose();
+                    writer.Dispose();
+                    stream = await UpgradeAsync(stream);
                     reader = new StreamReader(stream, Encoding.ASCII, leaveOpen: true);
                     writer = new StreamWriter(stream, Encoding.ASCII, leaveOpen: true) { NewLine = "\r\n", AutoFlush = true };
                 }
                 else if (line.StartsWith("AUTH PLAIN", StringComparison.Ordinal))
                 {
                     Assert.True(TlsEstablished);
-                    if (scenario == "AuthenticationRejected") await writer.WriteLineAsync("535 private-provider-diagnostic");
-                    else { Authenticated = true; await writer.WriteLineAsync("235 Authenticated"); }
+                    if (scenario == "AuthenticationRejected")
+                        await writer.WriteLineAsync("535 private-provider-diagnostic");
+                    else
+                    { Authenticated = true; await writer.WriteLineAsync("235 Authenticated"); }
                 }
-                else if (line.StartsWith("MAIL FROM:", StringComparison.Ordinal)) await writer.WriteLineAsync("250 Sender accepted");
-                else if (line.StartsWith("RCPT TO:", StringComparison.Ordinal)) await writer.WriteLineAsync(scenario switch
-                { "TemporaryRecipient" => "450 private-provider-diagnostic", "RejectedRecipient" => "550 private-provider-diagnostic", _ => "250 Recipient accepted" });
+                else if (line.StartsWith("MAIL FROM:", StringComparison.Ordinal))
+                    await writer.WriteLineAsync("250 Sender accepted");
+                else if (line.StartsWith("RCPT TO:", StringComparison.Ordinal))
+                    await writer.WriteLineAsync(scenario switch
+                    { "TemporaryRecipient" => "450 private-provider-diagnostic", "RejectedRecipient" => "550 private-provider-diagnostic", _ => "250 Recipient accepted" });
                 else if (line == "DATA")
                 {
                     await writer.WriteLineAsync("354 Send message");
                     var message = new StringBuilder();
-                    while (await reader.ReadLineAsync(_stop.Token) is { } part && part != ".") message.AppendLine(part.StartsWith("..", StringComparison.Ordinal) ? part[1..] : part);
-                    Message = message.ToString(); Uploaded.TrySetResult();
-                    if (scenario == "HoldAcknowledgement") await Task.Delay(Timeout.InfiniteTimeSpan, _stop.Token);
-                    if (scenario == "LostAcknowledgement") break;
+                    while (await reader.ReadLineAsync(_stop.Token) is { } part && part != ".")
+                        message.AppendLine(part.StartsWith("..", StringComparison.Ordinal) ? part[1..] : part);
+                    Message = message.ToString();
+                    Uploaded.TrySetResult();
+                    if (scenario == "HoldAcknowledgement")
+                        await Task.Delay(Timeout.InfiniteTimeSpan, _stop.Token);
+                    if (scenario == "LostAcknowledgement")
+                        break;
                     await writer.WriteLineAsync(scenario switch
                     { "TemporaryData" => "451 private-provider-diagnostic", "RejectedData" => "554 private-provider-diagnostic", _ => "250 Message accepted" });
                 }
-                else if (line == "RSET") await writer.WriteLineAsync("250 Reset");
-                else if (line == "QUIT") { await writer.WriteLineAsync("221 Bye"); break; }
-                else throw new InvalidOperationException("Unexpected synthetic SMTP command.");
+                else if (line == "RSET")
+                    await writer.WriteLineAsync("250 Reset");
+                else if (line == "QUIT")
+                { await writer.WriteLineAsync("221 Bye"); break; }
+                else
+                    throw new InvalidOperationException("Unexpected synthetic SMTP command.");
             }
-            reader.Dispose(); writer.Dispose(); await stream.DisposeAsync();
+            reader.Dispose();
+            writer.Dispose();
+            await stream.DisposeAsync();
         }
         catch (System.Security.Authentication.AuthenticationException) { }
         catch (IOException) { }
@@ -200,12 +236,16 @@ internal sealed class SyntheticSmtpServer : IAsyncDisposable
     {
         var tls = new SslStream(stream);
         await tls.AuthenticateAsServerAsync(new SslServerAuthenticationOptions { ServerCertificate = Certificate }, _stop.Token);
-        TlsEstablished = true; return tls;
+        TlsEstablished = true;
+        return tls;
     }
 
     public async ValueTask DisposeAsync()
     {
-        await _stop.CancelAsync(); _listener.Stop(); await _run;
-        Certificate.Dispose(); _stop.Dispose();
+        await _stop.CancelAsync();
+        _listener.Stop();
+        await _run;
+        Certificate.Dispose();
+        _stop.Dispose();
     }
 }

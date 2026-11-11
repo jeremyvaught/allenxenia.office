@@ -9,16 +9,20 @@ namespace AllenBuilding.Infrastructure.Persistence;
 
 public sealed partial class ManagementReportReader
 {
-    public async Task<RentBalanceReport?> RentBalancesAsync(Actor actor, RentBalanceQuery query, DateTimeOffset observedAt, DateOnly localDate, CancellationToken cancellationToken)
+    public async Task<RentBalanceReport?> RentBalancesAsync(
+        Actor actor, RentBalanceQuery query, DateTimeOffset observedAt, DateOnly localDate, CancellationToken cancellationToken)
     {
-        if (!query.IsValid || !actor.ChallengedMfa || actor.ManagedBuildings.Count == 0) return null;
+        if (!query.IsValid || !actor.ChallengedMfa || actor.ManagedBuildings.Count == 0)
+            return null;
         await db.Database.OpenConnectionAsync(cancellationToken);
         try
         {
             var connection = db.Database.GetDbConnection();
             if (db is MySqlOfficeDbContext)
             {
-                await using var mode = connection.CreateCommand(); mode.CommandText = "SET TRANSACTION READ ONLY"; mode.CommandTimeout = 5;
+                await using var mode = connection.CreateCommand();
+                mode.CommandText = "SET TRANSACTION READ ONLY";
+                mode.CommandTimeout = 5;
                 await mode.ExecuteNonQueryAsync(cancellationToken);
             }
             await using var native = connection is SqliteConnection sqlite ? sqlite.BeginTransaction(IsolationLevel.Serializable, deferred: true)
@@ -27,7 +31,8 @@ public sealed partial class ManagementReportReader
             await using (var transaction = await db.Database.UseTransactionAsync(native, cancellationToken))
             {
                 var buildings = await ScopeAsync(actor, cancellationToken);
-                if (buildings.Count is 0 or > 100 || query.BuildingId is { } requested && !buildings.Any(x => x.Id == requested)) return null;
+                if (buildings.Count is 0 or > 100 || query.BuildingId is { } requested && !buildings.Any(x => x.Id == requested))
+                    return null;
                 var scope = buildings.Where(x => query.BuildingId == null || x.Id == query.BuildingId).Select(x => x.Id).ToArray();
                 RentBalanceTotals totals;
                 await using (var command = BalanceCommand(connection, native, RentBalanceSql.Totals(scope.Length), scope, observedAt, localDate))
@@ -40,13 +45,17 @@ public sealed partial class ManagementReportReader
                 var items = new List<RentBalanceItem>();
                 await using (var command = BalanceCommand(connection, native, RentBalanceSql.Items(scope.Length, query.Group), scope, observedAt, localDate))
                 {
-                    Add(command, "@limit", RentBalanceQuery.PageSize + 1, DbType.Int32); Add(command, "@offset", (query.Page - 1) * RentBalanceQuery.PageSize, DbType.Int32);
+                    Add(command, "@limit", RentBalanceQuery.PageSize + 1, DbType.Int32);
+                    Add(command, "@offset", (query.Page - 1) * RentBalanceQuery.PageSize, DbType.Int32);
                     await using var rows = await command.ExecuteReaderAsync(cancellationToken);
                     while (await rows.ReadAsync(cancellationToken))
                         items.Add(new(Guid.Parse(rows.GetString(0)), Guid.Parse(rows.GetString(1)), rows.GetString(2), rows.GetString(3), rows.GetString(4),
-                            DateOnly.ParseExact(rows.GetString(5), "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), Convert.ToInt64(rows.GetValue(6)), Convert.ToInt64(rows.GetValue(7)) != 0));
+                            DateOnly.ParseExact(rows.GetString(5), "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+                            Convert.ToInt64(rows.GetValue(6)), Convert.ToInt64(rows.GetValue(7)) != 0));
                 }
-                report = new(query, observedAt, localDate, totals, items.Take(RentBalanceQuery.PageSize).ToArray(), items.Count > RentBalanceQuery.PageSize && query.Page < 1000, buildings);
+                report = new(
+                    query, observedAt, localDate, totals, items.Take(RentBalanceQuery.PageSize).ToArray(),
+                    items.Count > RentBalanceQuery.PageSize && query.Page < 1000, buildings);
                 await native.CommitAsync(cancellationToken);
             }
             var fresh = await ScopeAsync(actor, cancellationToken);
@@ -54,11 +63,13 @@ public sealed partial class ManagementReportReader
         }
         finally { await db.Database.CloseConnectionAsync(); }
     }
-    internal static DbCommand BalanceCommand(DbConnection connection, DbTransaction? transaction, string sql, IReadOnlyList<Guid> scope, DateTimeOffset now, DateOnly localDate)
+    internal static DbCommand BalanceCommand(
+        DbConnection connection, DbTransaction? transaction, string sql, IReadOnlyList<Guid> scope, DateTimeOffset now, DateOnly localDate)
     {
         var command = Command(connection, transaction, sql, scope, now);
         Add(command, "@localDate", localDate.ToString("yyyy-MM-dd"), DbType.String);
-        foreach (var days in new[] { 30, 60, 90 }) Add(command, "@days" + days, localDate.AddDays(-days).ToString("yyyy-MM-dd"), DbType.String);
+        foreach (var days in new[] { 30, 60, 90 })
+            Add(command, "@days" + days, localDate.AddDays(-days).ToString("yyyy-MM-dd"), DbType.String);
         return command;
     }
 }

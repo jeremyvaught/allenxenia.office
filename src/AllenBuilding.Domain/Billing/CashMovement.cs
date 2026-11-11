@@ -29,8 +29,11 @@ public sealed class CashMovement
     public static CashMovement Record(SettlementPayment capture, PaymentAttempt original, CanonicalCashMovement verified, DateTimeOffset now)
     {
         if (capture is null || original is null || verified is null || original.State != PaymentAttemptState.Settled || capture.AttemptId != original.Id ||
-            capture.AccountId != original.AccountId || capture.ProviderAccount != original.ProviderAccount || capture.LiveMode != original.LiveMode || capture.CollectionReference != original.PaymentId || capture.AmountMinorUnits != original.TotalMinorUnits ||
-            verified.ProviderAccount != original.ProviderAccount || verified.LiveMode != original.LiveMode || verified.AccountId != original.AccountId || verified.AttemptId != original.Id ||
+            capture.AccountId != original.AccountId || capture.ProviderAccount != original.ProviderAccount ||
+            capture.LiveMode != original.LiveMode || capture.CollectionReference != original.PaymentId ||
+            capture.AmountMinorUnits != original.TotalMinorUnits ||
+            verified.ProviderAccount != original.ProviderAccount || verified.LiveMode != original.LiveMode ||
+            verified.AccountId != original.AccountId || verified.AttemptId != original.Id ||
             verified.CustomerId != original.CustomerId || verified.PaymentId != original.PaymentId || !Enum.IsDefined(verified.Kind) ||
             !PaymentReferences.Valid(verified.TransactionId, "txn_") || verified.Currency != "USD" || capture.Currency != verified.Currency ||
             verified.SignedMinorUnits is < -99_999_999 or > 99_999_999 or 0 || Math.Abs(verified.SignedMinorUnits) > capture.AmountMinorUnits ||
@@ -57,7 +60,8 @@ public sealed class CashMovement
             RecordedAt = now.ToUniversalTime()
         };
     }
-    public bool Matches(CanonicalCashMovement fact) => fact.ProviderAccount == ProviderAccount && fact.LiveMode == LiveMode && fact.AccountId == AccountId && fact.AttemptId == AttemptId &&
+    public bool Matches(CanonicalCashMovement fact) => fact.ProviderAccount == ProviderAccount &&
+        fact.LiveMode == LiveMode && fact.AccountId == AccountId && fact.AttemptId == AttemptId &&
         fact.CustomerId == CustomerId && fact.PaymentId == PaymentId && fact.SourceId == SourceId && fact.TransactionId == TransactionId && fact.Kind == Kind &&
         fact.SignedMinorUnits == SignedMinorUnits && fact.Currency == Currency && fact.ProviderAt == ProviderAt;
     public static bool DisputeReference(string value) => PaymentReferences.Valid(value, "dp_") || PaymentReferences.Valid(value, "du_");
@@ -80,32 +84,51 @@ public sealed class CashMovementReview
     public DateTimeOffset? VerifiedAt { get; private set; }
     public string? AgreementHash { get; private set; }
     public static CashMovementReview Open(CashMovement movement) => new()
-    { MovementId = movement.Id, AccountId = movement.AccountId, State = CashMovementReviewState.Pending, Version = Guid.NewGuid(), CreatedAt = movement.RecordedAt };
+    {
+        MovementId = movement.Id,
+        AccountId = movement.AccountId,
+        State = CashMovementReviewState.Pending,
+        Version = Guid.NewGuid(),
+        CreatedAt = movement.RecordedAt
+    };
 
     // Called only by canonical whole-payment agreement after complete ledger/provider validation.
     public void ConfirmRefundAgreement(CashMovement movement, string agreementHash, DateTimeOffset checkedAt)
     {
         if (movement is null || movement.Id != MovementId || movement.AccountId != AccountId || movement.Kind != CashMovementKind.Refund ||
-            State is not (CashMovementReviewState.AppliedPendingVerification or CashMovementReviewState.Classified) || OperationId is null || ActorId is null || Disposition is null || AppliedAt is null || checkedAt < AppliedAt ||
-            !ValidHash(agreementHash)) throw new InvalidOperationException("Only a reviewed refund can acquire canonical agreement evidence.");
+            State is not (CashMovementReviewState.AppliedPendingVerification or CashMovementReviewState.Classified) ||
+            OperationId is null || ActorId is null || Disposition is null || AppliedAt is null ||
+            checkedAt < AppliedAt ||
+            !ValidHash(agreementHash))
+            throw new InvalidOperationException("Only a reviewed refund can acquire canonical agreement evidence.");
         Verify(agreementHash, checkedAt);
     }
     public void ConfirmRestoredDispute(CashMovement movement, IReadOnlyList<CashMovement> completeSource, string agreementHash, DateTimeOffset checkedAt)
     {
-        if (movement is null || completeSource is not { Count: >= 2 and <= 25 } || movement.Id != MovementId || movement.AccountId != AccountId || movement.Kind == CashMovementKind.Refund ||
+        if (movement is null || completeSource is not { Count: >= 2 and <= 25 } || movement.Id != MovementId ||
+            movement.AccountId != AccountId || movement.Kind == CashMovementKind.Refund ||
             State is not (CashMovementReviewState.Pending or CashMovementReviewState.Classified) || checkedAt < CreatedAt || !ValidHash(agreementHash) ||
             completeSource.Select(x => x.Id).Distinct().Count() != completeSource.Count || !completeSource.Any(x => x.Id == movement.Id) ||
-            completeSource.Any(x => x.CaptureId != movement.CaptureId || x.AccountId != movement.AccountId || x.AttemptId != movement.AttemptId || x.SourceId != movement.SourceId || x.Kind == CashMovementKind.Refund) ||
-            !completeSource.Any(x => x.Kind == CashMovementKind.DisputeWithdrawal) || !completeSource.Any(x => x.Kind == CashMovementKind.DisputeReinstatement) || completeSource.Sum(x => x.SignedMinorUnits) != 0)
+            completeSource.Any(x => x.CaptureId != movement.CaptureId || x.AccountId != movement.AccountId ||
+                x.AttemptId != movement.AttemptId || x.SourceId != movement.SourceId ||
+                x.Kind == CashMovementKind.Refund) ||
+            !completeSource.Any(x => x.Kind == CashMovementKind.DisputeWithdrawal) ||
+            !completeSource.Any(x => x.Kind == CashMovementKind.DisputeReinstatement) ||
+            completeSource.Sum(x => x.SignedMinorUnits) != 0)
             throw new InvalidOperationException("Dispute restoration needs the complete verified original-source withdrawal and reinstatement.");
         Verify(agreementHash, checkedAt);
     }
     private static bool ValidHash(string hash) => hash is { Length: 64 } && hash.All(Uri.IsHexDigit);
     private void Verify(string hash, DateTimeOffset checkedAt)
     {
-        if (VerifiedAt > checkedAt) throw new InvalidOperationException("Older verification cannot replace newer agreement evidence.");
-        if (State == CashMovementReviewState.Classified && AgreementHash == hash && VerifiedAt == checkedAt) return;
-        State = CashMovementReviewState.Classified; AgreementHash = hash; VerifiedAt = checkedAt.ToUniversalTime(); Version = Guid.NewGuid();
+        if (VerifiedAt > checkedAt)
+            throw new InvalidOperationException("Older verification cannot replace newer agreement evidence.");
+        if (State == CashMovementReviewState.Classified && AgreementHash == hash && VerifiedAt == checkedAt)
+            return;
+        State = CashMovementReviewState.Classified;
+        AgreementHash = hash;
+        VerifiedAt = checkedAt.ToUniversalTime();
+        Version = Guid.NewGuid();
     }
 
     public void ApplyRefund(CashMovement movement, Guid operationId, string actorId, RefundDisposition disposition, string reason, DateTimeOffset now)
@@ -115,8 +138,13 @@ public sealed class CashMovementReview
             State != CashMovementReviewState.Pending || operationId == Guid.Empty || string.IsNullOrWhiteSpace(actorId) || actorId.Length > 450 ||
             !Enum.IsDefined(disposition) || reason.Length is < 1 or > 2000 || now < CreatedAt)
             throw new InvalidOperationException("A refund disposition requires the pending original fact, authority, operation and reason.");
-        OperationId = operationId; ActorId = actorId; Disposition = disposition; Reason = reason; AppliedAt = now.ToUniversalTime();
+        OperationId = operationId;
+        ActorId = actorId;
+        Disposition = disposition;
+        Reason = reason;
+        AppliedAt = now.ToUniversalTime();
         // Local allocation is not proof that all provider instructions and transactions agree.
-        State = CashMovementReviewState.AppliedPendingVerification; Version = Guid.NewGuid();
+        State = CashMovementReviewState.AppliedPendingVerification;
+        Version = Guid.NewGuid();
     }
 }

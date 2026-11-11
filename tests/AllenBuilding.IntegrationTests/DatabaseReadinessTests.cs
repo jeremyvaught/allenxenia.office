@@ -15,7 +15,8 @@ public sealed class DatabaseReadinessTests
     [Fact]
     public async Task Process_liveness_and_database_readiness_are_separate_and_probes_do_not_migrate()
     {
-        var directory = Path.Combine(Path.GetTempPath(), $"office-readiness-{Guid.NewGuid():N}"); Directory.CreateDirectory(directory);
+        var directory = Path.Combine(Path.GetTempPath(), $"office-readiness-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
         try
         {
             await using var host = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -51,7 +52,8 @@ public sealed class DatabaseReadinessTests
             var direct = await new DatabaseReadiness(diagnosticDb).CheckHealthAsync(new HealthCheckContext());
             Assert.True(direct.Status == HealthStatus.Healthy, direct.Description);
             var ready = await client.GetAsync("/health/ready");
-            Assert.Equal(HttpStatusCode.OK, ready.StatusCode); Assert.Equal("{\"status\":\"Ready\"}", await ready.Content.ReadAsStringAsync());
+            Assert.Equal(HttpStatusCode.OK, ready.StatusCode);
+            Assert.Equal("{\"status\":\"Ready\"}", await ready.Content.ReadAsStringAsync());
             Assert.Equal(0, await db.Users.CountAsync());
             await db.Database.ExecuteSqlRawAsync("INSERT INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ('20991231000000_FutureSchema', '10.0.12')");
             Assert.Equal(HttpStatusCode.ServiceUnavailable, (await client.GetAsync("/health/ready")).StatusCode);
@@ -67,9 +69,12 @@ public sealed class DatabaseReadinessTests
         await using var db = new SqliteOfficeDbContext(new DbContextOptionsBuilder<SqliteOfficeDbContext>().UseSqlite($"Data Source={path};Mode=ReadOnly").Options);
         var probe = new DatabaseReadiness(db);
         var failed = await probe.CheckHealthAsync(new HealthCheckContext());
-        Assert.Equal(HealthStatus.Unhealthy, failed.Status); Assert.Null(failed.Exception); Assert.Empty(failed.Data);
+        Assert.Equal(HealthStatus.Unhealthy, failed.Status);
+        Assert.Null(failed.Exception);
+        Assert.Empty(failed.Data);
         Assert.Equal("DatabaseUnavailable", failed.Description);
-        using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
         Assert.Equal(HealthStatus.Unhealthy, (await probe.CheckHealthAsync(new HealthCheckContext(), cancelled.Token)).Status);
     }
 }

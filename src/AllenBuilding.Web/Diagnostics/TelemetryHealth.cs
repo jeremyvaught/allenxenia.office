@@ -19,9 +19,12 @@ public sealed class TelemetryDropListener(ILogger<TelemetryDropListener> logger)
     { if (eventSource.Name == "OpenTelemetry-Sdk") EnableEvents(eventSource, EventLevel.Warning); }
     protected override void OnEventWritten(EventWrittenEventArgs eventData)
     {
-        if (eventData.EventName != "ExistsDroppedExportProcessorItems" || eventData.Payload?.Count != 3 || eventData.Payload[2] is not long count || count <= 0) return;
-        Interlocked.Add(ref _dropped, count); OfficeTelemetry.TracesDropped(count);
-        try { logger.LogWarning("Telemetry batch dropped spans {DroppedCount}", count); }
+        if (eventData.EventName != "ExistsDroppedExportProcessorItems" || eventData.Payload?.Count != 3 || eventData.Payload[2] is not long count || count <= 0)
+            return;
+        Interlocked.Add(ref _dropped, count);
+        OfficeTelemetry.TracesDropped(count);
+        try
+        { logger.LogWarning("Telemetry batch dropped spans {DroppedCount}", count); }
         catch (Exception) { OfficeTelemetry.ExportFailed("traces"); }
     }
 }

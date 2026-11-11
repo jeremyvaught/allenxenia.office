@@ -15,10 +15,13 @@ public sealed class CustomerProvisionActions(ICurrentActor current, ICustomerPro
 {
     public async Task<CustomerProvisionResult> EnsureAsync(Guid accountId, CancellationToken cancellationToken = default)
     {
-        if (!policy.Enabled || !PaymentReferences.Valid(policy.ProviderAccount, "acct_")) return new(CollectionCode.Unavailable);
+        if (!policy.Enabled || !PaymentReferences.Valid(policy.ProviderAccount, "acct_"))
+            return new(CollectionCode.Unavailable);
         var actor = await current.GetAsync(cancellationToken);
-        if (actor is null || (actor.ManagedBuildings.Count > 0 && !actor.ChallengedMfa)) return new(CollectionCode.Unavailable);
-        if (accountId == Guid.Empty) return new(CollectionCode.ValidationFailed);
+        if (actor is null || (actor.ManagedBuildings.Count > 0 && !actor.ChallengedMfa))
+            return new(CollectionCode.Unavailable);
+        if (accountId == Guid.Empty)
+            return new(CollectionCode.ValidationFailed);
         return await store.EnsureAsync(actor, accountId, cancellationToken);
     }
 }
@@ -42,13 +45,17 @@ public sealed class CustomerProvisionWorker(ICustomerProvisionQueue queue, ICust
 {
     public async Task<bool> ProcessOneAsync(CancellationToken cancellationToken = default)
     {
-        var lease = await queue.ClaimAsync(cancellationToken); if (lease is null) return false;
+        var lease = await queue.ClaimAsync(cancellationToken);
+        if (lease is null)
+            return false;
         using var operation = OfficeTelemetry.Begin(OfficeOperationKind.CustomerProvision, lease.Original.Id,
             OfficeTelemetry.Origin(lease.Original.OriginTraceId, lease.Original.OriginSpanId));
-        CustomerObservation observation; ICustomerProvisionGateway? gateway = null;
+        CustomerObservation observation;
+        ICustomerProvisionGateway? gateway = null;
         try
         {
-            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); deadline.CancelAfter(TimeSpan.FromSeconds(30));
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deadline.CancelAfter(TimeSpan.FromSeconds(30));
             gateway = gateways.Open(lease.Original);
             observation = await gateway.CreateAsync(lease.Original, deadline.Token).WaitAsync(deadline.Token);
         }

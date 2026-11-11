@@ -24,10 +24,13 @@ public sealed class ObligationCredit
         ObligationCreditKind kind, string reason, DateTimeOffset now)
     {
         reason = reason?.Trim() ?? "";
-        if (operationId == Guid.Empty || string.IsNullOrWhiteSpace(actorId) || actorId.Length > 450 || reviewed is null || reviewed.ObligationId == Guid.Empty ||
-            reviewed.AccountId == Guid.Empty || reviewed.Version == Guid.Empty || reviewed.Currency != "USD" || reviewed.Held || reviewed.HasProviderInstruction ||
+        if (operationId == Guid.Empty || string.IsNullOrWhiteSpace(actorId) || actorId.Length > 450 || reviewed is null ||
+            reviewed.ObligationId == Guid.Empty ||
+            reviewed.AccountId == Guid.Empty || reviewed.Version == Guid.Empty || reviewed.Currency != "USD" || reviewed.Held ||
+            reviewed.HasProviderInstruction ||
             amount is < 1 or > 99_999_999 || amount > reviewed.RemainingMinorUnits || !Enum.IsDefined(kind) || reason.Length is < 1 or > 2000)
-            throw new ArgumentException("A credit requires an authorized exact reviewed balance, positive USD amount and reason, without unresolved provider collection.");
+            throw new ArgumentException(
+                "A credit requires an authorized exact reviewed balance, positive USD amount and reason, without unresolved provider collection.");
         return new()
         {
             Id = Guid.NewGuid(),
@@ -44,11 +47,14 @@ public sealed class ObligationCredit
     }
 
     // The transaction coordinator links verified returned cash and this credit under the same reviewed operation.
-    public static ObligationCredit RecordRefundCredit(Guid operationId, string actorId, RefundAllocation allocation, long uncreditedCharge, string reason, DateTimeOffset now)
+    public static ObligationCredit RecordRefundCredit(
+        Guid operationId, string actorId, RefundAllocation allocation, long uncreditedCharge, string reason, DateTimeOffset now)
     {
-        if (allocation is null) throw new ArgumentException("The refund allocation is required.");
+        if (allocation is null)
+            throw new ArgumentException("The refund allocation is required.");
         var credit = RecordLocal(operationId, actorId, new(allocation.ObligationId, allocation.AccountId, allocation.ReviewedVersion, uncreditedCharge),
             -allocation.SignedMinorUnits, ObligationCreditKind.Credit, reason, now);
-        credit.SourceMovementId = allocation.MovementId; return credit;
+        credit.SourceMovementId = allocation.MovementId;
+        return credit;
     }
 }
