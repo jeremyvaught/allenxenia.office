@@ -6,7 +6,7 @@
         <Configuration>
           <Format>cobertura,opencover</Format>
           <Include>[AllenBuilding.*]*</Include>
-          <Exclude>[AllenBuilding.*Tests]*,[AllenBuilding.BrowserFixture]*</Exclude>
+          <Exclude>[AllenBuilding.*Tests]*,[AllenBuilding.BrowserFixture]*,[AllenBuilding.DemoSeed]*</Exclude>
           <ExcludeByFile>**/obj/**,**/Persistence/Migrations/**/*.cs</ExcludeByFile>
           <ExcludeByAttribute>GeneratedCodeAttribute,ExcludeFromCodeCoverageAttribute</ExcludeByAttribute>
           <IncludeTestAssembly>false</IncludeTestAssembly>

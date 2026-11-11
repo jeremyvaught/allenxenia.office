@@ -10,4 +10,7 @@
     <Project Path="tests/AllenBuilding.DomainTests/AllenBuilding.DomainTests.csproj" />
     <Project Path="tests/AllenBuilding.IntegrationTests/AllenBuilding.IntegrationTests.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/AllenBuilding.DemoSeed/AllenBuilding.DemoSeed.csproj" />
+  </Folder>
 </Solution>

@@ -31,6 +31,27 @@ dotnet run --project src/AllenBuilding.Web -- --dispatch-mail-once
 
 Read the invitation link from `src/AllenBuilding.Web/.data/mail`. Use separate browser profiles for manager and tenant testing.
 
+## Demonstration data
+
+For a recorded walkthrough, a console tool writes a separate local database that looks like the Allen Building after two months of use: seven tenants, two managers with MFA enrolled, four contractors, about thirty maintenance requests at every stage, published help and notification history. Every person and business is fictional and every address ends in `@example.test`. It is never a web route or a production command, it contains no billing data, and it sends no email.
+
+```sh
+dotnet run --project tools/AllenBuilding.DemoSeed -- artifacts/demo/video
+```
+
+The tool only writes to a new `artifacts/demo/<name>` directory inside this repository and refuses to overwrite an existing database. It prints a count for each kind of record and exits non-zero if any count differs from the demonstration specification. The directory holds the SQLite database, its Data Protection keys and an owner-only `accounts.json` with the sign-in emails, the shared demo password and each manager's authenticator key.
+
+Start the web app against that directory with billing off, as it is in production (the committed development settings turn it on):
+
+```sh
+DEMO="$PWD/artifacts/demo/video"
+ASPNETCORE_ENVIRONMENT=Development ConnectionStrings__Office="Data Source=$DEMO/office.db" \
+  Protection__KeyDirectory="$DEMO/keys" Billing__PlanningEnabled=false \
+  dotnet run --project src/AllenBuilding.Web --no-launch-profile -- --urls http://localhost:5081
+```
+
+Both paths must be absolute. Records are created through the same application actions the pages use, with the clock set to each moment, so requests carry real history, versions and receipts. All dates count back from the moment the tool runs: seed a fresh directory on the day of recording, because ages keep growing and the open invitation expires five days after seeding. Development mail stays in the local inbox mode and the background sender is off, so emails queued during a walkthrough show as waiting to send.
+
 ## Useful review paths
 
 - Public page, published help, and System/Light/Dark at a narrow viewport.
@@ -64,9 +85,9 @@ python3 -m unittest discover -s tests/scripts -v
 
 The MySQL script requires Docker and creates a disposable loopback database. Its shared contract is skipped by ordinary tests and runs separately. Browser fixtures use isolated synthetic accounts/data. Coverage: `./scripts/coverage.sh`; run it alone with the preview stopped because it instruments shared assemblies. Reports and screenshots remain under ignored `artifacts/`. Percentages are improvement goals; behavioral checks gate releases.
 
-Current local verification (branch `feature/refactor-ui-ux`, 2026-11-11): 134 domain and 601 ordinary integration checks, the separate actual MySQL contract, 27 browser journeys and nine Python helper checks pass, and Release has zero warnings/errors. The SQLite persistence contract reports each of its 38 contract checks as a separately named test on a fresh database; MySQL runs the same list as one sequential test. No schema changed: scratch migrations for both providers were empty after the model configuration split. Coverage (`./scripts/coverage.sh`, SQLite run) is 92.5% of lines and 83.9% of branches overall; Web is 90.9% and 82.9%. MySQL-only lock statements count as uncovered because coverage is not collected during the MySQL run. Browser emulation does not establish real-device acceptance.
+Current local verification (branch `feature/demo-seed`, 2026-11-11): 134 domain and 607 ordinary integration checks, the separate actual MySQL contract, 27 browser journeys and nine Python helper checks pass, and Release has zero warnings/errors. The SQLite persistence contract reports each of its 38 contract checks as a separately named test on a fresh database; MySQL runs the same list as one sequential test. No schema changed: scratch migrations for both providers were empty after the model configuration split. Coverage (`./scripts/coverage.sh`, SQLite run) is 92.5% of lines and 83.8% of branches overall; Web is 90.9% and 82.9%. MySQL-only lock statements count as uncovered because coverage is not collected during the MySQL run. Browser emulation does not establish real-device acceptance.
 
-Hosted verification: [a successful Verify run](https://github.com/jeremyvaught/allenxenia.office/actions/runs/43092358628) tested revision `91484a3`, the refactor merged to `main` as `b4c70f8`, including actual MySQL, browser journeys, coverage, Linux packaging and independent restore. Its five artifacts provide downloadable evidence. The two later runs for the merge itself built and passed the test suite, then failed while uploading evidence artifacts, so their MySQL, browser and packaging steps were skipped; they need a re-run. The signed-in UI changes on `feature/refactor-ui-ux` have not had a hosted run. This establishes hosted verification, not operation on the actual Forge server.
+Hosted verification: [a successful Verify run](https://github.com/jeremyvaught/allenxenia.office/actions/runs/43109856558) tested `c9cf14c`, the merge of the signed-in UI changes to `main`, including actual MySQL, browser journeys, coverage, Linux packaging and independent restore. The demonstration seed on `feature/demo-seed` has not had a hosted run. This establishes hosted verification, not operation on the actual Forge server.
 
 ## Scope and launch limits
 
