@@ -46,11 +46,11 @@ Start the web app against that directory with billing off, as it is in productio
 ```sh
 DEMO="$PWD/artifacts/demo/video"
 ASPNETCORE_ENVIRONMENT=Development ConnectionStrings__Office="Data Source=$DEMO/office.db" \
-  Protection__KeyDirectory="$DEMO/keys" Billing__PlanningEnabled=false \
+  Protection__KeyDirectory="$DEMO/keys" Billing__PlanningEnabled=false Notifications__Enabled=true \
   dotnet run --project src/AllenBuilding.Web --no-launch-profile -- --urls http://localhost:5081
 ```
 
-Both paths must be absolute. Records are created through the same application actions the pages use, with the clock set to each moment, so requests carry real history, versions and receipts. All dates count back from the moment the tool runs: seed a fresh directory on the day of recording, because ages keep growing and the open invitation expires five days after seeding. Development mail stays in the local inbox mode and the background sender is off, so emails queued during a walkthrough show as waiting to send.
+Both paths must be absolute. Records are created through the same application actions the pages use, with the clock set to each moment, so requests carry real history, versions and receipts. All dates count back from the moment the tool runs: seed a fresh directory on the day of recording, because ages keep growing and the open invitation expires five days after seeding. `Notifications__Enabled=true` turns on the background sender against the local inbox, so a status change made during the walkthrough goes from waiting to send to delivered within about five seconds. Nothing leaves the machine: each message is written as a file under `src/AllenBuilding.Web/.data/mail`. The sender also delivers the two seeded waiting emails a few seconds after startup; leave the setting out to keep them waiting, and deliver on demand by running the same command with `-- --dispatch-mail-once` in place of `-- --urls ...`. The seeded failed email stays failed either way until a manager retries it. Links in emails use `http://localhost:5081/`; set `Notifications__PublicOrigin` if the site runs elsewhere.
 
 ## Useful review paths
 
