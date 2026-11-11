@@ -134,7 +134,7 @@ public static class AssistantReviewContract
         {
             var current = new TestActor { Actor = actor };
             var audit = new AccountInvitations(db, null!, current, new EphemeralDataProtectionProvider(), clock);
-            var knowledge = new KnowledgeActions(current, new KnowledgeStore(db, current, audit, clock));
+            var knowledge = new KnowledgeActions(current, new KnowledgeStore(db, current, audit, clock), clock);
             var gate = new AssistantTenantAccess(db, current, knowledge, clock);
             var store = new AssistantReviewStore(db, current, gate, clock);
             var maintenance = new MaintenanceActions(current, new MaintenanceStore(db, current, audit, clock, store), clock);

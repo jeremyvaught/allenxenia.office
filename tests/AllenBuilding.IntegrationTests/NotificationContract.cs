@@ -6,6 +6,8 @@ using AllenBuilding.Infrastructure.Notifications;
 using AllenBuilding.Infrastructure.Persistence;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AllenBuilding.IntegrationTests;
 
@@ -71,8 +73,12 @@ public static class NotificationContract
         Assert.Equal(retryId, retried.Id);
         Assert.True(await Complete(retried, new(DeliveryOutcome.Delivered)));
         var unknownId = await Add();
+        var logs = new CapturedLogger<NotificationDispatcher>();
         await using (var db = create())
-            Assert.True(await new NotificationDispatcher(Queue(db), new ThrowingTransport()).ProcessOneAsync());
+            Assert.True(await new NotificationDispatcher(Queue(db), new ThrowingTransport(), logs).ProcessOneAsync());
+        var logged = Assert.Single(logs.Messages);
+        Assert.Contains("System.InvalidOperationException", logged);
+        Assert.DoesNotContain("private-provider-key", logged);
         await using (var db = create())
         {
             var saved = await db.AccountMessages.SingleAsync(x => x.Id == unknownId);
@@ -85,7 +91,7 @@ public static class NotificationContract
         {
             var transport = new LocalInboxTransport(directory);
             await using (var db = create())
-                Assert.True(await new NotificationDispatcher(Queue(db), transport).ProcessOneAsync());
+                Assert.True(await new NotificationDispatcher(Queue(db), transport, NullLogger<NotificationDispatcher>.Instance).ProcessOneAsync());
             var path = Path.Combine(directory, $"{deliveredId:D}.json");
             Assert.True(File.Exists(path));
             var envelope = System.Text.Json.JsonSerializer.Deserialize<EmailEnvelope>(await File.ReadAllTextAsync(path))!;
@@ -116,7 +122,7 @@ public static class NotificationContract
         {
             db.AddRange(suite, tenant, membership, order, history, returning, new ActiveGrant { UserId = tenant.Id, SuiteId = suite.Id, MembershipId = returning.Id }, suppressed);
             await db.SaveChangesAsync();
-            Assert.True(await new NotificationDispatcher(Queue(db), new ThrowingTransport()).ProcessOneAsync());
+            Assert.True(await new NotificationDispatcher(Queue(db), new ThrowingTransport(), NullLogger<NotificationDispatcher>.Instance).ProcessOneAsync());
         }
         await using (var db = create())
             Assert.Equal(MessageState.Suppressed, (await db.AccountMessages.SingleAsync(x => x.Id == suppressed.Id)).State);
@@ -129,6 +135,19 @@ public sealed class ManualClock(DateTimeOffset now) : TimeProvider
     public override DateTimeOffset GetUtcNow() => _now;
     public void Advance(TimeSpan duration) => _now += duration;
 }
+// Records rendered messages only; the exception object is never passed to the logger.
+public sealed class CapturedLogger<T> : ILogger<T>
+{
+    public System.Collections.Concurrent.ConcurrentQueue<string> Messages { get; } = new();
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+    public bool IsEnabled(LogLevel logLevel) => true;
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+    {
+        Assert.Null(exception);
+        Messages.Enqueue(formatter(state, exception));
+    }
+}
+
 public sealed class ThrowingTransport : IEmailTransport
 {
     public Task<DeliveryResult> SendAsync(EmailEnvelope envelope, CancellationToken cancellationToken)

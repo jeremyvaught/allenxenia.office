@@ -395,7 +395,8 @@
       "allenbuilding.application": {
         "type": "Project",
         "dependencies": {
-          "AllenBuilding.Domain": "[1.0.0, )"
+          "AllenBuilding.Domain": "[1.0.0, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )"
         }
       },
       "allenbuilding.domain": {

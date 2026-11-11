@@ -59,7 +59,12 @@ public sealed class NotificationWorker(IServiceScopeFactory scopes, ILogger<Noti
                         break;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
-            catch (Exception) { logger.LogWarning("Notification dispatch could not complete; retrying on the next interval."); }
+            catch (Exception exception)
+            {
+                // Type name only: messages can carry connection details or private text.
+                logger.LogWarning("Notification dispatch could not complete; retrying on the next interval. Failure type: {FailureType}",
+                    exception.GetType().FullName);
+            }
         }
     }
 }

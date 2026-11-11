@@ -24,7 +24,7 @@ public interface IKnowledgeStore
 }
 
 // Pages and future assistant retrieval share this publication and audience boundary.
-public sealed class KnowledgeActions(ICurrentActor current, IKnowledgeStore store)
+public sealed class KnowledgeActions(ICurrentActor current, IKnowledgeStore store, TimeProvider time)
 {
     public async Task<IReadOnlyList<HelpSource>> FindAsync(
         KnowledgeScope scope, string? search = null, Guid? id = null, CancellationToken cancellationToken = default)
@@ -59,7 +59,7 @@ public sealed class KnowledgeActions(ICurrentActor current, IKnowledgeStore stor
         if (command.Id == Guid.Empty || command.Version == Guid.Empty)
             return ContentCode.ValidationFailed;
         try
-        { HelpRevision.Create(command.Id, command.Title, command.Body, command.Audience, actor.UserId, command.ReviewOn, DateTimeOffset.UtcNow); }
+        { HelpRevision.Create(command.Id, command.Title, command.Body, command.Audience, actor.UserId, command.ReviewOn, time.GetUtcNow()); }
         catch (ArgumentException) { return ContentCode.ValidationFailed; }
         return await store.SaveAsync(actor, command, cancellationToken);
     }

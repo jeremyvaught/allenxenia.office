@@ -52,7 +52,7 @@ public static class TelemetryPersistenceContract
         async Task ProcessToAttempt(int target, IEmailTransport transport)
         {
             await using var db = create();
-            var dispatcher = new NotificationDispatcher(Queue(db), transport);
+            var dispatcher = new NotificationDispatcher(Queue(db), transport, Microsoft.Extensions.Logging.Abstractions.NullLogger<NotificationDispatcher>.Instance);
             for (var i = 0; i < 500; i++)
             {
                 if (await db.AccountMessages.AsNoTracking().Where(x => x.Id == messageId).Select(x => x.Attempts).SingleAsync() >= target)

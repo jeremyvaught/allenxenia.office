@@ -1,4 +1,5 @@
 using AllenBuilding.Application.Diagnostics;
+using Microsoft.Extensions.Logging;
 
 namespace AllenBuilding.Application.Notifications;
 
@@ -19,7 +20,7 @@ public interface INotificationQueue
     Task<bool> CompleteAsync(MessageLease lease, DeliveryResult result, CancellationToken cancellationToken);
 }
 
-public sealed class NotificationDispatcher(INotificationQueue queue, IEmailTransport transport)
+public sealed class NotificationDispatcher(INotificationQueue queue, IEmailTransport transport, ILogger<NotificationDispatcher> logger)
 {
     public async Task<bool> ProcessOneAsync(CancellationToken cancellationToken = default)
     {
@@ -44,7 +45,13 @@ public sealed class NotificationDispatcher(INotificationQueue queue, IEmailTrans
         catch (OperationCanceledException) { result = new(DeliveryOutcome.Uncertain, "DeliveryInterrupted"); }
         catch (System.Security.Cryptography.CryptographicException) { result = new(DeliveryOutcome.PermanentFailure, "ProtectedPayloadUnavailable"); }
         catch (System.Text.Json.JsonException) { result = new(DeliveryOutcome.PermanentFailure, "InvalidMessage"); }
-        catch (Exception) { result = new(DeliveryOutcome.Uncertain, "DeliveryUnknown"); }
+        catch (Exception exception)
+        {
+            // Type name only: messages can carry recipients, provider keys or message text.
+            logger.LogWarning("Notification delivery outcome is unknown; the message needs review. Failure type: {FailureType}",
+                exception.GetType().FullName);
+            result = new(DeliveryOutcome.Uncertain, "DeliveryUnknown");
+        }
         // Use an independent bounded token so shutdown cannot abandon the known result in Sending.
         using var completion = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var completed = await queue.CompleteAsync(lease, result, completion.Token);

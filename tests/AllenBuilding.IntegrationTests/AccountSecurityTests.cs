@@ -37,7 +37,8 @@ public sealed class AccountSecurityTests
             using (var scope = host.Services.CreateScope())
             {
                 var queue = scope.ServiceProvider.GetRequiredService<AllenBuilding.Application.Notifications.INotificationQueue>();
-                var dispatcher = new AllenBuilding.Application.Notifications.NotificationDispatcher(queue, new AllenBuilding.Infrastructure.Notifications.LocalInboxTransport(directory));
+                var dispatcher = new AllenBuilding.Application.Notifications.NotificationDispatcher(queue, new AllenBuilding.Infrastructure.Notifications.LocalInboxTransport(directory),
+                    Microsoft.Extensions.Logging.Abstractions.NullLogger<AllenBuilding.Application.Notifications.NotificationDispatcher>.Instance);
                 Assert.True(await dispatcher.ProcessOneAsync());
             }
             var envelope = JsonSerializer.Deserialize<AllenBuilding.Application.Notifications.EmailEnvelope>(await File.ReadAllTextAsync(Directory.GetFiles(directory).Single()))!;
