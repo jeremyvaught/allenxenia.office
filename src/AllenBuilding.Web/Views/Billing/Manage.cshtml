@@ -23,7 +23,7 @@
                 var terms = account.CurrentTerms(today);
                 var overdue = account.OverdueMinorUnits(today);
                 <li class="flex min-w-0 flex-wrap items-center justify-between gap-4 p-5">
-                    <div class="min-w-0"><h3 class="text-xl font-semibold">Suite @account.Suite</h3><p class="break-all text-sm text-muted">@account.PayerEmail</p>
+                    <div class="min-w-0"><h3 class="text-xl font-semibold">Suite @account.Suite</h3><p class="break-words text-sm text-muted">@account.Payer</p>
                         <p class="mt-2 text-sm">@(terms is null ? "No rent terms yet" : BillingDisplay.Usd(terms.AmountMinorUnits) + " a month") · @BillingDisplay.Usd(account.BalanceMinorUnits) owed@(overdue > 0 ? " · " + BillingDisplay.Usd(overdue) + " overdue" : "")@(account.EndedAt is not null ? " · Tenancy ended" : "")</p></div>
                     <a asp-action="ManageAccount" asp-route-id="@account.Id" class="quiet-button">Manage suite @account.Suite billing</a>
                 </li>
@@ -41,7 +41,7 @@
                 <summary class="inline-flex min-h-11 cursor-pointer items-center underline">Open a rent account (@Model.Candidates.Count without one)</summary>
                 <p class="mt-3 max-w-xl text-muted">Opening an account adds no rent or charges. You set the rent terms afterwards.</p>
                 <form asp-action="PrepareOpen" method="post" class="mt-3 max-w-xl space-y-4"><input name="OperationId" value="@Guid.NewGuid()" type="hidden" /><input name="AccountId" value="@Guid.NewGuid()" type="hidden" />
-                    <div><label for="rent-membership" class="mb-2 block">Tenant</label><select id="rent-membership" name="MembershipId" class="field">@foreach (var candidate in Model.Candidates) { <option value="@candidate.MembershipId">Suite @candidate.Suite · @candidate.Email</option> }</select></div>
+                    <div><label for="rent-membership" class="mb-2 block">Tenant</label><select id="rent-membership" name="MembershipId" class="field">@foreach (var candidate in Model.Candidates) { <option value="@candidate.MembershipId">Suite @candidate.Suite · @(candidate.Name ?? candidate.Email)</option> }</select></div>
                     <button class="@(Model.Accounts.Count == 0 ? "button" : "quiet-button")">Review new rent account</button></form>
             </details>
         }

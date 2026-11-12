@@ -11,6 +11,7 @@ public sealed class InviteForm
 public sealed class ActivationForm
 {
     public Guid InvitationId { get; set; }
+    [Required(ErrorMessage = "Enter your name."), StringLength(120), Display(Name = "Your name")] public string Name { get; set; } = "";
     [Required, StringLength(4096)] public string Token { get; set; } = "";
     [Required, StringLength(128, MinimumLength = 12, ErrorMessage = "Use a password between 12 and 128 characters."), DataType(DataType.Password)]
     public string Password { get; set; } = "";

@@ -70,7 +70,7 @@ public sealed class ManagementHttpTests
         var version = await MembershipVersionAsync(host, membership);
         using var browser = host.Browser();
         await host.LoginManagerAsync(browser, managerId);
-        Assert.Matches(@"tenant@example\.test</p>\s*<p[^>]*>Shared office<", await browser.GetStringAsync("/Management"));
+        Assert.Matches(@"tenant@example\.test</p>\s*<p[^>]*>Suite Shared office<", await browser.GetStringAsync("/Management"));
 
         using var missingReason = await Revoke(membership, version, "");
         Assert.Equal(HttpStatusCode.BadRequest, missingReason.StatusCode);
@@ -145,7 +145,7 @@ public sealed class ManagementHttpTests
         Assert.Equal("/Management", granted.Headers.Location?.OriginalString);
         var page = await browser.GetStringAsync("/Management");
         Assert.Contains("Suite access granted to the existing account. Previous memberships and passwords are unchanged.", page);
-        Assert.Matches(@"returning@example\.test</p>\s*<p[^>]*>Second floor<", page);
+        Assert.Matches(@"returning@example\.test</p>\s*<p[^>]*>Suite Second floor<", page);
         using var replay = await Grant(operation, suite, "returning@example.test", "Second lease");
         Assert.Equal(HttpStatusCode.Redirect, replay.StatusCode);
         using var changedReplay = await Grant(operation, suite, "returning@example.test", "Different reason");

@@ -61,8 +61,8 @@ public sealed class BillingController(
         var candidate = (await actions.CandidatesAsync()).SingleOrDefault(x => x.MembershipId == form.MembershipId);
         if (candidate is null)
             return NotFound();
-        return await Review($"Suite {candidate.Suite} · {candidate.Email}", "Open a rent account",
-            [new("Tenant", candidate.Email), new("Suite", candidate.Suite),
+        return await Review($"Suite {candidate.Suite} · {candidate.Name ?? candidate.Email}", "Open a rent account",
+            [new("Tenant", candidate.Name is null ? candidate.Email : $"{candidate.Name} ({candidate.Email})"), new("Suite", candidate.Suite),
              new("What happens", "A rent account is opened for this tenant. No rent terms or charges are added yet.")],
             open: new(form.OperationId, form.AccountId, candidate.MembershipId));
     }

@@ -47,11 +47,17 @@ internal static class SeedVerification
         Exactly("Managers with an authenticator enrolled", users.Count(x => managers.Contains(x.Id) && x.TwoFactorEnabled), 2);
         Exactly("Accounts outside example.test", users.Count(x => x.Email?.EndsWith("@example.test", StringComparison.Ordinal) != true), 0);
 
+        Exactly("Managers shown by name", users.Count(x => managers.Contains(x.Id) &&
+            new[] { DemoContent.Jordan.Name, DemoContent.Casey.Name }.Contains(x.DisplayName)), 2);
+
         var memberships = await db.Memberships.AsNoTracking().ToListAsync();
         var grants = await db.ActiveGrants.AsNoTracking().Select(x => x.MembershipId).ToListAsync();
         var active = memberships.Where(x => x.IsActive(now) && grants.Contains(x.Id)).ToList();
         Exactly("Tenants with access", active.Count, 7);
         Exactly("Suites with exactly one tenant", active.GroupBy(x => x.SuiteId).Count(x => x.Count() == 1), 7);
+        Exactly("Tenants with access who have given a name", active.Count(x =>
+            AllenBuilding.Infrastructure.Identity.PersonName.Of(users.Single(u => u.Id == x.UserId).DisplayName) is not null), 7);
+        Exactly("Name changes recorded for managers", await db.AccountAudits.CountAsync(x => x.Action == "DisplayNameChanged"), 2);
         Exactly("Revoked memberships", memberships.Count(x => x.RevokedAt is not null), 1);
         var invitations = await db.Invitations.AsNoTracking().Where(x => x.AcceptedAt == null).ToListAsync();
         Exactly("Invitations pending", invitations.Count(x => x.RevokedAt is null && x.ExpiresAt > now), 1);

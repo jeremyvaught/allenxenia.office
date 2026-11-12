@@ -213,6 +213,27 @@ public sealed class AccountController(UserManager<OfficeUser> users, SignInManag
         return View("RecoveryIssued", codes);
     }
 
+    [Authorize, HttpGet]
+    public async Task<IActionResult> Name()
+    {
+        var user = (await users.GetUserAsync(User))!;
+        return View(new NameForm { Name = PersonName.Of(user.DisplayName) ?? "" });
+    }
+
+    [Authorize, HttpPost]
+    public async Task<IActionResult> Name(NameForm form)
+    {
+        if (!ModelState.IsValid)
+            return View(form);
+        if (!await security.RenameAsync(users.GetUserId(User)!, form.Name))
+        {
+            ModelState.AddModelError(nameof(form.Name), "Enter a name of up to 120 characters.");
+            return View(form);
+        }
+        TempData["Notice"] = "Name saved.";
+        return RedirectToAction("Index", "Portal");
+    }
+
     [Authorize, HttpGet] public IActionResult Reauthenticate() => View(new ReauthenticateForm());
 
     [Authorize, HttpPost]

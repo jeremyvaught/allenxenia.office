@@ -142,7 +142,7 @@ public sealed class MaintenanceStore(
         var names = await db.Users.AsNoTracking().Where(x => people.Contains(x.Id))
             .Select(x => new { x.Id, x.DisplayName, x.Email }).ToDictionaryAsync(x => x.Id, cancellationToken);
         string Name(string id) => id == order.RequesterUserId
-            ? management && names.TryGetValue(id, out var requester) && !string.IsNullOrEmpty(requester.Email) ? requester.Email + " (tenant)" : "Tenant"
+            ? management && names.TryGetValue(id, out var requester) ? PersonName.Label(requester.DisplayName, requester.Email) + " (tenant)" : "Tenant"
             : names.TryGetValue(id, out var person) && person.DisplayName != "" ? person.DisplayName : "Building manager";
         var history = entries.Select(x => new HistoryEntry(x.Action, x.Status, x.Note, x.Visibility == HistoryVisibility.Internal,
             x.OccurredAt, Name(x.ActorId), x.ActorId == actor.UserId)).ToList();
@@ -168,23 +168,24 @@ public sealed class MaintenanceStore(
         }
         return new(order.Id, order.Version, suite, order.Title, order.Description, order.Location, order.Status,
             order.Priority, order.Trade, order.Resolution, history, assignment, choices,
-            management && names.TryGetValue(order.RequesterUserId, out var submitter) ? submitter.Email : null);
+            management && names.TryGetValue(order.RequesterUserId, out var submitter) ? PersonName.Label(submitter.DisplayName, submitter.Email) : null);
     }
 
     public async Task<IReadOnlyList<RequestMemberChoice>> MembersAsync(Actor actor, bool management, CancellationToken cancellationToken)
     {
         var now = time.GetUtcNow();
-        return await (from membership in db.Memberships.AsNoTracking()
-                      join grant in db.ActiveGrants on membership.Id equals grant.MembershipId
-                      join suite in db.Suites on membership.SuiteId equals suite.Id
-                      join user in db.Users on membership.UserId equals user.Id
-                      where membership.RevokedAt == null && membership.StartsAt <= now && (membership.EndsAt == null || membership.EndsAt > now) &&
-                        (management
-                            ? actor.ManagedBuildings.Contains(suite.BuildingId) &&
-                                db.BuildingManagers.Any(x => x.BuildingId == suite.BuildingId && x.UserId == actor.UserId)
-                            : membership.UserId == actor.UserId)
-                      orderby suite.Name, membership.Id
-                      select new RequestMemberChoice(membership.Id, suite.Name, management ? user.Email : null)).Take(100).ToListAsync(cancellationToken);
+        var rows = await (from membership in db.Memberships.AsNoTracking()
+                          join grant in db.ActiveGrants on membership.Id equals grant.MembershipId
+                          join suite in db.Suites on membership.SuiteId equals suite.Id
+                          join user in db.Users on membership.UserId equals user.Id
+                          where membership.RevokedAt == null && membership.StartsAt <= now && (membership.EndsAt == null || membership.EndsAt > now) &&
+                            (management
+                                ? actor.ManagedBuildings.Contains(suite.BuildingId) &&
+                                    db.BuildingManagers.Any(x => x.BuildingId == suite.BuildingId && x.UserId == actor.UserId)
+                                : membership.UserId == actor.UserId)
+                          orderby suite.Name, membership.Id
+                          select new { membership.Id, Suite = suite.Name, user.DisplayName, user.Email }).Take(100).ToListAsync(cancellationToken);
+        return rows.Select(x => new RequestMemberChoice(x.Id, x.Suite, management ? PersonName.Label(x.DisplayName, x.Email) : null)).ToList();
     }
 
     public async Task<MaintenanceResult> SubmitAsync(

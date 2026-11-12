@@ -18,7 +18,8 @@ public sealed record HistoryEntry(string Action, WorkOrderStatus Status, string?
 public sealed record RequestDetails(Guid Id, Guid Version, string Suite, string Title, string Description, string Location,
     WorkOrderStatus Status, Priority? Priority, Trade? Trade, string? Resolution, IReadOnlyList<HistoryEntry> History,
     string? Assignment = null, IReadOnlyList<AssigneeChoice>? Assignees = null, string? Requester = null);
-public sealed record RequestMemberChoice(Guid Id, string Suite, string? RequesterEmail = null);
+// Requester is the tenant's name, or their email when they have not given one; managers only.
+public sealed record RequestMemberChoice(Guid Id, string Suite, string? Requester = null);
 public sealed record AssigneeChoice(string Value, string Label);
 
 // Feature persistence boundary. Atomic methods serialize current authorization, version,

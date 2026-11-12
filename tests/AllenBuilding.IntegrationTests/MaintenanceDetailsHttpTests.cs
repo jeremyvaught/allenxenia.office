@@ -335,6 +335,54 @@ public sealed class MaintenanceDetailsHttpTests
         Assert.DoesNotContain("Request submitted", html);
     }
 
+    [Fact]
+    public async Task A_tenant_who_gives_a_name_is_shown_by_it_to_managers_with_the_email_where_it_is_needed()
+    {
+        await using var host = new AccountTestHost();
+        await host.InitializeAsync();
+        var (managerId, building) = await host.SeedManagerAsync();
+        var (email, _, member) = await MaintenanceHttpTests.SeedTenants(host, building);
+        using var tenant = host.Browser();
+        await MaintenanceHttpTests.Login(tenant, email);
+        using var manager = host.Browser();
+        await host.LoginManagerAsync(manager, managerId);
+
+        // Until a name is given, the email stands in.
+        Assert.Contains(email, await manager.GetStringAsync("/Maintenance/CreateOnBehalf"));
+        Assert.Contains("Your name", await tenant.GetStringAsync("/Portal"));
+        using var blank = await AccountTestHost.PostAsync(tenant, "/Account/Name", "/Account/Name", ("Name", "   "));
+        Assert.Contains("Enter your name.", await blank.Content.ReadAsStringAsync());
+        using var placeholder = await AccountTestHost.PostAsync(tenant, "/Account/Name", "/Account/Name", ("Name", "Tenant"));
+        Assert.Contains("Enter a name of up to 120 characters.", await placeholder.Content.ReadAsStringAsync());
+        using var named = await AccountTestHost.PostAsync(tenant, "/Account/Name", "/Account/Name", ("Name", "  Dana <b>Example</b> "));
+        Assert.Equal("/Portal", named.Headers.Location?.OriginalString);
+        Assert.Contains("value=\"Dana &lt;b&gt;Example&lt;/b&gt;\"", await tenant.GetStringAsync("/Account/Name"));
+
+        using var submitted = await AccountTestHost.PostAsync(tenant, "/Maintenance/Create", "/Maintenance/Create",
+            ("OperationId", Guid.NewGuid().ToString()), ("MembershipId", member.ToString()), ("Title", "Named request"), ("Description", "Fixture"), ("Location", "Office"));
+        var (id, _) = await Current(host);
+        const string shown = "Dana &lt;b&gt;Example&lt;/b&gt;";
+        var details = await manager.GetStringAsync($"/Maintenance/ManageDetails/{id}");
+        Assert.Contains("Submitted by " + shown, details);
+        Assert.Contains("by " + shown + " (tenant)", details);
+        Assert.DoesNotContain(email, details);
+        Assert.DoesNotContain("<b>Example</b>", details);
+        var choices = await manager.GetStringAsync("/Maintenance/CreateOnBehalf");
+        Assert.Contains("&#xB7; " + shown, choices);
+        Assert.DoesNotContain(email, choices);
+        // Building access keeps the address, because a manager acts on it there.
+        var access = await manager.GetStringAsync("/Management");
+        Assert.Matches(shown + "</p><p[^>]*>" + System.Text.RegularExpressions.Regex.Escape(email) + "</p>", access);
+        Assert.Contains("sent to " + shown + " (tenant)", await manager.GetStringAsync("/Notifications"));
+        // The tenant still reads their own entries as "you", and never sees another person's address.
+        var own = await tenant.GetStringAsync(submitted.Headers.Location!.OriginalString);
+        Assert.Contains("by you", own);
+
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+        Assert.Equal(1, await db.AccountAudits.CountAsync(x => x.Action == "DisplayNameChanged"));
+    }
+
     private static async Task<(Guid Id, Guid Version)> Current(AccountTestHost host)
     {
         using var scope = host.Services.CreateScope();

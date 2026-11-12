@@ -11,13 +11,14 @@ public sealed class BuildingAccessStore(OfficeDbContext db, ICurrentActor curren
     public async Task<BuildingAccessOverview> ReadOverviewAsync(Actor actor, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var buildings = await db.Buildings.AsNoTracking().Where(x => actor.ManagedBuildings.Contains(x.Id)).ToListAsync(cancellationToken);
-        var access = await (from membership in db.Memberships.AsNoTracking()
-                            join suite in db.Suites on membership.SuiteId equals suite.Id
-                            join user in db.Users on membership.UserId equals user.Id
-                            where actor.ManagedBuildings.Contains(suite.BuildingId) && membership.RevokedAt == null
-                            orderby suite.Name, membership.Id
-                            select new AccessRow(membership.Id, membership.Version, suite.Name, user.Email!))
+        var members = await (from membership in db.Memberships.AsNoTracking()
+                             join suite in db.Suites on membership.SuiteId equals suite.Id
+                             join user in db.Users on membership.UserId equals user.Id
+                             where actor.ManagedBuildings.Contains(suite.BuildingId) && membership.RevokedAt == null
+                             orderby suite.Name, membership.Id
+                             select new { membership.Id, membership.Version, Suite = suite.Name, user.Email, user.DisplayName })
             .Take(100).ToListAsync(cancellationToken);
+        var access = members.Select(x => new AccessRow(x.Id, x.Version, x.Suite, x.Email!, PersonName.Of(x.DisplayName))).ToList();
         var invitations = await (from invitation in db.Invitations.AsNoTracking()
                                  join suite in db.Suites on invitation.SuiteId equals suite.Id
                                  join user in db.Users on invitation.UserId equals user.Id

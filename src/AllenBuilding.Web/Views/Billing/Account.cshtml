@@ -18,7 +18,7 @@
 <div class="page">
     @if (manager) { <a asp-action="Manage" class="mb-4 flex min-h-11 items-center underline">Back to billing</a> } else { <a asp-controller="Portal" asp-action="Index" class="mb-4 flex min-h-11 items-center underline">Back to your office</a> }
     <h1 class="mb-2 text-4xl font-semibold">Suite @Model.Suite billing</h1>
-    @if (manager) { <p class="mb-6 break-words text-muted">@Model.PayerEmail</p> }
+    @if (manager) { <p class="mb-6 break-words text-muted">@Model.Payer</p> }
     else if (Model.CollectionAvailable) { <p class="mb-5 max-w-3xl text-muted">Your rent terms and charges. Check the amount before paying.</p><a asp-controller="Payments" asp-action="Index" asp-route-accountId="@Model.Id" class="button mb-6">Review a payment</a> }
     else { <p class="mb-6 max-w-3xl text-muted">Your rent terms, your charges and what you owe. The portal does not take payments; a payment made to building management shows here once a manager records it.</p> }
     @if (ViewData["AutopayAvailable"] is true) { <a asp-controller="Autopay" asp-action="Index" asp-route-accountId="@Model.Id" class="quiet-button mb-6">Manage monthly autopay</a> }

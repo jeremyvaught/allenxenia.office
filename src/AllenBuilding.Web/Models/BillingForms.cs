@@ -64,7 +64,7 @@ public static class BillingDisplay
     // Where a charge stands today, in the words shown beside it.
     public static string Status(ObligationView charge, DateOnly today) =>
         charge.BalanceMinorUnits <= 0 ? "Settled" : charge.DueOn < today ? "Overdue" : charge.BalanceMinorUnits < charge.IssuedMinorUnits ? "Partly settled" : "Not yet due";
-    public static string Label(BillingAccount account) => $"Suite {account.Suite} · {account.PayerEmail}";
+    public static string Label(BillingAccount account) => $"Suite {account.Suite} · {account.Payer}";
     public static long MinorUnits(decimal amount, long minimumMinorUnits = 50)
     {
         if (minimumMinorUnits is < 1 or > 50 || amount < minimumMinorUnits / 100m || amount > 999999.99m || decimal.Truncate(amount * 100m) != amount * 100m)

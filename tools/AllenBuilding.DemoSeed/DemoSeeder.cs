@@ -221,12 +221,10 @@ public sealed class DemoSeeder
     private async Task BootstrapAsync(IServiceProvider sp)
     {
         await sp.GetRequiredService<BootstrapManager>().CreateAsync(DemoContent.Jordan.Email, DemoContent.Password);
-        var users = sp.GetRequiredService<UserManager<OfficeUser>>();
-        var manager = (await users.FindByEmailAsync(DemoContent.Jordan.Email))!;
-        // The app has no page for display names yet; assignments show this name.
-        manager.DisplayName = DemoContent.Jordan.Name;
-        Require((await users.UpdateAsync(manager)).Succeeded, "name the first manager");
+        var manager = (await sp.GetRequiredService<UserManager<OfficeUser>>().FindByEmailAsync(DemoContent.Jordan.Email))!;
         _users[DemoContent.Jordan.Key] = manager.Id;
+        // The same step as the "Your name" page.
+        Require(await sp.GetRequiredService<AccountSecurity>().RenameAsync(manager.Id, DemoContent.Jordan.Name), "name the first manager");
         _building = await sp.GetRequiredService<OfficeDbContext>().Buildings.Select(x => x.Id).SingleAsync();
     }
 
@@ -234,12 +232,13 @@ public sealed class DemoSeeder
     private async Task AddSecondManagerAsync(IServiceProvider sp)
     {
         var casey = DemoContent.Casey;
-        var user = new OfficeUser { Email = casey.Email, UserName = casey.Email, EmailConfirmed = true, DisplayName = casey.Name };
+        var user = new OfficeUser { Email = casey.Email, UserName = casey.Email, EmailConfirmed = true };
         Require((await sp.GetRequiredService<UserManager<OfficeUser>>().CreateAsync(user, DemoContent.Password)).Succeeded, "create the second manager");
         var db = sp.GetRequiredService<OfficeDbContext>();
         db.BuildingManagers.Add(new BuildingManager { BuildingId = _building, UserId = user.Id });
         await db.SaveChangesAsync();
         _users[casey.Key] = user.Id;
+        Require(await sp.GetRequiredService<AccountSecurity>().RenameAsync(user.Id, casey.Name), "name the second manager");
     }
 
     // The same enrollment the Account pages run after a manager proves an authenticator code.
@@ -321,7 +320,7 @@ public sealed class DemoSeeder
         using var message = JsonDocument.Parse(sp.GetRequiredService<IDataProtectionProvider>()
             .CreateProtector("AllenOffice.AccountMessage.v1").Unprotect(payload));
         var accepted = await sp.GetRequiredService<AccountInvitations>().AcceptAsync(
-            _invitations[contact.Key], message.RootElement.GetProperty("token").GetString()!, DemoContent.Password);
+            _invitations[contact.Key], message.RootElement.GetProperty("token").GetString()!, DemoContent.Password, contact.Name);
         Require(accepted, "accept the invitation for " + contact.Email);
         _memberships[contact.Key] = await db.Memberships.Where(x => x.UserId == userId).Select(x => x.Id).SingleAsync();
     }

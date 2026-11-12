@@ -122,7 +122,7 @@ public static class AccessContract
         Assert.Equal(AccessCode.Success, await As(manager, sp => sp.GetRequiredService<AccountInvitations>().ChangeAsync(first.Id, first.Version, false, "New link approved")));
         var reissued = await ReadInvitation(first.Id);
         Assert.NotEqual(first.Token, reissued.Token);
-        Assert.False(await As(null, sp => sp.GetRequiredService<AccountInvitations>().AcceptAsync(first.Id, first.Token, AccountTestHost.Password)));
+        Assert.False(await As(null, sp => sp.GetRequiredService<AccountInvitations>().AcceptAsync(first.Id, first.Token, AccountTestHost.Password, "Contract Tenant")));
         Assert.Equal(AccessCode.Conflict, await As(manager, sp => sp.GetRequiredService<AccountInvitations>().ChangeAsync(first.Id, first.Version, true, "Stale manager form")));
         // A queued superseded token is suppressed even if a dispatcher has already claimed it.
         using (var scope = provider.CreateScope())
@@ -136,18 +136,18 @@ public static class AccessContract
             Assert.Null(await queue.ComposeAsync(new(message.Id, message.LeaseToken), default));
         }
         Assert.Equal(AccessCode.Success, await As(manager, sp => sp.GetRequiredService<AccountInvitations>().ChangeAsync(reissued.Id, reissued.Version, true, "Invitation withdrawn")));
-        Assert.False(await As(null, sp => sp.GetRequiredService<AccountInvitations>().AcceptAsync(reissued.Id, reissued.Token, AccountTestHost.Password)));
+        Assert.False(await As(null, sp => sp.GetRequiredService<AccountInvitations>().AcceptAsync(reissued.Id, reissued.Token, AccountTestHost.Password, "Contract Tenant")));
         using (var scope = provider.CreateScope())
         {
             var version = (await scope.ServiceProvider.GetRequiredService<OfficeDbContext>().Invitations.SingleAsync(x => x.Id == first.Id)).Version;
             Assert.Equal(AccessCode.Success, await As(manager, sp => sp.GetRequiredService<AccountInvitations>().ChangeAsync(first.Id, version, false, "Explicitly approve a fresh invitation")));
         }
         var approved = await ReadInvitation(first.Id);
-        Assert.True(await As(null, sp => sp.GetRequiredService<AccountInvitations>().AcceptAsync(approved.Id, approved.Token, AccountTestHost.Password)));
-        Assert.False(await As(null, sp => sp.GetRequiredService<AccountInvitations>().AcceptAsync(approved.Id, approved.Token, AccountTestHost.Password)));
+        Assert.True(await As(null, sp => sp.GetRequiredService<AccountInvitations>().AcceptAsync(approved.Id, approved.Token, AccountTestHost.Password, "Contract Tenant")));
+        Assert.False(await As(null, sp => sp.GetRequiredService<AccountInvitations>().AcceptAsync(approved.Id, approved.Token, AccountTestHost.Password, "Contract Tenant")));
         Assert.Equal(AccessCode.Conflict, await As(manager, sp => sp.GetRequiredService<AccountInvitations>().ChangeAsync(approved.Id, approved.Version, false, "Cannot replace an accepted account")));
         var racing = await Invitation($"access-race-{Guid.NewGuid():N}@example.test");
-        var acceptance = Task.Run(() => As(null, sp => sp.GetRequiredService<AccountInvitations>().AcceptAsync(racing.Id, racing.Token, AccountTestHost.Password)));
+        var acceptance = Task.Run(() => As(null, sp => sp.GetRequiredService<AccountInvitations>().AcceptAsync(racing.Id, racing.Token, AccountTestHost.Password, "Contract Tenant")));
         var revocation = Task.Run(() => As(second, sp => sp.GetRequiredService<AccountInvitations>().ChangeAsync(racing.Id, racing.Version, true, "Revoke during activation")));
         await Task.WhenAll(acceptance, revocation);
         Assert.True(acceptance.Result ? revocation.Result == AccessCode.Conflict : revocation.Result == AccessCode.Success);

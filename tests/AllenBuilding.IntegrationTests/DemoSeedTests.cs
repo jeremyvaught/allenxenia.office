@@ -21,6 +21,8 @@ public sealed class DemoSeedTests
                 ["Suites"] = 7,
                 ["Managers with an authenticator enrolled"] = 2,
                 ["Tenants with access"] = 7,
+                ["Tenants with access who have given a name"] = 7,
+                ["Managers shown by name"] = 2,
                 ["Revoked memberships"] = 1,
                 ["Invitations pending"] = 1,
                 ["Invitations expired"] = 1,

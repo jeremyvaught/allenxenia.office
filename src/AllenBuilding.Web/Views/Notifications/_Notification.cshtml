@@ -5,7 +5,7 @@
     <p class="mt-2 text-sm text-muted">@OfficeTime.Timestamp(Model.CreatedAt)@(Model.Attempts > 0 ? " · tried " + Model.Attempts + (Model.Attempts == 1 ? " time" : " times") : "")</p>
     @if (Model.About is { } about)
     {
-        <p class="mt-2 break-words"><a asp-controller="Maintenance" asp-action="ManageDetails" asp-route-id="@about.WorkOrderId" class="underline">@about.Title</a> · Suite @about.Suite · @(about.ToRequester ? "sent to the tenant" : about.ManagerName is null ? "sent to a manager" : "sent to " + about.ManagerName)</p>
+        <p class="mt-2 break-words"><a asp-controller="Maintenance" asp-action="ManageDetails" asp-route-id="@about.WorkOrderId" class="underline">@about.Title</a> · Suite @about.Suite · @(about.RecipientName is { } name ? "sent to " + name + (about.ToRequester ? " (tenant)" : "") : about.ToRequester ? "sent to the tenant" : "sent to a manager")</p>
     }
     @if (Model.ResetRecipient is not null) { <p class="mt-2 break-words">Account: @Model.ResetRecipient</p> }
     @if (Model.State == MessageState.NeedsReview)
