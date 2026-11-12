@@ -170,7 +170,7 @@ public static class MaintenanceContract
         Assert.Equal(MaintenanceCode.Unavailable, (await As(manager with { ChallengedMfa = false }, sp => sp.GetRequiredService<MaintenanceActions>().SubmitOnBehalfAsync(onBehalf))).Code);
         Assert.DoesNotContain(await As(peer, sp => sp.GetRequiredService<MaintenanceActions>().MembersAsync(true)), x => x.Id == membershipId);
         Assert.Contains(await As(manager, sp => sp.GetRequiredService<MaintenanceActions>().MembersAsync(true)), x => x.Id == membershipId);
-        Assert.All(await As(tenant, sp => sp.GetRequiredService<MaintenanceActions>().MembersAsync(false)), x => Assert.Null(x.RequesterEmail));
+        Assert.All(await As(tenant, sp => sp.GetRequiredService<MaintenanceActions>().MembersAsync(false)), x => Assert.Null(x.Requester));
         var behalfResults = await Task.WhenAll(
             Task.Run(() => As(manager, sp => sp.GetRequiredService<MaintenanceActions>().SubmitOnBehalfAsync(onBehalf))),
             Task.Run(() => As(manager, sp => sp.GetRequiredService<MaintenanceActions>().SubmitOnBehalfAsync(onBehalf))));

@@ -15,7 +15,7 @@
         </nav>
     </section>
     <section aria-labelledby="recent-heading">
-        <h2 id="recent-heading" class="mb-4 text-2xl font-semibold">Recently sent</h2>
+        <h2 id="recent-heading" class="mb-4 text-2xl font-semibold">Recent emails</h2>
         <ul class="space-y-4">
         @foreach (var message in Model.Recent) { <partial name="_Notification" model="message" /> }
         </ul>

@@ -27,8 +27,9 @@
         @foreach (var access in Model.Access)
         {
             <li class="p-5">
-                <p class="break-all font-semibold">@access.Email</p>
-                <p class="text-sm text-muted">@access.Suite</p>
+                @if (access.Name is not null) { <p class="break-words font-semibold">@access.Name</p><p class="break-all text-sm text-muted">@access.Email</p> }
+                else { <p class="break-all font-semibold">@access.Email</p> }
+                <p class="text-sm text-muted">Suite @access.Suite</p>
                 <details class="mt-2">
                     <summary class="@opener">Remove access</summary>
                     <form asp-action="Revoke" method="post" class="mt-3 max-w-xl space-y-3">

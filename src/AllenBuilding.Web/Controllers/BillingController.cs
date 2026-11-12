@@ -11,7 +11,7 @@ namespace AllenBuilding.Web.Controllers;
 [Authorize, RequiresBilling, ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class BillingController(
     BillingActions actions, ICurrentActor current, BillingReviewTickets tickets, IConfiguration configuration, TimeProvider time,
-    CollectionPolicy collection, AutopayPolicy autopay) : Controller
+    CollectionPolicy collection, AutopayPolicy autopay, LocalCreditActions credits, BillingFeatures features) : Controller
 {
     private bool Enabled => configuration.GetValue<bool>("Billing:PlanningEnabled");
     [HttpGet]
@@ -19,8 +19,12 @@ public sealed class BillingController(
     {
         if (!Enabled)
             return NotFound();
-        ViewData["CollectionAvailable"] = collection.Enabled;
-        return View(await actions.ReadAsync(false));
+        var accounts = await actions.ReadAsync(false);
+        // Nearly every tenant has one account, so skip the one-item list.
+        if (accounts.Count == 1)
+            return RedirectToAction(nameof(Account), new { id = accounts[0].Id });
+        ViewData["Today"] = BillingDisplay.Today(time);
+        return View(accounts);
     }
     // Stripe success and cancel share a status-only return; query parameters never settle money.
     [HttpGet]
@@ -28,10 +32,22 @@ public sealed class BillingController(
     [HttpGet]
     public async Task<IActionResult> Account(Guid id) => await AccountView(id, false);
     [Authorize(Policy = OfficeSecurity.ManagerPolicy), HttpGet]
-    public async Task<IActionResult> Manage() =>
-        Enabled ? View(new BillingManagement(await actions.ReadAsync(true), await actions.CandidatesAsync())) : NotFound();
-    [Authorize(Policy = OfficeSecurity.ManagerPolicy), HttpGet]
-    public async Task<IActionResult> Closures() => Enabled ? View(await actions.ClosuresAsync()) : NotFound();
+    public async Task<IActionResult> Manage()
+    {
+        if (!Enabled)
+            return NotFound();
+        ViewData["Today"] = BillingDisplay.Today(time);
+        ViewData["FinancialReview"] = features.FinancialReview;
+        return View(new BillingManagement(await actions.ReadAsync(true), await actions.CandidatesAsync()));
+    }
+    [Authorize(Policy = OfficeSecurity.ManagerPolicy), RequiresFinancialReview, HttpGet]
+    public async Task<IActionResult> Closures()
+    {
+        if (!Enabled)
+            return NotFound();
+        ViewData["FinancialReview"] = features.FinancialReview;
+        return View(await actions.ClosuresAsync());
+    }
     [Authorize(Policy = OfficeSecurity.ManagerPolicy), HttpGet]
     public async Task<IActionResult> ManageAccount(Guid id) => await AccountView(id, true);
 
@@ -45,9 +61,9 @@ public sealed class BillingController(
         var candidate = (await actions.CandidatesAsync()).SingleOrDefault(x => x.MembershipId == form.MembershipId);
         if (candidate is null)
             return NotFound();
-        return await Review($"{candidate.Suite} · {candidate.Email} · membership {candidate.MembershipId:D}", "Open rent account",
-            [new("Original membership", candidate.MembershipId.ToString("D")),
-             new("Effect", "Create an account for this membership. No rent terms or charges are created.")],
+        return await Review($"Suite {candidate.Suite} · {candidate.Name ?? candidate.Email}", "Open a rent account",
+            [new("Tenant", candidate.Name is null ? candidate.Email : $"{candidate.Name} ({candidate.Email})"), new("Suite", candidate.Suite),
+             new("What happens", "A rent account is opened for this tenant. No rent terms or charges are added yet.")],
             open: new(form.OperationId, form.AccountId, candidate.MembershipId));
     }
 
@@ -75,13 +91,13 @@ public sealed class BillingController(
         catch (ArgumentException) { return Failure(BillingCode.ValidationFailed); }
         if (command.ReplacesId is { } priorId && !account.Terms.Any(x => x.Id == priorId && x.SupersededBy == null))
             return Failure(BillingCode.Conflict);
-        return await Review(BillingDisplay.Label(account), command.ReplacesId is null ? "Set calendar rent terms" : "Replace calendar rent terms",
-            [new("Monthly rent", BillingDisplay.Usd(command.AmountMinorUnits) + " USD"),
-             new("Due day", $"{command.DueDay}; clamps to the last day of shorter months"),
-             new("Starts on", command.StartsOn.ToString("yyyy-MM-dd")), new("Ends before", command.EndsOn?.ToString("yyyy-MM-dd") ?? "No end date"),
-             new("Replaces agreement", command.ReplacesId?.ToString("D") ?? "None"),
-             new("Effect",
-                 "Whole calendar months only. Already-issued amounts and due dates stay unchanged. This does not enroll autopay or collect a payment.")],
+        return await Review(BillingDisplay.Label(account), command.ReplacesId is null ? "Set rent terms" : "Change rent terms",
+            [new("Monthly rent", BillingDisplay.Usd(command.AmountMinorUnits)),
+             new("Due each month on", $"the {BillingDisplay.Ordinal(command.DueDay)}, or the last day of a shorter month"),
+             new("Starts", BillingDisplay.Day(command.StartsOn)), new("Ends", command.EndsOn is { } ends ? "before " + BillingDisplay.Day(ends) : "No end date"),
+             new("Replaces", command.ReplacesId is { } replaced && account.Terms.SingleOrDefault(x => x.Id == replaced) is { } old
+                 ? $"{BillingDisplay.Usd(old.AmountMinorUnits)} a month from {BillingDisplay.Day(old.StartsOn)}" : "Nothing"),
+             new("What happens", "These terms apply to rent charged for whole months from the start date. Charges already added keep their amount and due date.")],
             terms: command);
     }
 
@@ -105,10 +121,10 @@ public sealed class BillingController(
             Obligation.Issue(account.Id, new Money(command.AmountMinorUnits), command.Description, command.DueOn, "review", time.GetUtcNow());
         }
         catch (ArgumentException) { return Failure(BillingCode.ValidationFailed); }
-        return await Review(BillingDisplay.Label(account), "Issue one-time charge",
-            [new("Issued amount", BillingDisplay.Usd(command.AmountMinorUnits) + " USD"), new("Description", command.Description),
-             new("Due on", command.DueOn.ToString("yyyy-MM-dd")),
-             new("Effect", "Record this obligation. No payment is collected.")], charge: command);
+        return await Review(BillingDisplay.Label(account), "Add a one-time charge",
+            [new("Amount", BillingDisplay.Usd(command.AmountMinorUnits)), new("Description", command.Description),
+             new("Due", BillingDisplay.Day(command.DueOn)),
+             new("What happens", "The charge is added to this tenant's account. No payment is taken.")], charge: command);
     }
 
     [Authorize(Policy = OfficeSecurity.RecentManagerPolicy), HttpPost]
@@ -128,13 +144,13 @@ public sealed class BillingController(
             return Failure(BillingCode.NoFullPeriod);
         if (preview.AccountVersion != account.Version)
             return Failure(BillingCode.Conflict);
-        return await Review(BillingDisplay.Label(account), preview.AlreadyIssued ? "Review already-issued rent period" : "Issue calendar rent",
-            [new("Issued amount", BillingDisplay.Usd(preview.AmountMinorUnits) + " USD"),
-             new("Period starts", preview.StartsOn.ToString("yyyy-MM-dd")), new("Period ends before", preview.EndsOn.ToString("yyyy-MM-dd")),
-             new("Due on", preview.DueOn.ToString("yyyy-MM-dd")),
-             new("Effect", preview.AlreadyIssued
-                 ? "Return the existing obligation. This cannot charge the same period again."
-                 : "Record one rent obligation for this whole month. No payment is collected.")],
+        var monthName = preview.StartsOn.ToString("MMMM yyyy", System.Globalization.CultureInfo.GetCultureInfo("en-US"));
+        return await Review(BillingDisplay.Label(account), preview.AlreadyIssued ? "Rent already charged for " + monthName : "Charge rent for " + monthName,
+            [new("Amount", BillingDisplay.Usd(preview.AmountMinorUnits)), new("Month", monthName),
+             new("Due", BillingDisplay.Day(preview.DueOn)),
+             new("What happens", preview.AlreadyIssued
+                 ? "Rent for this month is already on the account. Confirming adds nothing; a month is never charged twice."
+                 : "One rent charge for this month is added to the account. No payment is taken.")],
             rent: new(form.OperationId, account.Id, account.Version, form.Year, form.Month));
     }
 
@@ -153,13 +169,39 @@ public sealed class BillingController(
         var actor = await current.GetAsync();
         if (actor is not { ChallengedMfa: true, RecentMfa: true })
             return Forbid();
-        return View("Review", tickets.Create(new(actor.UserId, time.GetUtcNow(), BillingDisplay.Label(account), "End tenancy and revoke access",
-            [new("Access", "Revoke this original membership immediately upon confirmation. Other memberships are unchanged."),
-             new("Billing",
-                 "Prevent new ordinary charges and rent terms for this account. Keep existing debt, credits, payments and provider instructions for reconciliation."),
-             new("Provider cleanup",
-                 "Billing closure remains pending. This action does not verify a Stripe cancellation or recall an already-dispatched payment."),
+        return View("Review", tickets.Create(new(actor.UserId, time.GetUtcNow(), BillingDisplay.Label(account), "End this tenancy",
+            [new("Portal access", "Removed as soon as you confirm. Any other suite this person has is not affected."),
+             new("Billing", "No new charges or rent terms can be added to this account. What is already owed, credited or paid stays on record."),
              new("Reason", command.Reason.Trim())], End: command with { Reason = command.Reason.Trim() })));
+    }
+
+    [Authorize(Policy = OfficeSecurity.RecentManagerPolicy), HttpPost]
+    public async Task<IActionResult> PrepareCredit(CreditForm form)
+    {
+        if (!Enabled)
+            return NotFound();
+        if (!ModelState.IsValid || form.OperationId == Guid.Empty || form.ObligationId == Guid.Empty || !Enum.IsDefined(form.Kind))
+            return Failure(BillingCode.ValidationFailed);
+        var account = (await actions.ReadAsync(true, accountId: form.AccountId)).SingleOrDefault();
+        var charge = account?.Obligations.SingleOrDefault(x => x.Id == form.ObligationId);
+        if (account is null || charge is null)
+            return NotFound();
+        if (charge.Version != form.Version)
+            return Failure(BillingCode.Conflict);
+        long amount;
+        try
+        { amount = BillingDisplay.MinorUnits(form.Amount!.Value, 1); }
+        catch (ArgumentException) { return Failure(BillingCode.ValidationFailed); }
+        if (amount > charge.BalanceMinorUnits)
+            return Failure(BillingCode.ValidationFailed);
+        var writeOff = form.Kind == ObligationCreditKind.WriteOff;
+        return await Review(BillingDisplay.Label(account), writeOff ? "Write off part of a charge" : "Record a credit",
+            [new("Charge", $"{BillingDisplay.Charge(charge.Description)}, due {BillingDisplay.Day(charge.DueOn)}"),
+             new(writeOff ? "Amount written off" : "Amount credited", BillingDisplay.Usd(amount)),
+             new("Still owed on this charge afterwards", BillingDisplay.Usd(charge.BalanceMinorUnits - amount)),
+             new("Reason", form.Reason.Trim()),
+             new("What happens", "The amount owed on this charge goes down. This records a decision by management; it does not take or verify a payment, and it cannot be undone here.")],
+            credit: new(form.OperationId, account.Id, charge.Id, charge.Version, amount, form.Kind, form.Reason.Trim()));
     }
 
     [Authorize(Policy = OfficeSecurity.RecentManagerPolicy), HttpPost]
@@ -180,13 +222,21 @@ public sealed class BillingController(
             { Terms: { } command } => await actions.TermsAsync(command),
             { Charge: { } command } => await actions.ChargeAsync(command),
             { Rent: { } command } => await actions.RentAsync(command),
+            { Credit: { } command } => await credits.ApplyAsync(command),
             _ => new(BillingCode.ValidationFailed)
         };
         if (result.Code != BillingCode.Success)
             return Failure(result.Code);
-        TempData["Notice"] = review.End is not null
-            ? "Tenancy access ended. Billing closure is pending provider reconciliation."
-            : "Reviewed billing change recorded. Payment collection remains unavailable.";
+        TempData["Notice"] = review switch
+        {
+            { End: not null } => "Tenancy ended. Portal access is removed and no new charges can be added.",
+            { Open: not null } => "Rent account opened. Set the rent terms next.",
+            { Terms: not null } => "Rent terms saved.",
+            { Charge: not null } => "Charge added.",
+            { Rent: not null } => "Rent charged.",
+            { Credit.Kind: ObligationCreditKind.WriteOff } => "Write-off recorded.",
+            _ => "Credit recorded."
+        };
         return RedirectToAction(nameof(ManageAccount), new { id = result.AccountId });
     }
 
@@ -199,16 +249,17 @@ public sealed class BillingController(
             return NotFound();
         ViewData["Manager"] = management;
         ViewData["AutopayAvailable"] = !management && autopay.Enabled;
-        ViewData["Today"] = DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
+        ViewData["Today"] = BillingDisplay.Today(time);
+        ViewData["FinancialReview"] = features.FinancialReview;
         return View("Account", account with { CollectionAvailable = !management && collection.Enabled });
     }
     private async Task<IActionResult> Review(string account, string heading, IReadOnlyList<BillingReviewLine> lines,
-        OpenRentAccount? open = null, SetRentTerms? terms = null, IssueCharge? charge = null, IssueRent? rent = null)
+        OpenRentAccount? open = null, SetRentTerms? terms = null, IssueCharge? charge = null, IssueRent? rent = null, CreditLocalDebt? credit = null)
     {
         var actor = await current.GetAsync();
         if (actor is not { ChallengedMfa: true, RecentMfa: true })
             return Forbid();
-        return View("Review", tickets.Create(new(actor.UserId, time.GetUtcNow(), account, heading, lines, open, terms, charge, rent)));
+        return View("Review", tickets.Create(new(actor.UserId, time.GetUtcNow(), account, heading, lines, open, terms, charge, rent, Credit: credit)));
     }
     private IActionResult Failure(BillingCode code)
     {

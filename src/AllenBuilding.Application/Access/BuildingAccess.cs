@@ -2,7 +2,7 @@ using AllenBuilding.Domain.Tenancy;
 
 namespace AllenBuilding.Application.Access;
 
-public sealed record AccessRow(Guid Id, Guid Version, string Suite, string Email);
+public sealed record AccessRow(Guid Id, Guid Version, string Suite, string Email, string? Name = null);
 public sealed record InvitationRow(Guid Id, Guid Version, string Suite, string Email, DateTimeOffset ExpiresAt, string Status);
 public sealed record BuildingAccessOverview(
     IReadOnlyList<Building> Buildings, IReadOnlyList<Suite> Suites, IReadOnlyList<AccessRow> Access, IReadOnlyList<InvitationRow> Invitations);

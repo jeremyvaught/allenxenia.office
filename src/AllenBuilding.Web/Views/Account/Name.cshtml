@@ -1,0 +1,3 @@
+@model NameForm
+@{ ViewData["Title"] = "Your name"; }
+<div class="page"><section class="form-panel"><h1 class="mb-3 text-3xl font-semibold">Your name</h1><p class="mb-6 text-muted">The name building management and tenants see on your requests, comments and assignments.</p><form asp-action="Name" method="post" class="space-y-5"><div asp-validation-summary="All" role="alert"></div><div><label asp-for="Name" class="mb-2 block"></label><input asp-for="Name" class="field" autocomplete="name" maxlength="120" /></div><button class="button w-full">Save name</button></form><a asp-controller="Portal" asp-action="Index" class="mt-4 flex min-h-11 items-center underline">Back to your office</a></section></div>

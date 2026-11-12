@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\AllenBuilding.Web\AllenBuilding.Web.csproj" />
+    <ProjectReference Include="..\..\tools\AllenBuilding.DemoSeed\AllenBuilding.DemoSeed.csproj" />
   </ItemGroup>
 
 </Project>

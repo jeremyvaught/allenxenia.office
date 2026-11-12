@@ -8,7 +8,7 @@ namespace AllenBuilding.Web.Security;
 public sealed record BillingReviewLine(string Label, string Value);
 public sealed record BillingReview(string ActorId, DateTimeOffset PreparedAt, string AccountLabel, string Heading,
     IReadOnlyList<BillingReviewLine> Lines, OpenRentAccount? Open = null, SetRentTerms? Terms = null, IssueCharge? Charge = null,
-    IssueRent? Rent = null, ApplyRefundDisposition? Refund = null, EndTenancy? End = null);
+    IssueRent? Rent = null, ApplyRefundDisposition? Refund = null, EndTenancy? End = null, CreditLocalDebt? Credit = null);
 public sealed record BillingReviewPage(BillingReview Review, string Ticket);
 
 // Only this server can mint a review. The confirm POST accepts the protected ticket,
@@ -27,7 +27,7 @@ public sealed class BillingReviewTickets(IDataProtectionProvider protection, Tim
             if (review is null || review.ActorId != actorId || review.PreparedAt > time.GetUtcNow() ||
                 time.GetUtcNow() - review.PreparedAt > TimeSpan.FromMinutes(5))
                 return null;
-            var commands = new object?[] { review.Open, review.Terms, review.Charge, review.Rent, review.Refund, review.End };
+            var commands = new object?[] { review.Open, review.Terms, review.Charge, review.Rent, review.Refund, review.End, review.Credit };
             return commands.Count(x => x is not null) == 1 ? review : null;
         }
         catch (CryptographicException) { return null; }

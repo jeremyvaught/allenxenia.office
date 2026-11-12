@@ -12,7 +12,7 @@
         }
     }
     <a asp-action="@(manager ? "Manage" : "Index")" class="mb-6 flex min-h-11 items-center underline">@(manager ? "Back to the maintenance queue" : "Back to your requests")</a>
-    <div class="mb-8"><p class="mb-2 text-sm text-muted">@Model.Suite · @MaintenanceText.Status(Model.Status)</p><h1 class="break-words text-3xl font-semibold sm:text-4xl">@Model.Title</h1></div>
+    <div class="mb-8"><p class="mb-2 break-words text-sm text-muted">@Model.Suite · @MaintenanceText.Status(Model.Status)@(Model.Requester is null ? "" : " · Submitted by " + Model.Requester)</p><h1 class="break-words text-3xl font-semibold sm:text-4xl">@Model.Title</h1></div>
     <div class="grid items-start gap-6 lg:grid-cols-3">
         <div class="min-w-0 space-y-6 lg:col-span-2">
             <section class="rounded-2xl border border-line bg-panel p-6">
@@ -27,14 +27,14 @@
                     <input name="OperationId" value="@(draft?.Action == MaintenanceAction.Comment ? draft.OperationId : Guid.NewGuid())" type="hidden" /><input name="WorkOrderId" value="@Model.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" /><input name="Action" value="Comment" type="hidden" />
                     <label for="comment" class="block">Your comment</label><textarea id="comment" name="Note" maxlength="2000" rows="4" required class="field">@(draft?.Action == MaintenanceAction.Comment ? draft.Note : null)</textarea>
                     @if (manager) { <label class="flex min-h-11 items-center gap-3"><input name="Internal" value="true" type="checkbox" checked="@(draft?.Action == MaintenanceAction.Comment && draft.Internal)" /> Internal note — visible only to management</label> }
-                    <button class="button">Add comment</button>
+                    <button class="@(manager ? "quiet-button" : "button")">Add comment</button>
                 </form>
             </section>
             <section class="rounded-2xl border border-line bg-panel p-6">
                 <h2 class="mb-5 text-xl font-semibold">Request history</h2><ol class="space-y-5">
                 @foreach (var entry in Model.History)
                 {
-                    <li class="border-l-2 border-line pl-4"><p class="font-semibold">@MaintenanceText.History(entry.Action)@(entry.Internal ? " · Internal note" : "")</p><time datetime="@entry.At.ToString("O")" class="text-sm text-muted">@OfficeTime.Timestamp(entry.At)</time>
+                    <li class="border-l-2 border-line pl-4"><p class="break-words font-semibold">@MaintenanceText.HistoryTitle(entry)</p><p class="text-sm text-muted"><time datetime="@entry.At.ToString("O")">@OfficeTime.Timestamp(entry.At)</time>@(entry.Action == "Comment" || entry.By is null ? "" : entry.Mine ? " · by you" : " · by " + entry.By)</p>
                         @if (entry.Note is not null) { <p class="mt-2 whitespace-pre-wrap break-words">@entry.Note</p> }
                     </li>
                 }
@@ -57,9 +57,17 @@
                     if (Model.Status is not (WorkOrderStatus.Closed or WorkOrderStatus.Cancelled)) choices.Add(MaintenanceAction.Cancel);
                     if (Model.Status is WorkOrderStatus.Closed or WorkOrderStatus.Completed or WorkOrderStatus.Cancelled) choices.Add(MaintenanceAction.Reopen);
                 }
+                @{
+                    // One solid button: the step that moves this request forward.
+                    var main = choices.FirstOrDefault(x => x is MaintenanceAction.Triage or MaintenanceAction.Start or MaintenanceAction.Complete or MaintenanceAction.Close);
+                    if (Model.Status == WorkOrderStatus.Triaged) { main = MaintenanceAction.AssignSelf; }
+                }
                 @foreach (var action in choices)
                 {
-                    <form asp-action="ManageChange" method="post" class="mb-5 space-y-3 border-b border-line pb-5">
+                    var cancelling = action == MaintenanceAction.Cancel;
+                    @if (cancelling) { @:<details@(draft?.Action == action ? " open" : "") class="mb-5 border-b border-line pb-5 last:mb-0 last:border-b-0 last:pb-0"><summary class="inline-flex min-h-11 cursor-pointer items-center underline">Cancel this request</summary>
+                    }
+                    <form asp-action="ManageChange" method="post" class="@(cancelling ? "mt-3 space-y-3" : "mb-5 space-y-3 border-b border-line pb-5 last:mb-0 last:border-b-0 last:pb-0")">
                         <input name="OperationId" value="@(draft?.Action == action ? draft.OperationId : Guid.NewGuid())" type="hidden" /><input name="WorkOrderId" value="@Model.Id" type="hidden" /><input name="Version" value="@Model.Version" type="hidden" /><input name="Action" value="@action" type="hidden" />
                         @if (action == MaintenanceAction.Assign)
                         {
@@ -75,8 +83,10 @@
                         {
                             <label for="note-@action" class="block">@(action == MaintenanceAction.Complete ? "Resolution" : action == MaintenanceAction.Cancel ? "Reason for cancelling the request" : "Reason for reopening the request")</label><textarea id="note-@action" name="Note" maxlength="2000" rows="3" required class="field">@(draft?.Action == action ? draft.Note : null)</textarea>
                         }
-                        <button class="quiet-button w-full">@(action == MaintenanceAction.AssignSelf ? "Assign to me" : action == MaintenanceAction.Assign ? "Save assignment" : action == MaintenanceAction.Close ? "Verify work and close" : action == MaintenanceAction.Cancel ? "Cancel request" : action.ToString())</button>
+                        <button class="@(choices.Contains(main) && action == main ? "button" : "quiet-button") w-full">@(action == MaintenanceAction.AssignSelf ? "Assign to me" : action == MaintenanceAction.Assign ? "Save assignment" : action == MaintenanceAction.Close ? "Verify work and close" : action == MaintenanceAction.Cancel ? "Cancel request" : action.ToString())</button>
                     </form>
+                    @if (cancelling) { @:</details>
+                    }
                 }
             </section>
         }

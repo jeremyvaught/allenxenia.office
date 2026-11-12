@@ -12,11 +12,14 @@ public sealed record ChangeRequest(Guid OperationId, Guid WorkOrderId, Guid Vers
 public sealed record MaintenanceResult(MaintenanceCode Code, Guid? WorkOrderId = null, Guid? Version = null, WorkOrderStatus? Status = null);
 public sealed record RequestSummary(Guid Id, string Suite, string Title, WorkOrderStatus Status, DateTimeOffset CreatedAt,
     Priority? Priority = null, Trade? Trade = null, string? Assignment = null, DateTimeOffset? UpdatedAt = null);
-public sealed record HistoryEntry(string Action, WorkOrderStatus Status, string? Note, bool Internal, DateTimeOffset At);
+// By names who acted, and Mine marks the reader's own entries; both are filled when a request page is read.
+public sealed record HistoryEntry(string Action, WorkOrderStatus Status, string? Note, bool Internal, DateTimeOffset At,
+    string? By = null, bool Mine = false);
 public sealed record RequestDetails(Guid Id, Guid Version, string Suite, string Title, string Description, string Location,
     WorkOrderStatus Status, Priority? Priority, Trade? Trade, string? Resolution, IReadOnlyList<HistoryEntry> History,
-    string? Assignment = null, IReadOnlyList<AssigneeChoice>? Assignees = null);
-public sealed record RequestMemberChoice(Guid Id, string Suite, string? RequesterEmail = null);
+    string? Assignment = null, IReadOnlyList<AssigneeChoice>? Assignees = null, string? Requester = null);
+// Requester is the tenant's name, or their email when they have not given one; managers only.
+public sealed record RequestMemberChoice(Guid Id, string Suite, string? Requester = null);
 public sealed record AssigneeChoice(string Value, string Label);
 
 // Feature persistence boundary. Atomic methods serialize current authorization, version,

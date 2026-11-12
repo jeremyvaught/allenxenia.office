@@ -14,7 +14,7 @@ public sealed class InvitationController(AccountInvitations invitations) : Contr
     {
         if (!ModelState.IsValid)
             return View(form);
-        if (await invitations.AcceptAsync(form.InvitationId, form.Token, form.Password))
+        if (await invitations.AcceptAsync(form.InvitationId, form.Token, form.Password, form.Name))
             return View("Accepted");
         ModelState.AddModelError("", "Unable to activate this invitation. Check the link and password, or ask your manager for help.");
         return View(form);

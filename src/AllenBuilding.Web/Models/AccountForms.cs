@@ -2,6 +2,11 @@ using System.ComponentModel.DataAnnotations;
 
 namespace AllenBuilding.Web.Models;
 
+public sealed class NameForm
+{
+    [Required(ErrorMessage = "Enter your name."), StringLength(120), Display(Name = "Your name")] public string Name { get; set; } = "";
+}
+
 public sealed class LoginForm
 {
     [StringLength(2048)] public string? ReturnUrl { get; set; }

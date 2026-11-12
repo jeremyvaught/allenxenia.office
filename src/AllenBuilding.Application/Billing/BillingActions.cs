@@ -19,16 +19,33 @@ public sealed record IssueRent(Guid OperationId, Guid AccountId, Guid Version, i
 public sealed record BillingAccount(
     Guid Id, Guid Version, string Suite, IReadOnlyList<RentTermsView> Terms, IReadOnlyList<ObligationView> Obligations,
     bool CollectionAvailable = false, Guid MembershipId = default, string? PayerEmail = null, Guid MembershipVersion = default,
-    DateTimeOffset? EndedAt = null, BillingClosureView? Closure = null);
+    DateTimeOffset? EndedAt = null, BillingClosureView? Closure = null, string? PayerName = null)
+{
+    // The tenant's name, or their email when they have not given one. Managers only.
+    public string? Payer => PayerName ?? PayerEmail;
+    // What is still owed across the listed charges, and the part of it that is past its due date.
+    public long BalanceMinorUnits => Obligations.Sum(x => Math.Max(0, x.BalanceMinorUnits));
+    public long OverdueMinorUnits(DateOnly today) => Obligations.Where(x => x.DueOn < today).Sum(x => Math.Max(0, x.BalanceMinorUnits));
+    public RentTermsView? CurrentTerms(DateOnly today) =>
+        Terms.Where(x => x.StartsOn <= today && (x.EndsOn is null || x.EndsOn > today)).OrderByDescending(x => x.StartsOn).FirstOrDefault()
+        ?? Terms.Where(x => x.SupersededBy is null).OrderBy(x => x.StartsOn).FirstOrDefault();
+}
 public sealed record RentTermsView(
     Guid Id, Guid Version, long AmountMinorUnits, string Currency, int DueDay, DateOnly StartsOn, DateOnly? EndsOn,
     Guid? SupersededBy);
 public sealed record ObligationView(
     Guid Id, Guid Version, ChargeKind Kind, string Description, long IssuedMinorUnits, string Currency, DateOnly DueOn,
-    DateOnly? PeriodStartsOn, DateOnly? PeriodEndsOn, long CreditedMinorUnits = 0)
-{ public long NetChargeMinorUnits => checked(IssuedMinorUnits - CreditedMinorUnits); }
+    DateOnly? PeriodStartsOn, DateOnly? PeriodEndsOn, long CreditedMinorUnits = 0, long PaidMinorUnits = 0,
+    IReadOnlyList<CreditView>? Credits = null)
+{
+    public long NetChargeMinorUnits => checked(IssuedMinorUnits - CreditedMinorUnits);
+    // The same arithmetic as the rent balance report: issued, less credits, less verified payments net of refunds.
+    public long BalanceMinorUnits => checked(IssuedMinorUnits - CreditedMinorUnits - PaidMinorUnits);
+}
+// Reason is filled for managers only.
+public sealed record CreditView(DateTimeOffset RecordedAt, long AmountMinorUnits, ObligationCreditKind Kind, string? Reason);
 
-public sealed record RentCandidate(Guid MembershipId, string Suite, string Email);
+public sealed record RentCandidate(Guid MembershipId, string Suite, string Email, string? Name = null);
 public sealed record RentPreview(
     Guid AccountId, Guid AccountVersion, long AmountMinorUnits, DateOnly DueOn, DateOnly StartsOn, DateOnly EndsOn,
     bool AlreadyIssued);

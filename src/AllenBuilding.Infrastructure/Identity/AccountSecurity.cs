@@ -15,6 +15,24 @@ public sealed class AccountSecurity(OfficeDbContext db, UserManager<OfficeUser> 
     public Task<bool> IsManagerAsync(string userId, CancellationToken cancellationToken) =>
         db.BuildingManagers.AnyAsync(x => x.UserId == userId, cancellationToken);
 
+    // A signed-in person changes the name others see for them. It carries no authority, so no second factor is asked for.
+    public async Task<bool> RenameAsync(string userId, string name)
+    {
+        if (PersonName.Normalize(name) is not { } displayName || PersonName.Of(displayName) is null)
+            return false;
+        var user = await users.FindByIdAsync(userId);
+        if (user is null)
+            return false;
+        if (user.DisplayName == displayName)
+            return true;
+        user.DisplayName = displayName;
+        if (!(await users.UpdateAsync(user)).Succeeded)
+            return false;
+        invitations.Audit(userId, "DisplayNameChanged", userId);
+        await db.SaveChangesAsync();
+        return true;
+    }
+
     public Task ReloadAsync(OfficeUser user, CancellationToken cancellationToken) => db.Entry(user).ReloadAsync(cancellationToken);
 
     public async Task RecordRecoveryCodeUseAsync(string userId)

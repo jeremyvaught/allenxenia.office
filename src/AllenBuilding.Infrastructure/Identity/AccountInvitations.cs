@@ -49,8 +49,10 @@ public sealed class AccountInvitations(OfficeDbContext db, UserManager<OfficeUse
         return invitation.Id;
     }
 
-    public async Task<bool> AcceptAsync(Guid invitationId, string token, string password, CancellationToken cancellationToken = default)
+    public async Task<bool> AcceptAsync(Guid invitationId, string token, string password, string name, CancellationToken cancellationToken = default)
     {
+        if (PersonName.Normalize(name) is not { } displayName || PersonName.Of(displayName) is null)
+            return false;
         await using var transaction = await AuthorityLocks.BeginAsync(db, cancellationToken);
         var userId = await db.Invitations.AsNoTracking().Where(x => x.Id == invitationId).Select(x => x.UserId).SingleOrDefaultAsync(cancellationToken);
         if (userId is null)
@@ -71,6 +73,7 @@ public sealed class AccountInvitations(OfficeDbContext db, UserManager<OfficeUse
             if (!(await users.AddPasswordAsync(user, password)).Succeeded)
                 return false;
             user.EmailConfirmed = true;
+            user.DisplayName = displayName;
             if (!(await users.UpdateAsync(user)).Succeeded)
                 return false;
             var membership = Membership.Grant(invitation.SuiteId, user.Id, time.GetUtcNow());

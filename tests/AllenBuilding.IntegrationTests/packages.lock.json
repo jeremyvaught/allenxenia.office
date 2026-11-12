@@ -744,6 +744,12 @@
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )"
         }
       },
+      "allenbuilding.demoseed": {
+        "type": "Project",
+        "dependencies": {
+          "AllenBuilding.Infrastructure": "[1.0.0, )"
+        }
+      },
       "allenbuilding.domain": {
         "type": "Project"
       },

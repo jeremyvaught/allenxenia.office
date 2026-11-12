@@ -20,7 +20,7 @@ public sealed partial class BillingStore(OfficeDbContext db, ICurrentActor curre
                     where accountId == null || account.Id == accountId
                     where membershipId == null || membership.Id == membershipId
                     orderby suite.Name, account.Id
-                    select new { Account = account, Suite = suite.Name, user.Email, MembershipVersion = membership.Version };
+                    select new { Account = account, Suite = suite.Name, user.Email, user.DisplayName, MembershipVersion = membership.Version };
         var rows = await query.Take(50).ToListAsync(cancellationToken);
         var result = new List<BillingAccount>();
         foreach (var row in rows)
@@ -38,13 +38,21 @@ public sealed partial class BillingStore(OfficeDbContext db, ICurrentActor curre
                                  select new ObligationView(charge.Id, charge.Version, charge.Kind, charge.Description, charge.AmountMinorUnits,
                                      charge.Currency, charge.DueOn,
                                      period == null ? null : (DateOnly?)period.StartsOn, period == null ? null : (DateOnly?)period.EndsOn,
-                                     db.ObligationCredits.Where(c => c.ObligationId == charge.Id).Sum(c => (long?)c.AmountMinorUnits) ?? 0))
+                                     db.ObligationCredits.Where(c => c.ObligationId == charge.Id).Sum(c => (long?)c.AmountMinorUnits) ?? 0,
+                                     (db.PaymentAllocations.Where(p => p.ObligationId == charge.Id).Sum(p => (long?)p.AmountMinorUnits) ?? 0) +
+                                     (db.RefundAllocations.Where(r => r.ObligationId == charge.Id).Sum(r => (long?)r.SignedMinorUnits) ?? 0)))
                 .Take(100).ToListAsync(cancellationToken);
+            var credits = (await db.ObligationCredits.AsNoTracking().Where(x => x.AccountId == row.Account.Id)
+                .Select(x => new { x.ObligationId, x.RecordedAt, x.AmountMinorUnits, x.Kind, x.Reason }).ToListAsync(cancellationToken))
+                .OrderBy(x => x.RecordedAt)
+                .ToLookup(x => x.ObligationId, x => new CreditView(x.RecordedAt, x.AmountMinorUnits, x.Kind, management ? x.Reason : null));
+            charges = charges.Select(x => credits.Contains(x.Id) ? x with { Credits = credits[x.Id].ToList() } : x).ToList();
             var closure = management ? await db.TenancyClosures.AsNoTracking().Where(x => x.AccountId == row.Account.Id)
                 .Select(x => new BillingClosureView(x.State, x.RequestedAt, x.Reason)).SingleOrDefaultAsync(cancellationToken) : null;
             result.Add(new(
                 row.Account.Id, row.Account.Version, row.Suite, terms, charges, false, row.Account.MembershipId,
-                management ? row.Email : null, row.MembershipVersion, row.Account.EndedAt, closure));
+                management ? row.Email : null, row.MembershipVersion, row.Account.EndedAt, closure,
+                management ? PersonName.Of(row.DisplayName) : null));
         }
         if (result.Count == 0)
             return [];
@@ -77,11 +85,12 @@ public sealed partial class BillingStore(OfficeDbContext db, ICurrentActor curre
 
     public async Task<IReadOnlyList<RentCandidate>> CandidatesAsync(Actor actor, CancellationToken cancellationToken)
     {
-        var rows = await (from membership in CandidateMemberships(actor)
-                          join suite in db.Suites on membership.SuiteId equals suite.Id
-                          join user in db.Users on membership.UserId equals user.Id
-                          orderby suite.Name, membership.Id
-                          select new RentCandidate(membership.Id, suite.Name, user.Email!)).Take(100).ToListAsync(cancellationToken);
+        var rows = (await (from membership in CandidateMemberships(actor)
+                           join suite in db.Suites on membership.SuiteId equals suite.Id
+                           join user in db.Users on membership.UserId equals user.Id
+                           orderby suite.Name, membership.Id
+                           select new { membership.Id, Suite = suite.Name, user.Email, user.DisplayName }).Take(100).ToListAsync(cancellationToken))
+            .Select(x => new RentCandidate(x.Id, x.Suite, x.Email!, PersonName.Of(x.DisplayName))).ToList();
         if (rows.Count == 0)
             return [];
         var fresh = await FreshReader(actor, true, cancellationToken);

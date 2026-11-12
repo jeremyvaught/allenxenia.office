@@ -15,7 +15,7 @@
         {
         <form asp-action="@(manager ? "CreateOnBehalf" : "Create")" method="post" class="space-y-5">
             <div asp-validation-summary="All" role="alert"></div><input asp-for="OperationId" type="hidden" />
-            <div><label asp-for="MembershipId" class="mb-2 block">Office</label><select asp-for="MembershipId" class="field">@foreach (var membership in memberships) { <option value="@membership.Id">@membership.Suite@(manager ? " · " + membership.RequesterEmail : "")</option> }</select></div>
+            <div><label asp-for="MembershipId" class="mb-2 block">Office</label><select asp-for="MembershipId" class="field">@foreach (var membership in memberships) { <option value="@membership.Id">@membership.Suite@(manager ? " · " + membership.Requester : "")</option> }</select></div>
             <div><label asp-for="Title" class="mb-2 block">Brief description</label><input asp-for="Title" class="field" maxlength="120" placeholder="For example, a leaking sink" /></div>
             <div><label asp-for="Location" class="mb-2 block">Where is it?</label><input asp-for="Location" class="field" maxlength="160" placeholder="Room or area" /></div>
             <div><label asp-for="Description" class="mb-2 block">Details</label><textarea asp-for="Description" rows="6" maxlength="4000" class="field"></textarea><p class="mt-2 text-sm text-muted">@(manager ? "The request is private to the selected tenant and building management." : "Your request is private to you and building management.")</p></div>

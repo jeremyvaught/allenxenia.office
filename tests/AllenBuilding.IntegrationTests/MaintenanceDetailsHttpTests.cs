@@ -180,6 +180,11 @@ public sealed class MaintenanceDetailsHttpTests
         Assert.Contains("name=\"Priority\"", page);
         Assert.DoesNotContain("Assign to me", page);
         Assert.Contains("Internal note — visible only to management", page);
+        // The page names the requester, makes the forward step the one solid button and tucks cancelling away.
+        Assert.Contains("Submitted by " + email, page);
+        Assert.Contains("class=\"button w-full\">Triage</button>", page);
+        Assert.Contains("class=\"quiet-button\">Add comment</button>", page);
+        Assert.Matches("<details class=[^>]*><summary[^>]*>Cancel this request</summary>", page);
 
         async Task<string> Step(string action, params (string Key, string Value)[] extra)
         {
@@ -208,7 +213,8 @@ public sealed class MaintenanceDetailsHttpTests
         Assert.Contains("Assigned to manager", page);
         page = await Step("Comment", ("Internal", "true"), ("Note", "Manager-only internal canary"));
         Assert.Contains("Manager-only internal canary", page);
-        Assert.Contains("&#xB7; Internal note", page);
+        Assert.Contains("Your internal note", page);
+        Assert.Contains("by you", page);
 
         page = await Step("Start");
         Assert.Contains("Work started", page);
@@ -226,9 +232,46 @@ public sealed class MaintenanceDetailsHttpTests
         Assert.Contains("Work completed", tenantPage);
         Assert.Contains("Replaced the thermostat", tenantPage);
         Assert.DoesNotContain("Manager-only internal canary", tenantPage);
-        Assert.DoesNotContain("Internal note", tenantPage);
+        Assert.DoesNotContain("internal note", tenantPage, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Next step", tenantPage);
         Assert.DoesNotContain("ManageChange", tenantPage);
+        Assert.DoesNotContain("Submitted by", tenantPage);
+        Assert.Contains("by Building manager", tenantPage);
+        Assert.Contains("class=\"button\">Add comment</button>", tenantPage);
+
+        // Each side sees who wrote a comment; the tenant's email is shown only to managers.
+        await Step("Comment", ("Note", "Manager reply canary"));
+        using (var commented = await AccountTestHost.PostAsync(tenant, tenantPath, "/Maintenance/Change",
+            ("OperationId", Guid.NewGuid().ToString()), ("WorkOrderId", id.ToString()), ("Version", (await Current(host)).Item2.ToString()),
+            ("Action", "Comment"), ("Note", "Tenant comment canary")))
+            Assert.Equal(HttpStatusCode.Redirect, commented.StatusCode);
+        tenantPage = await tenant.GetStringAsync(tenantPath);
+        Assert.Contains("Your comment", tenantPage);
+        Assert.Contains("Comment from Building manager", tenantPage);
+        Assert.DoesNotContain("(tenant)", tenantPage);
+        page = await manager.GetStringAsync(managerPath);
+        Assert.Contains($"Comment from {email} (tenant)", page);
+        Assert.Contains("Your comment", page);
+
+        // The delivery page says which request each email was about, never the hidden note.
+        var delivery = await manager.GetStringAsync("/Notifications");
+        Assert.Contains($"href=\"/Maintenance/ManageDetails/{id}\"", delivery);
+        Assert.Contains("Lifecycle request", delivery);
+        Assert.Contains("Work completed", delivery);
+        Assert.Contains("sent to the tenant", delivery);
+        Assert.Contains("Request submitted", delivery);
+        Assert.Contains("sent to a manager", delivery);
+        Assert.DoesNotContain("canary", delivery);
+        Assert.Contains("Recent emails", delivery);
+        // A manager with a display name is named, so one row per manager can be told apart.
+        using (var naming = host.Services.CreateScope())
+        {
+            var users = naming.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<AllenBuilding.Infrastructure.Identity.OfficeUser>>();
+            var account = (await users.FindByIdAsync(managerId))!;
+            account.DisplayName = "Pat Manager";
+            Assert.True((await naming.ServiceProvider.GetRequiredService<OfficeDbContext>().SaveChangesAsync()) == 1);
+        }
+        Assert.Contains("sent to Pat Manager", await manager.GetStringAsync("/Notifications"));
 
         page = await Step("Close");
         Assert.Contains("Work verified", page);
@@ -290,6 +333,54 @@ public sealed class MaintenanceDetailsHttpTests
         Assert.Contains("Imported entry 104", html);
         Assert.DoesNotContain("Imported entry 004", html);
         Assert.DoesNotContain("Request submitted", html);
+    }
+
+    [Fact]
+    public async Task A_tenant_who_gives_a_name_is_shown_by_it_to_managers_with_the_email_where_it_is_needed()
+    {
+        await using var host = new AccountTestHost();
+        await host.InitializeAsync();
+        var (managerId, building) = await host.SeedManagerAsync();
+        var (email, _, member) = await MaintenanceHttpTests.SeedTenants(host, building);
+        using var tenant = host.Browser();
+        await MaintenanceHttpTests.Login(tenant, email);
+        using var manager = host.Browser();
+        await host.LoginManagerAsync(manager, managerId);
+
+        // Until a name is given, the email stands in.
+        Assert.Contains(email, await manager.GetStringAsync("/Maintenance/CreateOnBehalf"));
+        Assert.Contains("Your name", await tenant.GetStringAsync("/Portal"));
+        using var blank = await AccountTestHost.PostAsync(tenant, "/Account/Name", "/Account/Name", ("Name", "   "));
+        Assert.Contains("Enter your name.", await blank.Content.ReadAsStringAsync());
+        using var placeholder = await AccountTestHost.PostAsync(tenant, "/Account/Name", "/Account/Name", ("Name", "Tenant"));
+        Assert.Contains("Enter a name of up to 120 characters.", await placeholder.Content.ReadAsStringAsync());
+        using var named = await AccountTestHost.PostAsync(tenant, "/Account/Name", "/Account/Name", ("Name", "  Dana <b>Example</b> "));
+        Assert.Equal("/Portal", named.Headers.Location?.OriginalString);
+        Assert.Contains("value=\"Dana &lt;b&gt;Example&lt;/b&gt;\"", await tenant.GetStringAsync("/Account/Name"));
+
+        using var submitted = await AccountTestHost.PostAsync(tenant, "/Maintenance/Create", "/Maintenance/Create",
+            ("OperationId", Guid.NewGuid().ToString()), ("MembershipId", member.ToString()), ("Title", "Named request"), ("Description", "Fixture"), ("Location", "Office"));
+        var (id, _) = await Current(host);
+        const string shown = "Dana &lt;b&gt;Example&lt;/b&gt;";
+        var details = await manager.GetStringAsync($"/Maintenance/ManageDetails/{id}");
+        Assert.Contains("Submitted by " + shown, details);
+        Assert.Contains("by " + shown + " (tenant)", details);
+        Assert.DoesNotContain(email, details);
+        Assert.DoesNotContain("<b>Example</b>", details);
+        var choices = await manager.GetStringAsync("/Maintenance/CreateOnBehalf");
+        Assert.Contains("&#xB7; " + shown, choices);
+        Assert.DoesNotContain(email, choices);
+        // Building access keeps the address, because a manager acts on it there.
+        var access = await manager.GetStringAsync("/Management");
+        Assert.Matches(shown + "</p><p[^>]*>" + System.Text.RegularExpressions.Regex.Escape(email) + "</p>", access);
+        Assert.Contains("sent to " + shown + " (tenant)", await manager.GetStringAsync("/Notifications"));
+        // The tenant still reads their own entries as "you", and never sees another person's address.
+        var own = await tenant.GetStringAsync(submitted.Headers.Location!.OriginalString);
+        Assert.Contains("by you", own);
+
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OfficeDbContext>();
+        Assert.Equal(1, await db.AccountAudits.CountAsync(x => x.Action == "DisplayNameChanged"));
     }
 
     private static async Task<(Guid Id, Guid Version)> Current(AccountTestHost host)

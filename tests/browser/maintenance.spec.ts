@@ -256,33 +256,45 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
 
 
     await manager.goto('/Billing/Manage');
-    await manager.getByLabel('Tenant membership').selectOption(account.membershipId);
+    await manager.locator('summary', { hasText: 'Open a rent account' }).click();
+    await manager.getByLabel('Tenant', { exact: true }).selectOption(account.membershipId);
     await manager.getByRole('button', { name: 'Review new rent account', exact: true }).click();
-    await expect(manager.getByRole('heading', { level: 1 })).toHaveText('Open rent account');
-    await manager.getByRole('button', { name: 'Confirm reviewed change', exact: true }).click();
+    await expect(manager.getByRole('heading', { level: 1 })).toHaveText('Open a rent account');
+    await manager.getByRole('button', { name: 'Confirm and save', exact: true }).click();
     const billingPath = new URL(manager.url()).pathname;
     await manager.getByLabel('Monthly rent (USD)').fill('1000.00');
-    await manager.getByLabel('Manager-set due day').fill('31');
+    await manager.getByLabel('Day of the month rent is due').fill('31');
     await manager.getByLabel('Terms start on').fill('2026-01-01');
     await manager.getByRole('button', { name: 'Review rent terms', exact: true }).click();
-    await expect(manager.getByText('$1,000.00 USD', { exact: true })).toBeVisible();
+    await expect(manager.getByText('$1,000.00', { exact: true })).toBeVisible();
     expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await manager.getByRole('button', { name: 'Confirm reviewed change', exact: true }).click();
+    await manager.getByRole('button', { name: 'Confirm and save', exact: true }).click();
     await manager.getByLabel('Rent year').fill('2026');
     await manager.getByLabel('Rent month', { exact: true }).selectOption('2');
-    await manager.getByRole('button', { name: 'Review calendar rent', exact: true }).click();
-    await expect(manager.getByText('2026-02-28', { exact: true })).toBeVisible();
-    await manager.getByRole('button', { name: 'Confirm reviewed change', exact: true }).click();
+    await manager.getByRole('button', { name: 'Review rent charge', exact: true }).click();
+    await expect(manager.getByText('Feb 28, 2026', { exact: true })).toBeVisible();
+    await manager.getByRole('button', { name: 'Confirm and save', exact: true }).click();
+    await manager.locator('summary', { hasText: 'Add a one-time charge' }).click();
     await manager.getByLabel('One-time amount (USD)').fill('19.75');
     await manager.getByLabel('Charge description').fill('Approved opening charge');
     await manager.getByLabel('Charge due on').fill('2026-02-28');
     await manager.getByRole('button', { name: 'Review one-time charge', exact: true }).click();
-    await expect(manager.getByText('$19.75 USD', { exact: true })).toBeVisible();
-    await manager.getByRole('button', { name: 'Confirm reviewed change', exact: true }).click();
+    await expect(manager.getByText('$19.75', { exact: true })).toBeVisible();
+    await manager.getByRole('button', { name: 'Confirm and save', exact: true }).click();
+    // A manager records a credit against a charge; the tenant then sees the amount but not the reason.
+    await manager.locator('summary', { hasText: 'Record a credit' }).first().click();
+    await manager.getByLabel('Reason for the credit').first().fill('Received by check 1001');
+    await manager.getByRole('button', { name: 'Review credit', exact: true }).first().click();
+    await expect(manager.getByRole('heading', { level: 1 })).toHaveText('Record a credit');
+    expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await manager.getByRole('button', { name: 'Confirm and save', exact: true }).click();
+    await expect(manager.getByText('Received by check 1001', { exact: false })).toBeVisible();
     const accountId = billingPath.split('/').pop();
     await page.goto(`/Billing/Account/${accountId}`);
     await expect(page.getByText('Approved opening charge', { exact: true })).toBeVisible();
-    await expect(page.getByText('View verified balances before paying', { exact: true })).toHaveCount(2);
+    await expect(page.getByRole('link', { name: 'Review a payment', exact: true })).toBeVisible();
+    await expect(page.getByText('Settled', { exact: true })).toHaveCount(1);
+    await expect(page.getByText('Received by check 1001', { exact: false })).toHaveCount(0);
     await expect(page.locator('form[action*="Prepare"]')).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -316,6 +328,8 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await manager.getByLabel('Minimum age (days)').fill('0');
     await manager.getByLabel('Order', { exact: true }).selectOption('Newest');
     await manager.getByRole('button', { name: 'Apply filters', exact: true }).click();
+    // The same link is on the page before the filters apply, so wait for the filtered page before measuring it.
+    await manager.waitForURL(/Sort=Newest/);
     await expect(manager.getByRole('link', { name: new RegExp(behalfTitle) })).toBeVisible();
     expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await manager.screenshot({ path: `artifacts/browser/queue-${testInfo.project.name}.png`, fullPage: true });
@@ -338,11 +352,11 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await manager.goto('/Portal');
     await manager.getByRole('link', { name: 'Rent balance report', exact: true }).click();
     await expect(manager.getByRole('heading', { level: 1 })).toHaveText('Rent balances');
-    await expect(manager.getByRole('region', { name: 'Recorded balance totals' })).toBeVisible();
-    await expect(manager.getByRole('region', { name: 'Unresolved financial work' })).toBeVisible();
-    await manager.getByLabel('Balance group', { exact: true }).selectOption('Held');
+    await expect(manager.getByRole('list', { name: 'Totals', exact: true })).toBeVisible();
+    await expect(manager.getByRole('region', { name: 'Payment problems waiting' })).toBeVisible();
+    await manager.getByLabel('Show', { exact: true }).selectOption('Held');
     await manager.getByRole('button', { name: 'View report', exact: true }).click();
-    await expect(manager.getByLabel('Balance group', { exact: true })).toHaveValue('Held');
+    await expect(manager.getByLabel('Show', { exact: true })).toHaveValue('Held');
     expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     for (const control of await manager.locator('select, button').all()) {
       const bounds = await control.boundingBox();
@@ -443,7 +457,7 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     }
     await page.screenshot({ path: `artifacts/browser/payment-problem-${testInfo.project.name}.png`, fullPage: true });
     await page.getByRole('link', { name: 'View billing and payment requests', exact: true }).click();
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Your billing records');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Your billing');
     await expect(page.getByText('Payment collection is unavailable.', { exact: false })).toHaveCount(0);
     await page.goto(`/Payments?accountId=${account.paymentAccountId}`);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Choose what to pay');
@@ -494,17 +508,18 @@ test('tenant and manager complete a private maintenance workflow at 320px', asyn
     await expect(page).toHaveURL(/\/Account\/Denied/);
 
     await manager.goto(`/Billing/ManageAccount/${account.paymentAccountId}`);
+    await manager.locator('summary', { hasText: 'End this tenancy' }).click();
     await manager.getByLabel('Reason for ending tenancy', { exact: true }).fill('Tenant has left this suite. Reconcile existing provider instructions.');
     await manager.getByRole('button', { name: 'Review tenancy end', exact: true }).click();
-    await expect(manager.getByRole('heading', { level: 1 })).toHaveText('End tenancy and revoke access');
+    await expect(manager.getByRole('heading', { level: 1 })).toHaveText('End this tenancy');
     expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await manager.getByRole('button', { name: 'Confirm reviewed change', exact: true }).click();
-    await expect(manager.getByRole('region', { name: 'Pending billing closure' })).toBeVisible();
+    await manager.getByRole('button', { name: 'Confirm and save', exact: true }).click();
+    await expect(manager.getByRole('region', { name: 'Tenancy ended' })).toBeVisible();
     await expect(manager.getByRole('button', { name: 'Review tenancy end', exact: true })).toHaveCount(0);
-    await expect(manager.getByRole('button', { name: 'Review calendar rent', exact: true })).toHaveCount(0);
+    await expect(manager.getByRole('button', { name: 'Review rent charge', exact: true })).toHaveCount(0);
     const endedPayment = await page.goto(paymentPath); expect(endedPayment!.status()).toBe(404);
     await manager.goto('/Billing/Closures');
-    await expect(manager.getByRole('heading', { level: 1 })).toHaveText('Pending billing closures');
+    await expect(manager.getByRole('heading', { level: 1 })).toHaveText('Ended tenancies with cleanup pending');
     await expect(manager.getByText('Tenant has left this suite. Reconcile existing provider instructions.', { exact: true })).toBeVisible();
     expect(await manager.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     for (const link of await manager.locator('main .quiet-button').all()) {
